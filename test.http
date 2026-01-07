@@ -1,0 +1,55 @@
+### 1. Create Teacher 011
+POST http://localhost:5000/api/users
+Content-Type: application/json
+
+{
+  "name": "Teacher Eleven",
+  "email": "teacher_011@test.com",
+  "password": "123",
+  "role": "teacher"
+}
+
+### 2. Create Admin 011
+POST http://localhost:5000/api/users
+Content-Type: application/json
+
+{
+  "name": "Admin Eleven",
+  "email": "admin_011@test.com",
+  "password": "123",
+  "role": "admin"
+}
+
+### 3. Login Admin 011
+POST http://localhost:5000/api/users/login
+Content-Type: application/json
+
+{
+  "email": "admin_011@test.com",
+  "password": "123"
+}
+
+### 4. Schedule Class
+POST http://localhost:5000/api/schedule
+Content-Type: application/json
+Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6IjY5NGNlZWNjN2U3MjRiMTBiZjJjNzg2MCIsImlhdCI6MTc2NjY0OTU1NSwiZXhwIjoxNzY5MjQxNTU1fQ.g1HyIgPbuqZUgK2MPaeAyV0wV0QRiuQFCqKmueTYpZQ
+
+{
+  "teacherId": "694ceeb47e724b10bf2c785d",
+  "studentId": "694ceeb47e724b10bf2c785d",
+  "subject": "Quran",
+  "startTime": "2025-10-25T10:00:00",
+  "durationMinutes": 60
+}
+### 5. Login as Teacher 011 (To see the dashboard)
+POST http://localhost:5000/api/users/login
+Content-Type: application/json
+
+{
+  "email": "teacher_011@test.com",
+  "password": "123"
+}
+
+### 6. View My Classes (Teacher Dashboard)
+GET http://localhost:5000/api/schedule/my-classes
+Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6IjY5NGNlZWI0N2U3MjRiMTBiZjJjNzg1ZCIsImlhdCI6MTc2NjY0OTY1OSwiZXhwIjoxNzY5MjQxNjU5fQ.yMwfdJ-nIJNJED2hN0sivf9iRzB2njX5Rpy76CXWoqg
