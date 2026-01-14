@@ -21,7 +21,7 @@ function AdminSchedule() {
     try {
       const token = localStorage.getItem('token');
       const config = { headers: { Authorization: `Bearer ${token}` } };
-      const res = await axios.get('http://localhost:5000/api/schedule/all', config);
+      const res = await axios.get('https://lms-backend-02zs.onrender.com/api/schedule/all', config);
       setClasses(res.data);
     } catch (error) {
       console.error(error);
@@ -46,7 +46,7 @@ function AdminSchedule() {
       
       const formattedDate = new Date(newTime).toISOString();
 
-      await axios.put(`http://localhost:5000/api/schedule/${selectedClass._id}`, {
+      await axios.put(`https://lms-backend-02zs.onrender.com/api/schedule/${selectedClass._id}`, {
         newStartTime: formattedDate
       }, config);
 
@@ -64,7 +64,7 @@ function AdminSchedule() {
     try {
       const token = localStorage.getItem('token');
       const config = { headers: { Authorization: `Bearer ${token}` } };
-      await axios.delete(`http://localhost:5000/api/schedule/${id}`, config);
+      await axios.delete(`https://lms-backend-02zs.onrender.com/api/schedule/${id}`, config);
       setClasses(classes.filter(c => c._id !== id));
     } catch (error) {
       alert('Error deleting class');

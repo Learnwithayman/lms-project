@@ -17,7 +17,7 @@ function UserList() {
 
     try {
       const config = { headers: { Authorization: `Bearer ${token}` } };
-      const res = await axios.get('http://localhost:5000/api/users', config);
+      const res = await axios.get('https://lms-backend-02zs.onrender.com/api/users', config);
       setUsers(res.data);
     } catch (error) {
       console.error(error);
@@ -33,7 +33,7 @@ function UserList() {
       const config = { headers: { Authorization: `Bearer ${token}` } };
       
       // Call the backend to delete
-      await axios.delete(`http://localhost:5000/api/users/${id}`, config);
+      await axios.delete(`https://lms-backend-02zs.onrender.com/api/users/${id}`, config);
       
       // Update the screen immediately (remove the user from the list)
       setUsers(users.filter((user) => user._id !== id));
