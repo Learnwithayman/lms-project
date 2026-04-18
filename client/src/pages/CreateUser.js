@@ -19,7 +19,7 @@ function CreateUser() {
       };
 
       // 2. Send data to backend
-      await axios.post('http://localhost:5000/api/users', {
+      await axios.post('https://lms-backend-02zs.onrender.com/api/users', {
         name,
         email,
         password,
