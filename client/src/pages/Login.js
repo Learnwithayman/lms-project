@@ -11,7 +11,7 @@ function Login() {
     e.preventDefault();
     try {
       // 1. Send data to backend
-      const res = await axios.post('http://localhost:5000/api/users/login', {
+      const res = await axios.post('https://lms-backend-02zs.onrender.com/api/users/login', {
         email,
         password,
       });

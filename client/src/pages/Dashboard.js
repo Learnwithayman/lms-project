@@ -21,7 +21,7 @@ function Dashboard() {
   const fetchClasses = async (token) => {
     try {
       const config = { headers: { Authorization: `Bearer ${token}` } };
-      const res = await axios.get('http://localhost:5000/api/schedule/my-classes', config);
+      const res = await axios.get('https://lms-backend-02zs.onrender.com/api/schedule/my-classes', config);
       setClasses(res.data);
     } catch (error) {
       console.error(error);
