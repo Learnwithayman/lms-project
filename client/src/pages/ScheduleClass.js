@@ -22,7 +22,7 @@ function ScheduleClass() {
 
       const formattedDate = new Date(startTime).toISOString();
 
-      await axios.post('http://localhost:5000/api/schedule', {
+      await axios.post('https://lms-backend-02zs.onrender.com/api/schedule', {
         teacherId: teacherId.trim(),
         studentId: studentId.trim(),
         subject,
