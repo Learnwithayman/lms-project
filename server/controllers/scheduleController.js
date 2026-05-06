@@ -121,5 +121,6 @@ module.exports = {
   deleteClass,
   getAllClasses,
   updateClass,
+  endClass,
   getCompletedClasses
 };
