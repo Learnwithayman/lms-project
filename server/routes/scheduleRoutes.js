@@ -7,7 +7,7 @@ const {
   getAllClasses,
   updateClass,
   endClass,
-  getCompletedClasses // <--- New import added here
+  getCompletedClasses
 } = require('../controllers/scheduleController');
 const { protect } = require('../middleware/authMiddleware');
 
@@ -20,16 +20,16 @@ router.get('/my-classes', protect, getMyClasses);
 // Admin view ALL classes
 router.get('/all', protect, getAllClasses);
 
-// Admin updates class time
-router.put('/:id', protect, updateClass);
+// View completed classes for Progress Hub (MUST BE ABOVE /:id)
+router.get('/completed', protect, getCompletedClasses);
 
-// Admin deletes a class
-router.delete('/:id', protect, deleteClass);
-
-// Teacher ends a class and saves notes
+// Teacher ends a class and saves notes (MUST BE ABOVE /:id)
 router.put('/end', protect, endClass);
 
-// View completed classes for Progress Hub
-router.get('/completed', protect, getCompletedClasses); // <--- New route added here
+// Admin updates class time (Dynamic route)
+router.put('/:id', protect, updateClass);
+
+// Admin deletes a class (Dynamic route)
+router.delete('/:id', protect, deleteClass);
 
 module.exports = router;
