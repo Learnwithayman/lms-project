@@ -33,6 +33,14 @@ const classSessionSchema = mongoose.Schema({
     enum: ['scheduled', 'completed', 'cancelled'],
     default: 'scheduled',
   },
+  notes: { 
+    type: String, 
+    default: '' 
+  },
+  homework: { 
+    type: String, 
+    default: '' 
+  },
 }, {
   timestamps: true,
 });

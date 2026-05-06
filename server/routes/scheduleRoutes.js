@@ -1,11 +1,13 @@
 const express = require('express');
 const router = express.Router();
-const { 
-  scheduleClass, 
-  getMyClasses, 
-  deleteClass, 
-  getAllClasses, 
-  updateClass 
+const {
+  scheduleClass,
+  getMyClasses,
+  deleteClass,
+  getAllClasses,
+  updateClass,
+  endClass,
+  getCompletedClasses // <--- New import added here
 } = require('../controllers/scheduleController');
 const { protect } = require('../middleware/authMiddleware');
 
@@ -23,5 +25,11 @@ router.put('/:id', protect, updateClass);
 
 // Admin deletes a class
 router.delete('/:id', protect, deleteClass);
+
+// Teacher ends a class and saves notes
+router.put('/end', protect, endClass);
+
+// View completed classes for Progress Hub
+router.get('/completed', protect, getCompletedClasses); // <--- New route added here
 
 module.exports = router;

@@ -73,11 +73,53 @@ const updateClass = asyncHandler(async (req, res) => {
 
   res.status(200).json(session);
 });
+// END A CLASS AND SAVE NOTES
+const endClass = async (req, res) => {
+  try {
+    const { classId, notes, homework } = req.body;
 
+    // Find the class by ID and update its fields
+    const updatedClass = await ClassSession.findByIdAndUpdate(
+      classId,
+      { 
+        status: 'completed', 
+        notes: notes, 
+        homework: homework 
+      },
+      { new: true } // This tells MongoDB to return the newly updated data
+    );
+
+    if (!updatedClass) {
+      return res.status(404).json({ message: 'Class not found.' });
+    }
+
+    res.status(200).json({ message: 'Class ended successfully!', updatedClass });
+
+  } catch (error) {
+    console.error('Error ending class:', error);
+    res.status(500).json({ message: 'Server error while ending class.' });
+  }
+};
+// GET ONLY COMPLETED CLASSES
+const getCompletedClasses = async (req, res) => {
+  try {
+    // Find classes where the user is involved AND the status is 'completed'
+    const completedClasses = await ClassSession.find({
+      $or: [{ teacher: req.user._id }, { student: req.user._id }],
+      status: 'completed'
+    }).sort({ startTime: -1 }); // Sorts by newest first!
+
+    res.status(200).json(completedClasses);
+  } catch (error) {
+    console.error('Error fetching completed classes:', error);
+    res.status(500).json({ message: 'Server error fetching progress.' });
+  }
+};
 module.exports = {
   scheduleClass,
   getMyClasses,
   deleteClass,
   getAllClasses,
   updateClass,
+  getCompletedClasses
 };

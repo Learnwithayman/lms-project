@@ -7,11 +7,13 @@ import CreateUser from './pages/CreateUser';
 import ScheduleClass from './pages/ScheduleClass';
 import UserList from './pages/UserList';
 import AdminSchedule from './pages/AdminSchedule'; // <--- NEW IMPORT
+import ProgressHub from './pages/ProgressHub';
 
 function App() {
   return (
     <Router>
       <Routes>
+        <Route path="/progress" element={<ProgressHub />} />
         <Route path="/" element={<Login />} />
         <Route path="/dashboard" element={<Dashboard />} />
         <Route path="/admin" element={<AdminDashboard />} />
