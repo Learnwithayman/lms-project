@@ -41,12 +41,16 @@ function AdminDashboard() {
       <p>Manage users, schedule classes, and organize the school.</p>
       
       {/* Quick Actions */}
-      <div style={{ marginTop: '20px', display: 'flex', gap: '10px' }}>
+      <div style={{ marginTop: '20px', display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
         <button onClick={() => navigate('/users')} className="action-btn btn-grey" style={{width: 'auto', padding: '10px 20px'}}>
           📋 View Users
         </button>
         <button onClick={() => navigate('/all-classes')} className="action-btn btn-grey" style={{width: 'auto', padding: '10px 20px'}}>
           🗓️ Manage Classes
+        </button>
+        {/* NEW PAYROLL BUTTON */}
+        <button onClick={() => navigate('/admin-payroll')} className="action-btn btn-grey" style={{width: 'auto', padding: '10px 20px', backgroundColor: '#ffc107', color: '#333', fontWeight: 'bold', border: 'none'}}>
+          💰 Manage Payroll
         </button>
       </div>
 
