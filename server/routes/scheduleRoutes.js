@@ -8,7 +8,9 @@ const {
   updateClass,
   endClass,
   getCompletedClasses,
-  getTeacherEarnings // <--- New import added here!
+  getTeacherEarnings,
+  getAdminPayrollReport, // <--- New import!
+  addTeacherAdjustment   // <--- New import!
 } = require('../controllers/scheduleController');
 const { protect } = require('../middleware/authMiddleware');
 
@@ -25,7 +27,13 @@ router.get('/all', protect, getAllClasses);
 router.get('/completed', protect, getCompletedClasses);
 
 // View teacher earnings for the month (MUST BE ABOVE /:id)
-router.get('/earnings', protect, getTeacherEarnings); // <--- New route added safely here!
+router.get('/earnings', protect, getTeacherEarnings);
+
+// Admin views master payroll report (MUST BE ABOVE /:id)
+router.get('/payroll-report', protect, getAdminPayrollReport);
+
+// Admin adds bonus/deduction to a teacher (MUST BE ABOVE /:id)
+router.post('/payroll-adjustment', protect, addTeacherAdjustment);
 
 // Teacher ends a class and saves notes (MUST BE ABOVE /:id)
 router.put('/end', protect, endClass);

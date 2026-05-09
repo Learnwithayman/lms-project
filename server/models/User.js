@@ -15,6 +15,15 @@ const userSchema = mongoose.Schema(
     phone: { type: String, required: false },
     timezone: { type: String, default: 'Africa/Cairo' },
     hourlyRate: { type: Number, default: 3.0 },
+    
+    // NEW: The Adjustments Ledger for bonuses and deductions
+    adjustments: [
+      {
+        amount: { type: Number, required: true }, // Positive for bonus, Negative for deduction
+        reason: { type: String },                 // e.g., "Great performance" or "Missed class"
+        date: { type: Date, default: Date.now }
+      }
+    ],
   },
   { timestamps: true }
 );

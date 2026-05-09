@@ -1,5 +1,6 @@
 const asyncHandler = require('express-async-handler');
 const ClassSession = require('../models/ClassSession');
+const User = require('../models/User');
 
 // @desc    Schedule a new class
 const scheduleClass = asyncHandler(async (req, res) => {
@@ -154,6 +155,82 @@ const getTeacherEarnings = async (req, res) => {
     res.status(500).json({ message: 'Server error calculating payroll.' });
   }
 };
+// GET ALL TEACHERS PAYROLL REPORT (ADMIN ONLY)
+const getAdminPayrollReport = async (req, res) => {
+  try {
+    const now = new Date();
+    const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+    const endOfMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59);
+
+    // 1. Find all users who are teachers
+    const teachers = await User.find({ role: 'teacher' });
+
+    // 2. Loop through every teacher and calculate their pay
+    const payrollReport = await Promise.all(teachers.map(async (teacher) => {
+      
+      const completedClasses = await ClassSession.find({
+        teacher: teacher._id,
+        status: 'completed',
+        startTime: { $gte: startOfMonth, $lte: endOfMonth }
+      });
+
+      const totalMinutes = completedClasses.reduce((sum, cls) => sum + (cls.durationMinutes || 0), 0);
+      const hourlyRate = teacher.hourlyRate || 3.0;
+      const totalHours = totalMinutes / 60;
+      const baseEarnings = totalHours * hourlyRate;
+
+      let adjustmentsTotal = 0;
+      if (teacher.adjustments && teacher.adjustments.length > 0) {
+        const thisMonthAdjustments = teacher.adjustments.filter(adj => {
+          const adjDate = new Date(adj.date);
+          return adjDate >= startOfMonth && adjDate <= endOfMonth;
+        });
+        adjustmentsTotal = thisMonthAdjustments.reduce((sum, adj) => sum + adj.amount, 0);
+      }
+
+      // Return a clean summary for this specific teacher
+      return {
+        teacherId: teacher._id,
+        name: teacher.name,
+        email: teacher.email,
+        totalHours: totalHours.toFixed(2),
+        hourlyRate,
+        baseEarnings: baseEarnings.toFixed(2),
+        adjustmentsTotal: adjustmentsTotal.toFixed(2),
+        finalEarnings: (baseEarnings + adjustmentsTotal).toFixed(2)
+      };
+    }));
+
+    res.status(200).json(payrollReport);
+  } catch (error) {
+    console.error('Error generating payroll report:', error);
+    res.status(500).json({ message: 'Server error generating payroll report.' });
+  }
+};
+
+// ADD BONUS OR DEDUCTION (ADMIN ONLY)
+const addTeacherAdjustment = async (req, res) => {
+  try {
+    const { teacherId, amount, reason } = req.body;
+
+    const teacher = await User.findById(teacherId);
+    if (!teacher) {
+      return res.status(404).json({ message: 'Teacher not found' });
+    }
+
+    // Push the new transaction to their ledger
+    teacher.adjustments.push({
+      amount: Number(amount), // Converts string to number just in case
+      reason: reason
+    });
+
+    await teacher.save();
+    res.status(200).json({ message: 'Adjustment added successfully!', teacher });
+  } catch (error) {
+    console.error('Error adding adjustment:', error);
+    res.status(500).json({ message: 'Server error adding adjustment.' });
+  }
+};
 
 module.exports = {
   scheduleClass,
@@ -163,5 +240,7 @@ module.exports = {
   updateClass,
   endClass,
   getCompletedClasses,
-  getTeacherEarnings // <--- Successfully exported!
+  getTeacherEarnings,
+  getAdminPayrollReport, // <--- Added!
+  addTeacherAdjustment   // <--- Added!
 };

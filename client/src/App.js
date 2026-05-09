@@ -6,8 +6,9 @@ import AdminDashboard from './pages/AdminDashboard';
 import CreateUser from './pages/CreateUser';
 import ScheduleClass from './pages/ScheduleClass';
 import UserList from './pages/UserList';
-import AdminSchedule from './pages/AdminSchedule'; // <--- NEW IMPORT
+import AdminSchedule from './pages/AdminSchedule'; 
 import ProgressHub from './pages/ProgressHub';
+import AdminPayroll from './pages/AdminPayroll'; // <--- NEW IMPORT ADDED HERE
 
 function App() {
   return (
@@ -20,7 +21,8 @@ function App() {
         <Route path="/create-user" element={<CreateUser />} />
         <Route path="/schedule-class" element={<ScheduleClass />} />
         <Route path="/users" element={<UserList />} />
-        <Route path="/all-classes" element={<AdminSchedule />} /> {/* <--- NEW ROUTE */}
+        <Route path="/all-classes" element={<AdminSchedule />} /> 
+        <Route path="/admin-payroll" element={<AdminPayroll />} /> {/* <--- NEW ROUTE ADDED HERE */}
       </Routes>
     </Router>
   );
