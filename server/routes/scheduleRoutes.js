@@ -7,7 +7,8 @@ const {
   getAllClasses,
   updateClass,
   endClass,
-  getCompletedClasses
+  getCompletedClasses,
+  getTeacherEarnings // <--- New import added here!
 } = require('../controllers/scheduleController');
 const { protect } = require('../middleware/authMiddleware');
 
@@ -22,6 +23,9 @@ router.get('/all', protect, getAllClasses);
 
 // View completed classes for Progress Hub (MUST BE ABOVE /:id)
 router.get('/completed', protect, getCompletedClasses);
+
+// View teacher earnings for the month (MUST BE ABOVE /:id)
+router.get('/earnings', protect, getTeacherEarnings); // <--- New route added safely here!
 
 // Teacher ends a class and saves notes (MUST BE ABOVE /:id)
 router.put('/end', protect, endClass);

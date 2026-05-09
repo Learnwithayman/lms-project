@@ -6,6 +6,7 @@ import '../App.css';
 function Dashboard() {
   const [classes, setClasses] = useState([]);
   const [user, setUser] = useState({});
+  const [earnings, setEarnings] = useState(null); // <--- NEW STATE FOR WALLET
   const navigate = useNavigate();
   
   // Modal State
@@ -20,8 +21,14 @@ function Dashboard() {
 
     if (!token) return navigate('/');
 
-    setUser(JSON.parse(userData));
+    const parsedUser = JSON.parse(userData);
+    setUser(parsedUser);
     fetchClasses(token);
+
+    // NEW: If the user is a teacher, go fetch their paycheck data!
+    if (parsedUser?.role?.toLowerCase() === 'teacher') {
+      fetchEarnings(token);
+    }
   }, [navigate]);
 
   const fetchClasses = async (token) => {
@@ -34,13 +41,22 @@ function Dashboard() {
     }
   };
 
+  // NEW FUNCTION: Fetch the payroll calculation from the backend
+  const fetchEarnings = async (token) => {
+    try {
+      const config = { headers: { Authorization: `Bearer ${token}` } };
+      const res = await axios.get('https://lms-backend-02zs.onrender.com/api/schedule/earnings', config);
+      setEarnings(res.data);
+    } catch (error) {
+      console.error("Failed to fetch earnings:", error);
+    }
+  };
+
   const handleEndClass = async () => {
     try {
       const token = localStorage.getItem('token');
       const config = { headers: { Authorization: `Bearer ${token}` } };
 
-      // NOTE: If you get a network error while testing on localhost, it is because your 
-      // local code hasn't been pushed to this live Render URL yet! 
       await axios.put('https://lms-backend-02zs.onrender.com/api/schedule/end', {
         classId: currentClassId,
         notes: notes,
@@ -54,6 +70,11 @@ function Dashboard() {
 
       // Refresh the schedule so the completed class disappears
       fetchClasses(token);
+
+      // NEW: Refresh the Wallet so the teacher immediately sees their money go up!
+      if (user?.role?.toLowerCase() === 'teacher') {
+        fetchEarnings(token);
+      }
 
     } catch (error) {
       console.error('Error ending class:', error);
@@ -74,7 +95,34 @@ function Dashboard() {
         <button onClick={handleLogout} className="logout-btn">Logout</button>
       </div>
 
+      {/* THE NEW TEACHER WALLET UI */}
+      {user?.role?.toLowerCase() === 'teacher' && earnings && (
+        <div style={{
+          backgroundColor: '#d4edda',
+          color: '#155724',
+          padding: '20px',
+          borderRadius: '8px',
+          marginBottom: '20px',
+          border: '1px solid #c3e6cb',
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'center',
+          boxShadow: '0 2px 5px rgba(0,0,0,0.1)'
+        }}>
+          <div>
+            <h2 style={{ margin: '0 0 5px 0' }}>💰 Current Month Earnings</h2>
+            <p style={{ margin: 0 }}>
+              You have taught <strong>{earnings.totalHours} hours</strong> this month at <strong>${earnings.hourlyRate}/hr</strong>.
+            </p>
+          </div>
+          <div style={{ fontSize: '36px', fontWeight: 'bold' }}>
+            ${earnings.currentEarnings}
+          </div>
+        </div>
+      )}
+
       <h2>📅 Your Schedule</h2>
+      
       {/* Button to navigate to Progress Hub */}
       <button 
         onClick={() => navigate('/progress')} 
@@ -103,7 +151,6 @@ function Dashboard() {
             {/* JOIN BUTTON LOGIC: Only shows if a link exists */}
             {cls.meetingLink ? (
               <div style={{ display: 'flex', alignItems: 'center', marginTop: '10px' }}>
-                {/* The Original Join Button */}
                 <a
                   href={cls.meetingLink}
                   target="_blank"
@@ -118,12 +165,12 @@ function Dashboard() {
                   </button>
                 </a>
 
-                {/* The New End Class Button (Only shows for teachers!) */}
+                {/* The End Class Button */}
                 {user?.role?.toLowerCase() === 'teacher' && (
                   <button 
                     onClick={() => {
-                      setCurrentClassId(cls._id); // Remember WHICH class we are ending
-                      setIsModalOpen(true);       // Open the popup!
+                      setCurrentClassId(cls._id); 
+                      setIsModalOpen(true);       
                     }}
                     style={{ 
                       marginLeft: '10px', 
@@ -184,7 +231,7 @@ function Dashboard() {
               <button 
                 className="btn-green" 
                 style={{ padding: '10px 15px', cursor: 'pointer', backgroundColor: '#28a745', color: 'white', border: 'none', borderRadius: '4px' }}
-                onClick={handleEndClass} // <--- Connected!
+                onClick={handleEndClass} 
               >
                 Submit & End Class
               </button>
