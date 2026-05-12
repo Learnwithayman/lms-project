@@ -7,6 +7,7 @@ function CreateUser() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [role, setRole] = useState('student'); // Default to student
+  const [whatsappNumber, setWhatsappNumber] = useState(''); // <--- NEW STATE
   const navigate = useNavigate();
 
   const handleCreate = async (e) => {
@@ -24,6 +25,7 @@ function CreateUser() {
         email,
         password,
         role,
+        whatsappNumber // <--- ADD TO PAYLOAD
       }, config);
 
       alert('User Created Successfully! 🎉');
@@ -41,9 +43,18 @@ function CreateUser() {
       <h1>👤 Create New User</h1>
       <form onSubmit={handleCreate} style={{ display: 'flex', flexDirection: 'column', width: '300px', gap: '10px' }}>
         
-        <input type="text" placeholder="Full Name" value={name} onChange={(e) => setName(e.target.value)} required padding="10px" />
-        <input type="email" placeholder="Email Address" value={email} onChange={(e) => setEmail(e.target.value)} required />
-        <input type="password" placeholder="Password" value={password} onChange={(e) => setPassword(e.target.value)} required />
+        <input type="text" placeholder="Full Name" value={name} onChange={(e) => setName(e.target.value)} required style={{ padding: '10px' }} />
+        <input type="email" placeholder="Email Address" value={email} onChange={(e) => setEmail(e.target.value)} required style={{ padding: '10px' }} />
+        <input type="password" placeholder="Password" value={password} onChange={(e) => setPassword(e.target.value)} required style={{ padding: '10px' }} />
+        
+        {/* NEW WHATSAPP INPUT */}
+        <input 
+          type="text" 
+          placeholder="WhatsApp No. (e.g. 201xxxxxxxxx)" 
+          value={whatsappNumber} 
+          onChange={(e) => setWhatsappNumber(e.target.value)} 
+          style={{ padding: '10px' }}
+        />
         
         <select value={role} onChange={(e) => setRole(e.target.value)} style={{ padding: '10px' }}>
           <option value="student">Student</option>
@@ -51,7 +62,7 @@ function CreateUser() {
           <option value="admin">Admin</option>
         </select>
 
-        <button type="submit" style={{ padding: '10px', background: '#007bff', color: 'white', border: 'none', cursor: 'pointer' }}>
+        <button type="submit" style={{ padding: '10px', background: '#007bff', color: 'white', border: 'none', cursor: 'pointer', marginTop: '10px' }}>
           Create User
         </button>
       </form>

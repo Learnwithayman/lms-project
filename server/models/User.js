@@ -1,5 +1,5 @@
 const mongoose = require('mongoose');
-const bcrypt = require('bcryptjs'); // We need this back!
+const bcrypt = require('bcryptjs'); 
 
 const userSchema = mongoose.Schema(
   {
@@ -11,16 +11,17 @@ const userSchema = mongoose.Schema(
       enum: ['student', 'teacher', 'admin'],
       default: 'student',
     },
-    // New Fields
+    // Contact Info
     phone: { type: String, required: false },
+    whatsappNumber: { type: String, required: false }, // <--- NEW FIELD
     timezone: { type: String, default: 'Africa/Cairo' },
     hourlyRate: { type: Number, default: 3.0 },
     
-    // NEW: The Adjustments Ledger for bonuses and deductions
+    // The Adjustments Ledger for bonuses and deductions
     adjustments: [
       {
-        amount: { type: Number, required: true }, // Positive for bonus, Negative for deduction
-        reason: { type: String },                 // e.g., "Great performance" or "Missed class"
+        amount: { type: Number, required: true }, 
+        reason: { type: String },                 
         date: { type: Date, default: Date.now }
       }
     ],
