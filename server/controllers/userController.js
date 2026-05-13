@@ -3,9 +3,13 @@ const bcrypt = require('bcryptjs');
 const asyncHandler = require('express-async-handler');
 const User = require('../models/User');
 
+// 1. Import the WhatsApp Engine
+const { sendWhatsAppMessage } = require('../utils/whatsapp'); 
+
 // @desc    Register new user
 const registerUser = asyncHandler(async (req, res) => {
-  const { name, email, password, role } = req.body;
+  // 2. Added whatsappNumber so the backend knows to look for it
+  const { name, email, password, role, whatsappNumber } = req.body; 
 
   if (!name || !email || !password) {
     res.status(400);
@@ -18,14 +22,26 @@ const registerUser = asyncHandler(async (req, res) => {
     throw new Error('User already exists');
   }
 
+  // 3. Save the whatsappNumber to the database alongside the other info
   const user = await User.create({
     name,
     email,
     password, 
     role: role || 'student',
+    whatsappNumber, 
   });
 
   if (user) {
+    
+    // --- 4. WHATSAPP AUTOMATION: WELCOME MESSAGE ---
+    if (user.whatsappNumber) {
+      const welcomeMessage = `Welcome to Learn With Ayman! 🎉\n\nThank you so much for registering as a ${user.role}. We are thrilled to have you on board!`;
+      
+      // Fire the message!
+      sendWhatsAppMessage(user.whatsappNumber, welcomeMessage);
+    }
+    // -----------------------------------------------
+
     res.status(201).json({
       _id: user.id,
       name: user.name,
@@ -63,7 +79,7 @@ const getMe = asyncHandler(async (req, res) => {
   res.status(200).json(req.user);
 });
 
-// @desc    Get all users (Admin only) - THIS WAS THE MISSING PIECE
+// @desc    Get all users (Admin only)
 const getAllUsers = asyncHandler(async (req, res) => {
   const users = await User.find({});
   res.json(users);
@@ -75,6 +91,7 @@ const generateToken = (id) => {
     expiresIn: '30d',
   });
 };
+
 // @desc    Delete a user
 const deleteUser = asyncHandler(async (req, res) => {
   const user = await User.findById(req.params.id);
@@ -87,10 +104,11 @@ const deleteUser = asyncHandler(async (req, res) => {
   await user.deleteOne();
   res.status(200).json({ id: req.params.id });
 });
+
 module.exports = {
   registerUser,
   loginUser,
   getMe,
   getAllUsers, 
-  deleteUser, // <--- Crucial: Exporting the new function
+  deleteUser, 
 };
