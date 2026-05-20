@@ -30,7 +30,11 @@ const courseSchema = new mongoose.Schema({
     type: String,
     required: [true, 'Please add a description'],
   },
-  lessons: [lessonSchema], // <-- This is the new line
+  whatsappGroupId: {
+    type: String, // <-- NEW FIELD: Stores the specific group ID for this course
+    required: false,
+  },
+  lessons: [lessonSchema], 
 }, {
   timestamps: true,
 });

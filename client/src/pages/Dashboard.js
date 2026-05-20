@@ -6,7 +6,7 @@ import '../App.css';
 function Dashboard() {
   const [classes, setClasses] = useState([]);
   const [user, setUser] = useState({});
-  const [earnings, setEarnings] = useState(null); // <--- NEW STATE FOR WALLET
+  const [earnings, setEarnings] = useState(null); 
   const navigate = useNavigate();
   
   // Modal State
@@ -25,7 +25,6 @@ function Dashboard() {
     setUser(parsedUser);
     fetchClasses(token);
 
-    // NEW: If the user is a teacher, go fetch their paycheck data!
     if (parsedUser?.role?.toLowerCase() === 'teacher') {
       fetchEarnings(token);
     }
@@ -34,6 +33,7 @@ function Dashboard() {
   const fetchClasses = async (token) => {
     try {
       const config = { headers: { Authorization: `Bearer ${token}` } };
+      // Keeping your original render links for your existing features
       const res = await axios.get('https://lms-backend-02zs.onrender.com/api/schedule/my-classes', config);
       setClasses(res.data);
     } catch (error) {
@@ -41,7 +41,6 @@ function Dashboard() {
     }
   };
 
-  // NEW FUNCTION: Fetch the payroll calculation from the backend
   const fetchEarnings = async (token) => {
     try {
       const config = { headers: { Authorization: `Bearer ${token}` } };
@@ -63,15 +62,11 @@ function Dashboard() {
         homework: homework
       }, config);
 
-      // Close the popup and clear the text boxes
       setIsModalOpen(false);
       setNotes('');
       setHomework('');
-
-      // Refresh the schedule so the completed class disappears
       fetchClasses(token);
 
-      // NEW: Refresh the Wallet so the teacher immediately sees their money go up!
       if (user?.role?.toLowerCase() === 'teacher') {
         fetchEarnings(token);
       }
@@ -79,6 +74,27 @@ function Dashboard() {
     } catch (error) {
       console.error('Error ending class:', error);
       alert('Failed to end class. Check console for details.');
+    }
+  };
+
+  // --- NEW AUTOMATED ATTENDANCE FUNCTION ---
+  const handleAttendance = async (classId, status) => {
+    try {
+      const token = localStorage.getItem('token');
+      const config = { headers: { Authorization: `Bearer ${token}` } };
+
+      // We are pointing this specifically to your LOCAL running server to test the bot!
+      await axios.post('http://localhost:5000/api/schedule/attendance', {
+        classId: classId,
+        attendanceStatus: status,
+        // Hardcoding the "Maisa & Yusuf" group ID from your screenshot for this test run!
+        whatsappGroupId: '120363419360277721@g.us' 
+      }, config);
+
+      alert(`✅ Student marked as ${status}. WhatsApp message sent!`);
+    } catch (error) {
+      console.error('Error marking attendance:', error);
+      alert('Failed to mark attendance. Make sure your local node server.js is running!');
     }
   };
 
@@ -95,7 +111,6 @@ function Dashboard() {
         <button onClick={handleLogout} className="logout-btn">Logout</button>
       </div>
 
-      {/* THE NEW TEACHER WALLET UI */}
       {user?.role?.toLowerCase() === 'teacher' && earnings && (
         <div style={{
           backgroundColor: '#d4edda',
@@ -123,74 +138,66 @@ function Dashboard() {
 
       <h2>📅 Your Schedule</h2>
       
-      {/* Button to navigate to Progress Hub */}
       <button 
         onClick={() => navigate('/progress')} 
         style={{ 
-          marginBottom: '20px', 
-          backgroundColor: '#17a2b8', 
-          color: 'white', 
-          padding: '10px 20px', 
-          border: 'none', 
-          borderRadius: '4px', 
-          cursor: 'pointer',
-          fontWeight: 'bold'
+          marginBottom: '20px', backgroundColor: '#17a2b8', color: 'white', 
+          padding: '10px 20px', border: 'none', borderRadius: '4px', 
+          cursor: 'pointer', fontWeight: 'bold'
         }}
       >
         📈 View Progress Hub
       </button>
 
       <div style={{ display: 'grid', gap: '20px' }}>
-        {/* The filter right here hides 'completed' classes! */}
         {classes.filter(cls => cls.status !== 'completed').map((cls) => (
           <div key={cls._id} className="card" style={{ borderLeft: '5px solid #3498db' }}>
             <h3>📚 Subject: {cls.subject}</h3>
             <p><strong>⏰ Time:</strong> {new Date(cls.startTime).toLocaleString()}</p>
             <p><strong>⏳ Duration:</strong> {cls.durationMinutes} minutes</p>
 
-            {/* JOIN BUTTON LOGIC: Only shows if a link exists */}
-            {cls.meetingLink ? (
-              <div style={{ display: 'flex', alignItems: 'center', marginTop: '10px' }}>
-                <a
-                  href={cls.meetingLink}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  style={{ textDecoration: 'none' }}
-                >
-                  <button
-                    className="btn-blue"
-                    style={{ padding: '10px 20px' }}
-                  >
-                    🎥 Join Class
-                  </button>
+            <div style={{ display: 'flex', alignItems: 'center', marginTop: '10px', gap: '10px', flexWrap: 'wrap' }}>
+              
+              {/* JOIN BUTTON */}
+              {cls.meetingLink ? (
+                <a href={cls.meetingLink} target="_blank" rel="noopener noreferrer" style={{ textDecoration: 'none' }}>
+                  <button className="btn-blue" style={{ padding: '10px 20px' }}>🎥 Join Class</button>
                 </a>
+              ) : (
+                <span style={{ color: 'grey', fontStyle: 'italic', fontSize: '14px' }}>No meeting link.</span>
+              )}
 
-                {/* The End Class Button */}
-                {user?.role?.toLowerCase() === 'teacher' && (
+              {user?.role?.toLowerCase() === 'teacher' && (
+                <>
+                  {/* LATE BUTTON */}
+                  <button 
+                    onClick={() => handleAttendance(cls._id, 'Late')}
+                    style={{ backgroundColor: '#ffc107', color: 'black', padding: '10px 15px', border: 'none', borderRadius: '4px', cursor: 'pointer', fontWeight: 'bold' }}
+                  >
+                    🏃‍♂️ Late
+                  </button>
+
+                  {/* ABSENT BUTTON */}
+                  <button 
+                    onClick={() => handleAttendance(cls._id, 'Absent')}
+                    style={{ backgroundColor: '#6c757d', color: 'white', padding: '10px 15px', border: 'none', borderRadius: '4px', cursor: 'pointer', fontWeight: 'bold' }}
+                  >
+                    ❌ Absent
+                  </button>
+
+                  {/* END CLASS BUTTON */}
                   <button 
                     onClick={() => {
                       setCurrentClassId(cls._id); 
                       setIsModalOpen(true);       
                     }}
-                    style={{ 
-                      marginLeft: '10px', 
-                      backgroundColor: '#dc3545', 
-                      color: 'white', 
-                      padding: '10px 15px', 
-                      border: 'none', 
-                      borderRadius: '4px', 
-                      cursor: 'pointer' 
-                    }}
+                    style={{ backgroundColor: '#dc3545', color: 'white', padding: '10px 15px', border: 'none', borderRadius: '4px', cursor: 'pointer', fontWeight: 'bold' }}
                   >
                     🛑 End Class
                   </button>
-                )}
-              </div>
-            ) : (
-              <p style={{ color: 'grey', fontStyle: 'italic', fontSize: '14px' }}>
-                No meeting link provided.
-              </p>
-            )}
+                </>
+              )}
+            </div>
           </div>
         ))}
       </div>

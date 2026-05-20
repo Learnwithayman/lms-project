@@ -7,10 +7,11 @@ const {
   getAllClasses,
   updateClass,
   endClass,
+  markAttendance, // <--- New import!
   getCompletedClasses,
   getTeacherEarnings,
-  getAdminPayrollReport, // <--- New import!
-  addTeacherAdjustment   // <--- New import!
+  getAdminPayrollReport, 
+  addTeacherAdjustment   
 } = require('../controllers/scheduleController');
 const { protect } = require('../middleware/authMiddleware');
 
@@ -37,6 +38,9 @@ router.post('/payroll-adjustment', protect, addTeacherAdjustment);
 
 // Teacher ends a class and saves notes (MUST BE ABOVE /:id)
 router.put('/end', protect, endClass);
+
+// --- NEW ATTENDANCE ROUTE --- (MUST BE ABOVE /:id)
+router.post('/attendance', protect, markAttendance);
 
 // Admin updates class time (Dynamic route)
 router.put('/:id', protect, updateClass);

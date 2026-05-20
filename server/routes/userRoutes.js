@@ -5,7 +5,8 @@ const {
   loginUser, 
   getMe, 
   getAllUsers, 
-  deleteUser // <--- Added this
+  deleteUser,
+  testGroupMessage // <--- Added this
 } = require('../controllers/userController');
 const { protect } = require('../middleware/authMiddleware');
 
@@ -15,6 +16,9 @@ router.post('/login', loginUser);
 router.get('/me', protect, getMe);
 
 // The Delete Route (requires ID)
-router.delete('/:id', protect, deleteUser); // <--- Added this
+router.delete('/:id', protect, deleteUser); 
+
+// --- NEW TEST ROUTE ---
+router.post('/test-group', testGroupMessage); // <--- Added this
 
 module.exports = router;

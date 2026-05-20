@@ -7,6 +7,9 @@ const port = process.env.PORT || 5000;
 
 connectDB();
 
+// --- Start the WhatsApp Bot ---
+require('./utils/whatsappBot');
+require('./utils/cronJobs'); // Turns on the automated time-based WhatsApp alerts
 const app = express();
 
 app.use(cors()); // <--- Allow the frontend to connect
@@ -17,4 +20,5 @@ app.use('/api/courses', require('./routes/courseRoutes'));
 app.use('/api/users', require('./routes/userRoutes'));
 app.use('/api/admin', require('./routes/adminRoutes'));
 app.use('/api/schedule', require('./routes/scheduleRoutes'));
+
 app.listen(port, () => console.log(`Server started on port ${port}`));

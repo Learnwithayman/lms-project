@@ -1,10 +1,11 @@
 const asyncHandler = require('express-async-handler');
 const ClassSession = require('../models/ClassSession');
 const User = require('../models/User');
+const whatsappClient = require('../utils/whatsappBot');
 
 // @desc    Schedule a new class
 const scheduleClass = asyncHandler(async (req, res) => {
-  const { teacherId, studentId, subject, startTime, durationMinutes, meetingLink } = req.body;
+  const { teacherId, studentId, subject, startTime, durationMinutes, meetingLink, meetingId, passcode } = req.body;
 
   if (!teacherId || !studentId || !subject || !startTime || !durationMinutes) {
     res.status(400);
@@ -16,9 +17,20 @@ const scheduleClass = asyncHandler(async (req, res) => {
     student: studentId,
     subject,
     meetingLink: meetingLink || '',
+    meetingId: meetingId || '', 
+    passcode: passcode || '',
     startTime,
     durationMinutes,
   });
+
+  // 🚀 TEACHER UPDATE ALERT: NEW CLASS 🚀
+  const teacher = await User.findById(teacherId);
+  const student = await User.findById(studentId);
+  
+  if (teacher && teacher.whatsappGroupId) {
+    const message = `⚠️ *Schedule Update Alert*\n\nالسلام عليكم / Assalamu Alaikum *${teacher.name}*,\n\nThere has been a change to your schedule regarding your class with *${student.name}*.\n\n📌 *Update Type:* 🔔 New Class Added\n🕒 *Class Time:* ${new Date(startTime).toLocaleString()}\n\nPlease check your Teacher Dashboard for full details. \n*Learn With Ayman Admin Team*`;
+    await whatsappClient.sendMessage(teacher.whatsappGroupId, message);
+  }
 
   res.status(201).json(session);
 });
@@ -26,7 +38,6 @@ const scheduleClass = asyncHandler(async (req, res) => {
 // @desc    Get classes for the logged-in user
 const getMyClasses = asyncHandler(async (req, res) => {
   const userId = req.user.id;
-  
   const classes = await ClassSession.find({
     $or: [{ teacher: userId }, { student: userId }]
   })
@@ -39,30 +50,40 @@ const getMyClasses = asyncHandler(async (req, res) => {
 
 // @desc    Delete a class session
 const deleteClass = asyncHandler(async (req, res) => {
-  const session = await ClassSession.findById(req.params.id);
+  const session = await ClassSession.findById(req.params.id)
+    .populate('teacher', 'name whatsappGroupId')
+    .populate('student', 'name');
 
   if (!session) {
     res.status(404);
     throw new Error('Class not found');
   }
 
+  // 🚀 TEACHER UPDATE ALERT: CLASS REMOVED 🚀
+  if (session.teacher && session.teacher.whatsappGroupId) {
+    const message = `⚠️ *Schedule Update Alert*\n\nالسلام عليكم / Assalamu Alaikum *${session.teacher.name}*,\n\nThere has been a change to your schedule regarding your class with *${session.student.name}*.\n\n📌 *Update Type:* ❌ Canceled\n\nThis class has been removed from your schedule.\n\nPlease check your Teacher Dashboard for full details. \n*Learn With Ayman Admin Team*`;
+    await whatsappClient.sendMessage(session.teacher.whatsappGroupId, message);
+  }
+
   await session.deleteOne();
   res.status(200).json({ id: req.params.id });
 });
 
-// @desc    Get ALL classes (For Admin) - NEW
+// @desc    Get ALL classes (For Admin)
 const getAllClasses = asyncHandler(async (req, res) => {
   const classes = await ClassSession.find({})
     .populate('teacher', 'name email')
     .populate('student', 'name email')
-    .sort({ startTime: 1 }); // Sort by soonest first
+    .sort({ startTime: 1 }); 
   res.status(200).json(classes);
 });
 
-// @desc    Update class time (Admin only) - NEW
+// @desc    Update class time (Admin only)
 const updateClass = asyncHandler(async (req, res) => {
   const { newStartTime } = req.body;
-  const session = await ClassSession.findById(req.params.id);
+  const session = await ClassSession.findById(req.params.id)
+    .populate('teacher', 'name whatsappGroupId')
+    .populate('student', 'name');
 
   if (!session) {
     res.status(404);
@@ -72,6 +93,12 @@ const updateClass = asyncHandler(async (req, res) => {
   session.startTime = newStartTime;
   await session.save();
 
+  // 🚀 TEACHER UPDATE ALERT: RESCHEDULED 🚀
+  if (session.teacher && session.teacher.whatsappGroupId) {
+    const message = `⚠️ *Schedule Update Alert*\n\nالسلام عليكم / Assalamu Alaikum *${session.teacher.name}*,\n\nThere has been a change to your schedule regarding your class with *${session.student.name}*.\n\n📌 *Update Type:* 🔄 Rescheduled\n🕒 *New Class Time:* ${new Date(newStartTime).toLocaleString()}\n\nPlease check your Teacher Dashboard for full details. \n*Learn With Ayman Admin Team*`;
+    await whatsappClient.sendMessage(session.teacher.whatsappGroupId, message);
+  }
+
   res.status(200).json(session);
 });
 
@@ -80,22 +107,25 @@ const endClass = async (req, res) => {
   try {
     const { classId, notes, homework } = req.body;
 
-    // Find the class by ID and update its fields
-    const updatedClass = await ClassSession.findByIdAndUpdate(
-      classId,
-      { 
-        status: 'completed', 
-        notes: notes, 
-        homework: homework 
-      },
-      { new: true } // This tells MongoDB to return the newly updated data
-    );
+    const session = await ClassSession.findById(classId)
+      .populate('student', 'name whatsappGroupId');
 
-    if (!updatedClass) {
+    if (!session) {
       return res.status(404).json({ message: 'Class not found.' });
     }
 
-    res.status(200).json({ message: 'Class ended successfully!', updatedClass });
+    session.status = 'completed';
+    session.notes = notes;
+    session.homework = homework;
+    await session.save();
+
+    // 🚀 STUDENT ALERT: END CLASS REPORT 🚀
+    if (session.student && session.student.whatsappGroupId) {
+      const message = `السلام عليكم / Assalamu Alaikum! 🌟\n\nToday's lesson with *${session.student.name}* has been successfully completed. Here is a quick summary of what was covered:\n\n📌 *Class Notes:*\n${notes || 'No notes provided.'}\n\n📝 *Assigned Homework:*\n${homework || 'No homework assigned.'}\n\nIf you have any questions, please feel free to reach out. Have a wonderful day!\n\nWarm regards,\n*Learn With Ayman Support Team*`;
+      await whatsappClient.sendMessage(session.student.whatsappGroupId, message);
+    }
+
+    res.status(200).json({ message: 'Class ended successfully!', updatedClass: session });
 
   } catch (error) {
     console.error('Error ending class:', error);
@@ -103,71 +133,91 @@ const endClass = async (req, res) => {
   }
 };
 
-// GET ONLY COMPLETED CLASSES
+// --- NEW AUTOMATED ATTENDANCE FUNCTION ---
+const markAttendance = async (req, res) => {
+  try {
+    const { classId, attendanceStatus } = req.body;
+
+    const session = await ClassSession.findById(classId)
+      .populate('student', 'name whatsappGroupId') 
+      .populate('teacher', 'name');
+
+    if (!session) {
+      return res.status(404).json({ message: 'Class not found' });
+    }
+
+    const studentGroupId = session.student.whatsappGroupId; 
+
+    // 🚀 STUDENT ALERT: LATE OR ABSENT 🚀
+    if (studentGroupId) {
+      let message = '';
+
+      if (attendanceStatus === 'Late') {
+        message = `السلام عليكم / Assalamu Alaikum *${session.student.name}*, ✨\n\nJust a gentle reminder that our class is scheduled to begin right now. Your teacher, *${session.teacher.name}*, has opened the room and is waiting for you!\n\n🔗 *Join the class here:*\n${session.meetingLink || 'No link provided'}\n\nWe hope you have a wonderful class! 📚\n\nWarm regards,\n*Learn With Ayman Support Team*`;
+      } 
+      else if (attendanceStatus === 'Absent') {
+        message = `السلام عليكم / Assalamu Alaikum *${session.student.name}*,\n\nWe hope everything is proceeding smoothly on your end and that you are safe and well. 🌿\n\nWe noticed that you haven't joined the meeting today. Since the 15-minute waiting period has passed, the teacher has now closed the meeting room. \n\n⚠️ *Please note: As per our attendance policy, this session is marked as absent and is not eligible for a makeup class.*\n\nWe look forward to seeing you at your next scheduled time, Insha'Allah! \n\nWarm regards,\n*Learn With Ayman Support Team*`;
+      }
+
+      await whatsappClient.sendMessage(studentGroupId, message);
+    }
+
+    res.status(200).json({ message: `Attendance marked as ${attendanceStatus} and message sent!`, session });
+  } catch (error) {
+    console.error('Error marking attendance:', error);
+    res.status(500).json({ message: 'Server error while marking attendance.' });
+  }
+};
+
 const getCompletedClasses = async (req, res) => {
   try {
-    // Find classes where the user is involved AND the status is 'completed'
     const completedClasses = await ClassSession.find({
       $or: [{ teacher: req.user._id }, { student: req.user._id }],
       status: 'completed'
-    }).sort({ startTime: -1 }); // Sorts by newest first!
-
+    }).sort({ startTime: -1 }); 
     res.status(200).json(completedClasses);
   } catch (error) {
-    console.error('Error fetching completed classes:', error);
     res.status(500).json({ message: 'Server error fetching progress.' });
   }
 };
 
-// GET TEACHER EARNINGS FOR CURRENT MONTH
 const getTeacherEarnings = async (req, res) => {
   try {
-    // 1. Figure out the first and last day of the current month
     const now = new Date();
     const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
     const endOfMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59);
 
-    // 2. Find only the completed classes for THIS teacher, THIS month
     const completedClasses = await ClassSession.find({
       teacher: req.user._id,
       status: 'completed',
       startTime: { $gte: startOfMonth, $lte: endOfMonth }
     });
 
-    // 3. Add up all the minutes from those classes
     const totalMinutes = completedClasses.reduce((sum, cls) => sum + (cls.durationMinutes || 0), 0);
-
-    // 4. Do the math! (Minutes / 60 to get hours, multiplied by their custom rate)
-    // We are using 3.0 here to match your database default!
     const hourlyRate = req.user.hourlyRate || 3.0; 
     const totalHours = totalMinutes / 60;
     const currentEarnings = totalHours * hourlyRate;
 
-    // 5. Send the final paycheck info back to the frontend
     res.status(200).json({
       totalMinutes,
       totalHours: totalHours.toFixed(2),
       hourlyRate,
-      currentEarnings: currentEarnings.toFixed(2) // Rounds to 2 decimal places (e.g., $12.50)
+      currentEarnings: currentEarnings.toFixed(2) 
     });
   } catch (error) {
-    console.error('Error calculating earnings:', error);
     res.status(500).json({ message: 'Server error calculating payroll.' });
   }
 };
-// GET ALL TEACHERS PAYROLL REPORT (ADMIN ONLY)
+
 const getAdminPayrollReport = async (req, res) => {
   try {
     const now = new Date();
     const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
     const endOfMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59);
 
-    // 1. Find all users who are teachers
     const teachers = await User.find({ role: 'teacher' });
 
-    // 2. Loop through every teacher and calculate their pay
     const payrollReport = await Promise.all(teachers.map(async (teacher) => {
-      
       const completedClasses = await ClassSession.find({
         teacher: teacher._id,
         status: 'completed',
@@ -188,7 +238,6 @@ const getAdminPayrollReport = async (req, res) => {
         adjustmentsTotal = thisMonthAdjustments.reduce((sum, adj) => sum + adj.amount, 0);
       }
 
-      // Return a clean summary for this specific teacher
       return {
         teacherId: teacher._id,
         name: teacher.name,
@@ -200,47 +249,28 @@ const getAdminPayrollReport = async (req, res) => {
         finalEarnings: (baseEarnings + adjustmentsTotal).toFixed(2)
       };
     }));
-
     res.status(200).json(payrollReport);
   } catch (error) {
-    console.error('Error generating payroll report:', error);
     res.status(500).json({ message: 'Server error generating payroll report.' });
   }
 };
 
-// ADD BONUS OR DEDUCTION (ADMIN ONLY)
 const addTeacherAdjustment = async (req, res) => {
   try {
     const { teacherId, amount, reason } = req.body;
-
     const teacher = await User.findById(teacherId);
-    if (!teacher) {
-      return res.status(404).json({ message: 'Teacher not found' });
-    }
+    if (!teacher) return res.status(404).json({ message: 'Teacher not found' });
 
-    // Push the new transaction to their ledger
-    teacher.adjustments.push({
-      amount: Number(amount), // Converts string to number just in case
-      reason: reason
-    });
-
+    teacher.adjustments.push({ amount: Number(amount), reason: reason });
     await teacher.save();
     res.status(200).json({ message: 'Adjustment added successfully!', teacher });
   } catch (error) {
-    console.error('Error adding adjustment:', error);
     res.status(500).json({ message: 'Server error adding adjustment.' });
   }
 };
 
 module.exports = {
-  scheduleClass,
-  getMyClasses,
-  deleteClass,
-  getAllClasses,
-  updateClass,
-  endClass,
-  getCompletedClasses,
-  getTeacherEarnings,
-  getAdminPayrollReport, // <--- Added!
-  addTeacherAdjustment   // <--- Added!
+  scheduleClass, getMyClasses, deleteClass, getAllClasses, updateClass,
+  endClass, markAttendance, getCompletedClasses, getTeacherEarnings,
+  getAdminPayrollReport, addTeacherAdjustment  
 };

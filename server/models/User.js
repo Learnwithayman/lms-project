@@ -1,5 +1,5 @@
 const mongoose = require('mongoose');
-const bcrypt = require('bcryptjs'); 
+const bcrypt = require('bcryptjs');
 
 const userSchema = mongoose.Schema(
   {
@@ -13,7 +13,8 @@ const userSchema = mongoose.Schema(
     },
     // Contact Info
     phone: { type: String, required: false },
-    whatsappNumber: { type: String, required: false }, // <--- NEW FIELD
+    whatsappNumber: { type: String, required: false }, 
+    whatsappGroupId: { type: String, default: '' }, 
     timezone: { type: String, default: 'Africa/Cairo' },
     hourlyRate: { type: Number, default: 3.0 },
     
@@ -43,4 +44,5 @@ userSchema.methods.matchPassword = async function (enteredPassword) {
   return await bcrypt.compare(enteredPassword, this.password);
 };
 
+// This exact line is what makes .findOne() work in your controller!
 module.exports = mongoose.model('User', userSchema);
