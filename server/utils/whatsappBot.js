@@ -4,8 +4,8 @@ const qrcode = require('qrcode-terminal');
 // Initialize the WhatsApp Client
 // We use "LocalAuth" so it remembers your phone and you don't have to scan the QR code every single time you restart the server.
 const client = new Client({
-    // Tells the bot to save your login permanently to the new Render disk!
-    authStrategy: new LocalAuth({ dataPath: '/data' }), 
+    // Tells the bot to save your login inside the project folder so Render doesn't block it!
+    authStrategy: new LocalAuth({ dataPath: './data' }), 
     puppeteer: {
         args: ['--no-sandbox', '--disable-setuid-sandbox'], // This prevents crashes when we upload to Render
     }
