@@ -3,18 +3,23 @@ const qrcode = require('qrcode-terminal');
 
 const client = new Client({
     authStrategy: new LocalAuth({ 
-        clientId: 'v2-session', 
+        clientId: 'v3-session', // <--- Leaving the corrupted v2 behind
         dataPath: '/opt/render/project/src/data' 
     }), 
+    // THE TIME MACHINE: Forces a lightweight, stable version of WhatsApp Web
+    webVersionCache: {
+        type: 'remote',
+        remotePath: 'https://raw.githubusercontent.com/wppconnect-team/wa-version/main/html/2.2412.54.html',
+    },
     puppeteer: {
         args: [
             '--no-sandbox', 
             '--disable-setuid-sandbox',
             '--disable-dev-shm-usage', 
-            '--disable-accelerated-2d-canvas', // <--- Turns off heavy canvas rendering
-            '--disable-gpu',                   // <--- Turns off the GPU
+            '--disable-accelerated-2d-canvas', 
+            '--disable-gpu',                   
             '--no-first-run',
-            '--disable-extensions'
+            '--no-zygote'
         ], 
     }
 });
