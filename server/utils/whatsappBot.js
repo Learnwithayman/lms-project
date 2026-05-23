@@ -1,20 +1,11 @@
 const { Client, LocalAuth } = require('whatsapp-web.js');
 const qrcode = require('qrcode-terminal');
-const fs = require('fs'); 
-
-// --- THE BULLDOZER: Wipes the corrupted hard drive clean! ---
-const dataPath = '/opt/render/project/src/data';
-try {
-    // This forcefully deletes EVERYTHING inside the corrupted data folder
-    fs.rmSync(dataPath, { recursive: true, force: true });
-    console.log('🧹 Corrupted hard drive successfully wiped clean!');
-} catch (err) {
-    console.log('Drive already clean or missing.');
-}
-// ------------------------------------------------------------
 
 const client = new Client({
-    authStrategy: new LocalAuth({ dataPath: dataPath }), 
+    authStrategy: new LocalAuth({ 
+        clientId: 'v2-session', // <--- THE BYPASS! Forces it to use a brand new, uncorrupted folder.
+        dataPath: '/opt/render/project/src/data' 
+    }), 
     puppeteer: {
         args: [
             '--no-sandbox', 
