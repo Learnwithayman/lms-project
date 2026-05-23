@@ -3,7 +3,7 @@ const qrcode = require('qrcode-terminal');
 
 const client = new Client({
     authStrategy: new LocalAuth({ 
-        clientId: 'v2-session', // <--- THE BYPASS! Forces it to use a brand new, uncorrupted folder.
+        clientId: 'v2-session', 
         dataPath: '/opt/render/project/src/data' 
     }), 
     puppeteer: {
@@ -11,8 +11,10 @@ const client = new Client({
             '--no-sandbox', 
             '--disable-setuid-sandbox',
             '--disable-dev-shm-usage', 
-            '--single-process',        
-            '--no-zygote'              
+            '--disable-accelerated-2d-canvas', // <--- Turns off heavy canvas rendering
+            '--disable-gpu',                   // <--- Turns off the GPU
+            '--no-first-run',
+            '--disable-extensions'
         ], 
     }
 });
