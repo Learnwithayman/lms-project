@@ -1,22 +1,20 @@
 const { Client, LocalAuth } = require('whatsapp-web.js');
 const qrcode = require('qrcode-terminal');
-const fs = require('fs'); // <--- New tool to read and delete files
+const fs = require('fs'); 
 
-// --- FIX FOR LOCKED CHROME PROFILE ---
-// This safely deletes the "Lock" file on your permanent hard drive if Render restarts abruptly
-const lockPath = '/opt/render/project/src/data/SingletonLock';
-if (fs.existsSync(lockPath)) {
-    try {
-        fs.unlinkSync(lockPath);
-        console.log('🔓 Unlocked Chrome Profile Successfully!');
-    } catch (err) {
-        console.error('Failed to unlock Chrome Profile:', err);
-    }
+// --- THE BULLDOZER: Wipes the corrupted hard drive clean! ---
+const dataPath = '/opt/render/project/src/data';
+try {
+    // This forcefully deletes EVERYTHING inside the corrupted data folder
+    fs.rmSync(dataPath, { recursive: true, force: true });
+    console.log('🧹 Corrupted hard drive successfully wiped clean!');
+} catch (err) {
+    console.log('Drive already clean or missing.');
 }
-// -------------------------------------
+// ------------------------------------------------------------
 
 const client = new Client({
-    authStrategy: new LocalAuth({ dataPath: '/opt/render/project/src/data' }), 
+    authStrategy: new LocalAuth({ dataPath: dataPath }), 
     puppeteer: {
         args: [
             '--no-sandbox', 
