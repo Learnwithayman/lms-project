@@ -2,12 +2,17 @@ const { Client, LocalAuth } = require('whatsapp-web.js');
 const qrcode = require('qrcode-terminal');
 
 // Initialize the WhatsApp Client
-// We use "LocalAuth" so it remembers your phone and you don't have to scan the QR code every single time you restart the server.
 const client = new Client({
-    // Tells the bot to save your login inside the project folder so Render doesn't block it!
-    authStrategy: new LocalAuth({ dataPath: './data' }), 
+    // We point this EXACTLY to the permanent disk you created in Render
+    authStrategy: new LocalAuth({ dataPath: '/opt/render/project/src/data' }), 
     puppeteer: {
-        args: ['--no-sandbox', '--disable-setuid-sandbox'], // This prevents crashes when we upload to Render
+        args: [
+            '--no-sandbox', 
+            '--disable-setuid-sandbox',
+            '--disable-dev-shm-usage', // <--- This fixes the silent freeze on Render!
+            '--single-process',        // <--- Uses less RAM
+            '--no-zygote'              // <--- Helps it start faster
+        ], 
     }
 });
 
@@ -21,7 +26,6 @@ client.on('qr', (qr) => {
 client.on('ready', async () => {
     console.log('✅ WhatsApp Bot is fully connected and ready to send messages!');
 
-    // Fetch all chats and filter out only the groups
     const chats = await client.getChats();
     const groups = chats.filter(chat => chat.isGroup);
 
@@ -38,7 +42,6 @@ client.on('auth_failure', (msg) => {
     console.error('❌ WhatsApp Authentication Failure:', msg);
 });
 
-// Start the bot!
 client.initialize();
 
 module.exports = client;
