@@ -1,5 +1,19 @@
 const { Client, LocalAuth } = require('whatsapp-web.js');
 const qrcode = require('qrcode-terminal');
+const fs = require('fs'); // <--- New tool to read and delete files
+
+// --- FIX FOR LOCKED CHROME PROFILE ---
+// This safely deletes the "Lock" file on your permanent hard drive if Render restarts abruptly
+const lockPath = '/opt/render/project/src/data/SingletonLock';
+if (fs.existsSync(lockPath)) {
+    try {
+        fs.unlinkSync(lockPath);
+        console.log('🔓 Unlocked Chrome Profile Successfully!');
+    } catch (err) {
+        console.error('Failed to unlock Chrome Profile:', err);
+    }
+}
+// -------------------------------------
 
 const client = new Client({
     authStrategy: new LocalAuth({ dataPath: '/opt/render/project/src/data' }), 
@@ -26,10 +40,8 @@ client.on('ready', () => {
 
 // The Magic ID Finder!
 client.on('message', async (msg) => {
-    // If someone types !id in a chat
     if (msg.body === '!id') {
         const chat = await msg.getChat();
-        // Check if the chat is actually a group
         if (chat.isGroup) {
             msg.reply(`Here is your Group ID:\n${chat.id._serialized}`);
             console.log(`\n--- 📂 FOUND GROUP ID ---`);
