@@ -1,10 +1,35 @@
 const { Client, LocalAuth } = require('whatsapp-web.js');
 const qrcode = require('qrcode-terminal');
+const fs = require('fs');
+const path = require('path');
+
+// --- SMART LOCK-BUSTER ---
+// Finds and deletes ONLY the locked padlocks without deleting your saved login!
+const dataDir = '/opt/render/project/src/data';
+function removeLocks(dir) {
+    if (!fs.existsSync(dir)) return;
+    const files = fs.readdirSync(dir);
+    for (const file of files) {
+        const fullPath = path.join(dir, file);
+        if (fs.statSync(fullPath).isDirectory()) {
+            removeLocks(fullPath);
+        } else if (file === 'SingletonLock') {
+            try {
+                fs.unlinkSync(fullPath);
+                console.log('🔓 Unlocked Chromium Profile successfully!');
+            } catch (err) {
+                console.error('Failed to unlock:', err);
+            }
+        }
+    }
+}
+removeLocks(dataDir);
+// -------------------------
 
 const client = new Client({
     authStrategy: new LocalAuth({ 
-        clientId: 'v7-session', // Clean slate for the disguise
-        dataPath: '/opt/render/project/src/data' 
+        clientId: 'v7-session', // KEEPING v7 SO WE DO NOT LOSE YOUR LOGIN!
+        dataPath: dataDir 
     }), 
     puppeteer: {
         args: [
@@ -13,7 +38,6 @@ const client = new Client({
             '--disable-dev-shm-usage', 
             '--no-first-run',
             '--no-zygote',
-            // THE HUMAN DISGUISE: Tricks WhatsApp into thinking this is a standard Windows desktop!
             '--user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36'
         ], 
     }
