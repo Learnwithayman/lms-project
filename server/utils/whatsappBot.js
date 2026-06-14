@@ -11,7 +11,6 @@ function removeLocks(dir) {
     for (const file of files) {
         const fullPath = path.join(dir, file);
         try {
-            // lstatSync safely handles ghost files without crashing
             const stat = fs.lstatSync(fullPath); 
             if (stat.isDirectory()) {
                 removeLocks(fullPath);
@@ -19,9 +18,7 @@ function removeLocks(dir) {
                 fs.unlinkSync(fullPath);
                 console.log('🔓 Unlocked Chromium Profile successfully!');
             }
-        } catch (err) {
-            // Silently ignore broken ghost files like SingletonCookie
-        }
+        } catch (err) {}
     }
 }
 removeLocks(dataDir);
@@ -29,7 +26,7 @@ removeLocks(dataDir);
 
 const client = new Client({
     authStrategy: new LocalAuth({ 
-        clientId: 'v7-session', // STILL KEEPING v7!
+        clientId: 'v7-session', // STILL KEEPING v7 TO PRESERVE YOUR LOGIN!
         dataPath: dataDir 
     }), 
     puppeteer: {
@@ -37,8 +34,13 @@ const client = new Client({
             '--no-sandbox', 
             '--disable-setuid-sandbox',
             '--disable-dev-shm-usage', 
+            '--disable-accelerated-2d-canvas',       // SKELETON FLAG: Saves RAM
+            '--disable-gpu',                         // SKELETON FLAG: Saves RAM
             '--no-first-run',
             '--no-zygote',
+            '--disable-software-rasterizer',         // SKELETON FLAG: Saves RAM
+            '--disable-extensions',                  // SKELETON FLAG: Saves RAM
+            '--js-flags="--max-old-space-size=256"', // SKELETON FLAG: Forces Chrome engine under 256MB
             '--user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36'
         ], 
     }
