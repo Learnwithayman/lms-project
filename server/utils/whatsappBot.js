@@ -3,29 +3,18 @@ const qrcode = require('qrcode-terminal');
 
 const client = new Client({
     authStrategy: new LocalAuth({ 
-        clientId: 'v4-session', // Bumped to v4 to ensure a clean start
+        clientId: 'v6-session', // Clean slate
         dataPath: '/opt/render/project/src/data' 
     }), 
-    webVersionCache: {
-        type: 'remote',
-        remotePath: 'https://raw.githubusercontent.com/wppconnect-team/wa-version/main/html/2.2412.54.html',
-    },
+    // Removed webVersionCache so it uses the newest, official WhatsApp Web
     puppeteer: {
-        // THE SKELETON CONFIG: Disabling every possible Chrome feature to save RAM
         args: [
             '--no-sandbox', 
             '--disable-setuid-sandbox',
             '--disable-dev-shm-usage', 
-            '--disable-accelerated-2d-canvas', 
-            '--disable-gpu',                   
             '--no-first-run',
-            '--no-zygote',
-            '--disable-software-rasterizer',
-            '--disable-extensions',
-            '--disable-background-networking',
-            '--disable-default-apps',
-            '--disable-sync',
-            '--js-flags="--max-old-space-size=256"' // Forces Chrome's engine to stay under 256MB
+            '--no-zygote'
+            // Removed the extreme skeleton flags so networking works perfectly during pairing
         ], 
     }
 });
