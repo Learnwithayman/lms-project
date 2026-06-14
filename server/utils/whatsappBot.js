@@ -3,23 +3,24 @@ const qrcode = require('qrcode-terminal');
 const fs = require('fs');
 const path = require('path');
 
-// --- SMART LOCK-BUSTER ---
-// Finds and deletes ONLY the locked padlocks without deleting your saved login!
+// --- BULLETPROOF LOCK-BUSTER ---
 const dataDir = '/opt/render/project/src/data';
 function removeLocks(dir) {
     if (!fs.existsSync(dir)) return;
     const files = fs.readdirSync(dir);
     for (const file of files) {
         const fullPath = path.join(dir, file);
-        if (fs.statSync(fullPath).isDirectory()) {
-            removeLocks(fullPath);
-        } else if (file === 'SingletonLock') {
-            try {
+        try {
+            // lstatSync safely handles ghost files without crashing
+            const stat = fs.lstatSync(fullPath); 
+            if (stat.isDirectory()) {
+                removeLocks(fullPath);
+            } else if (file === 'SingletonLock') {
                 fs.unlinkSync(fullPath);
                 console.log('🔓 Unlocked Chromium Profile successfully!');
-            } catch (err) {
-                console.error('Failed to unlock:', err);
             }
+        } catch (err) {
+            // Silently ignore broken ghost files like SingletonCookie
         }
     }
 }
@@ -28,7 +29,7 @@ removeLocks(dataDir);
 
 const client = new Client({
     authStrategy: new LocalAuth({ 
-        clientId: 'v7-session', // KEEPING v7 SO WE DO NOT LOSE YOUR LOGIN!
+        clientId: 'v7-session', // STILL KEEPING v7!
         dataPath: dataDir 
     }), 
     puppeteer: {
