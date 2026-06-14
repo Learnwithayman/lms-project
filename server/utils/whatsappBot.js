@@ -1,78 +1,62 @@
-const { Client, LocalAuth } = require('whatsapp-web.js');
+const { makeWASocket, useMultiFileAuthState, DisconnectReason } = require('@whiskeysockets/baileys');
 const qrcode = require('qrcode-terminal');
-const fs = require('fs');
-const path = require('path');
+const pino = require('pino');
 
-// --- BULLETPROOF LOCK-BUSTER ---
-const dataDir = '/opt/render/project/src/data';
-function removeLocks(dir) {
-    if (!fs.existsSync(dir)) return;
-    const files = fs.readdirSync(dir);
-    for (const file of files) {
-        const fullPath = path.join(dir, file);
-        try {
-            const stat = fs.lstatSync(fullPath); 
-            if (stat.isDirectory()) {
-                removeLocks(fullPath);
-            } else if (file === 'SingletonLock') {
-                fs.unlinkSync(fullPath);
-                console.log('🔓 Unlocked Chromium Profile successfully!');
-            }
-        } catch (err) {}
-    }
-}
-removeLocks(dataDir);
-// -------------------------
+async function connectToWhatsApp() {
+    // This creates a clean, lightweight folder for your login data
+    const { state, saveCreds } = await useMultiFileAuthState('/opt/render/project/src/data/baileys_auth');
 
-const client = new Client({
-    authStrategy: new LocalAuth({ 
-        clientId: 'v7-session', // STILL KEEPING v7 TO PRESERVE YOUR LOGIN!
-        dataPath: dataDir 
-    }), 
-    puppeteer: {
-        args: [
-            '--no-sandbox', 
-            '--disable-setuid-sandbox',
-            '--disable-dev-shm-usage', 
-            '--disable-accelerated-2d-canvas',       // SKELETON FLAG: Saves RAM
-            '--disable-gpu',                         // SKELETON FLAG: Saves RAM
-            '--no-first-run',
-            '--no-zygote',
-            '--disable-software-rasterizer',         // SKELETON FLAG: Saves RAM
-            '--disable-extensions',                  // SKELETON FLAG: Saves RAM
-            '--js-flags="--max-old-space-size=256"', // SKELETON FLAG: Forces Chrome engine under 256MB
-            '--user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36'
-        ], 
-    }
-});
+    const sock = makeWASocket({
+        auth: state,
+        printQRInTerminal: false,
+        logger: pino({ level: 'silent' }), // Keeps your logs clean and readable
+        browser: ['LMS Bot', 'Chrome', '1.0.0']
+    });
 
-client.on('qr', (qr) => {
-    console.log('🤖 SCAN THIS QR CODE WITH YOUR WHATSAPP:');
-    qrcode.generate(qr, { small: true });
-});
+    sock.ev.on('connection.update', (update) => {
+        const { connection, lastDisconnect, qr } = update;
 
-client.on('ready', () => {
-    console.log('✅ WhatsApp Bot is fully connected and ready to send messages!');
-});
-
-client.on('message', async (msg) => {
-    if (msg.body === '!id') {
-        const chat = await msg.getChat();
-        if (chat.isGroup) {
-            msg.reply(`Here is your Group ID:\n${chat.id._serialized}`);
-            console.log(`\n--- 📂 FOUND GROUP ID ---`);
-            console.log(`Name: ${chat.name}`);
-            console.log(`ID: ${chat.id._serialized}`);
-        } else {
-            msg.reply('This command only works inside a group!');
+        if (qr) {
+            console.log('🤖 SCAN THIS QR CODE WITH YOUR WHATSAPP:');
+            qrcode.generate(qr, { small: true });
         }
-    }
-});
 
-client.on('auth_failure', (msg) => {
-    console.error('❌ WhatsApp Authentication Failure:', msg);
-});
+        if (connection === 'close') {
+            const shouldReconnect = lastDisconnect.error?.output?.statusCode !== DisconnectReason.loggedOut;
+            console.log('❌ Connection closed. Reconnecting:', shouldReconnect);
+            if (shouldReconnect) {
+                connectToWhatsApp();
+            }
+        } else if (connection === 'open') {
+            console.log('✅ WhatsApp Bot is fully connected and ready to send messages! (Zero RAM crashes!)');
+        }
+    });
 
-client.initialize();
+    // Save login credentials automatically
+    sock.ev.on('creds.update', saveCreds);
 
-module.exports = client;
+    // Listen for messages (including your own!)
+    sock.ev.on('messages.upsert', async (m) => {
+        const msg = m.messages[0];
+        if (!msg.message || !msg.key.remoteJid) return;
+
+        // Extract the text safely
+        const text = msg.message.conversation || msg.message.extendedTextMessage?.text;
+        const remoteJid = msg.key.remoteJid;
+
+        if (text === '!id') {
+            if (remoteJid.endsWith('@g.us')) {
+                await sock.sendMessage(remoteJid, { text: `Here is your Group ID:\n${remoteJid}` }, { quoted: msg });
+                console.log(`\n--- 📂 FOUND GROUP ID ---`);
+                console.log(`ID: ${remoteJid}`);
+            } else {
+                await sock.sendMessage(remoteJid, { text: 'This command only works inside a group!' }, { quoted: msg });
+            }
+        }
+    });
+
+    return sock;
+}
+
+// Start the bot
+connectToWhatsApp();
