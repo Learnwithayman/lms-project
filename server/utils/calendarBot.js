@@ -1,12 +1,24 @@
 const { google } = require('googleapis');
 const path = require('path');
+const fs = require('fs'); // We added this so the bot can check if files exist
 
-const CREDENTIALS_PATH = path.join(__dirname, '..', 'credentials.json');
+// ---------------------------------------------------------
+// SMART PATH ROUTING
+// ---------------------------------------------------------
+// 1. First, it looks in your local 'server' folder
+let CREDENTIALS_PATH = path.join(__dirname, '..', 'credentials.json'); 
+
+// 2. If it doesn't find it there, it looks in the Render root folder
+if (!fs.existsSync(CREDENTIALS_PATH)) {
+  CREDENTIALS_PATH = path.join(__dirname, '..', '..', 'credentials.json'); 
+}
 
 const auth = new google.auth.GoogleAuth({
   keyFile: CREDENTIALS_PATH,
   scopes: ['https://www.googleapis.com/auth/calendar.readonly'],
 });
+
+const calendar = google.calendar({ version: 'v3', auth });
 
 const calendar = google.calendar({ version: 'v3', auth });
 
