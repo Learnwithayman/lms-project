@@ -1,6 +1,6 @@
 const { google } = require('googleapis');
 const path = require('path');
-const fs = require('fs'); // We added this so the bot can check if files exist
+const fs = require('fs'); 
 
 // ---------------------------------------------------------
 // SMART PATH ROUTING
@@ -17,8 +17,6 @@ const auth = new google.auth.GoogleAuth({
   keyFile: CREDENTIALS_PATH,
   scopes: ['https://www.googleapis.com/auth/calendar.readonly'],
 });
-
-const calendar = google.calendar({ version: 'v3', auth });
 
 const calendar = google.calendar({ version: 'v3', auth });
 
@@ -40,14 +38,12 @@ async function getUpcomingClasses() {
       const start = event.start.dateTime || event.start.date;
       const description = event.description || "";
       
-      // NEW SMARTER REGEX: Ignores extra colons, spaces, and formatting!
       const teacherMatch = description.match(/TeacherGroup[^\d]*([0-9]+@g\.us)/i);
       const teacherGroupId = teacherMatch ? teacherMatch[1] : null;
 
       const studentMatch = description.match(/StudentGroup[^\d]*([0-9]+@g\.us)/i);
       const studentGroupId = studentMatch ? studentMatch[1] : null;
 
-      // Catches raw Zoom links even if they aren't wrapped in HTML tags
       const zoomMatch = description.match(/(https:\/\/[^\s<"]*zoom\.us[^\s<"]*)/i);
       const zoomLink = zoomMatch ? zoomMatch[1] : null;
 
@@ -68,4 +64,4 @@ async function getUpcomingClasses() {
   }
 }
 
-module.exports = { getUpcomingClasses };
+module.exports = { getUpcomingClasses };cd ..
