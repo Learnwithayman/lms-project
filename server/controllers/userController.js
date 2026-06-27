@@ -8,8 +8,7 @@ const whatsappClient = require('../utils/whatsappBot');
 
 // @desc    Register new user
 const registerUser = asyncHandler(async (req, res) => {
-  // 2. Catch both whatsappNumber AND whatsappGroupId from the frontend form
-  const { name, email, password, role, whatsappNumber, whatsappGroupId } = req.body; 
+  const { name, email, password, role, whatsappNumber, teacherGroupId, studentGroupId, hourlyRate, currency } = req.body; 
 
   if (!name || !email || !password) {
     res.status(400);
@@ -22,14 +21,16 @@ const registerUser = asyncHandler(async (req, res) => {
     throw new Error('User already exists');
   }
 
-  // 3. Save the whatsappGroupId to the database alongside the other info
   const user = await User.create({
     name,
     email,
     password, 
     role: role || 'student',
     whatsappNumber, 
-    whatsappGroupId, // <--- NEW: Saves the specific group ID directly to the student!
+    teacherGroupId: teacherGroupId || '', 
+    studentGroupId: studentGroupId || '',
+    hourlyRate: hourlyRate || 3.0,
+    currency: currency || 'USD' 
   });
 
   if (user) {
@@ -38,6 +39,8 @@ const registerUser = asyncHandler(async (req, res) => {
       name: user.name,
       email: user.email,
       role: user.role,
+      teacherGroupId: user.teacherGroupId,
+      currency: user.currency,
       token: generateToken(user._id),
     });
   } else {
@@ -57,6 +60,8 @@ const loginUser = asyncHandler(async (req, res) => {
       name: user.name,
       email: user.email,
       role: user.role,
+      teacherGroupId: user.teacherGroupId, 
+      currency: user.currency,
       token: generateToken(user._id),
     });
   } else {
@@ -96,13 +101,10 @@ const deleteUser = asyncHandler(async (req, res) => {
   res.status(200).json({ id: req.params.id });
 });
 
-// --- NEW TEST FUNCTION ---
+// --- TEST FUNCTION ---
 // @desc    Test sending a group message
 const testGroupMessage = asyncHandler(async (req, res) => {
-  
-  // 👉 PASTE YOUR EXACT GROUP ID INSIDE THESE QUOTES 👈
   const groupId = '120363328067141087@g.us'; 
-  
   const message = '🤖 Hello! This is an automated test message from the LMS backend!';
 
   try {
@@ -115,6 +117,24 @@ const testGroupMessage = asyncHandler(async (req, res) => {
   }
 });
 
+// --- EMERGENCY ADMIN CREATOR ---
+const createAdminInstantly = asyncHandler(async (req, res) => {
+  const userExists = await User.findOne({ email: 'boss@learnwithayman.com' });
+  
+  if (userExists) {
+    return res.json({ message: 'Admin already exists! Use boss@learnwithayman.com and password: BossPassword123!' });
+  }
+
+  const user = await User.create({
+    name: 'Ayman (Super Admin)',
+    email: 'boss@learnwithayman.com',
+    password: 'BossPassword123!',
+    role: 'admin'
+  });
+
+  res.status(201).json({ message: 'SUCCESS! Admin created. Go log in!', user });
+});
+
 module.exports = {
   registerUser,
   loginUser,
@@ -122,4 +142,5 @@ module.exports = {
   getAllUsers, 
   deleteUser, 
   testGroupMessage, 
+  createAdminInstantly // <--- Exporting the hack here
 };

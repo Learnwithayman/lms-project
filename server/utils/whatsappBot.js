@@ -1,54 +1,81 @@
 const { makeWASocket, useMultiFileAuthState, DisconnectReason } = require('@whiskeysockets/baileys');
 const qrcode = require('qrcode-terminal');
 const pino = require('pino');
+const path = require('path');
 
-let whatsappSocket = null; // Global variable to hold the connection
+let whatsappSocket = null; 
+let isConnecting = false;
+
+// Path routing for local vs Render
+const isLocal = process.env.NODE_ENV !== 'production';
+const authFolder = isLocal 
+    ? path.join(__dirname, '..', 'baileys_auth') 
+    : '/opt/render/project/src/data/baileys_auth';
 
 async function connectToWhatsApp() {
-    const { state, saveCreds } = await useMultiFileAuthState('/opt/render/project/src/data/baileys_auth');
+    if (isConnecting) return;
+    isConnecting = true;
 
-    const sock = makeWASocket({
-        auth: state,
-        printQRInTerminal: false,
-        logger: pino({ level: 'silent' }),
-        browser: ['LMS Bot', 'Chrome', '1.0.0']
-    });
+    try {
+        const { state, saveCreds } = await useMultiFileAuthState(authFolder);
 
-    whatsappSocket = sock; // Save the socket globally when it connects
+        const sock = makeWASocket({
+            auth: state,
+            printQRInTerminal: false,
+            // 🚨 THE BLINDFOLD IS OFF: We will now see the exact crash errors 🚨
+            logger: pino({ level: 'error' }), 
+            browser: ['LMS Bot', 'Chrome', '1.0.0']
+        });
 
-    sock.ev.on('connection.update', (update) => {
-        const { connection, lastDisconnect, qr } = update;
-        if (qr) {
-            console.log('🤖 SCAN THIS QR CODE WITH YOUR WHATSAPP:');
-            qrcode.generate(qr, { small: true });
-        }
-        if (connection === 'close') {
-            const shouldReconnect = lastDisconnect.error?.output?.statusCode !== DisconnectReason.loggedOut;
-            if (shouldReconnect) connectToWhatsApp();
-        } else if (connection === 'open') {
-            console.log('✅ WhatsApp Bot is fully connected and ready to send messages!');
-        }
-    });
+        whatsappSocket = sock; 
 
-    sock.ev.on('creds.update', saveCreds);
-
-    sock.ev.on('messages.upsert', async (m) => {
-        const msg = m.messages[0];
-        if (!msg.message || !msg.key.remoteJid) return;
-        const text = msg.message.conversation || msg.message.extendedTextMessage?.text;
-        const remoteJid = msg.key.remoteJid;
-
-        if (text === '!id') {
-            if (remoteJid.endsWith('@g.us')) {
-                await sock.sendMessage(remoteJid, { text: `Here is your Group ID:\n${remoteJid}` }, { quoted: msg });
+        sock.ev.on('connection.update', (update) => {
+            const { connection, lastDisconnect, qr } = update;
+            
+            if (qr) {
+                console.log('🤖 SCAN THIS QR CODE WITH YOUR WHATSAPP:');
+                qrcode.generate(qr, { small: true });
             }
-        }
-    });
+            
+            if (connection === 'close') {
+                isConnecting = false; 
+                
+                // 🚨 CAPTURING THE EXACT ERROR CODE 🚨
+                const statusCode = lastDisconnect.error?.output?.statusCode || 'Unknown';
+                const shouldReconnect = statusCode !== DisconnectReason.loggedOut;
+                
+                if (shouldReconnect) {
+                    console.log(`⚠️ Bot disconnected. Error Code: ${statusCode}. Reconnecting in 3 seconds...`);
+                    setTimeout(connectToWhatsApp, 3000); 
+                } else {
+                    console.log('❌ Bot was logged out manually. You need to scan the QR code again.');
+                }
+            } else if (connection === 'open') {
+                console.log('✅ WhatsApp Bot is fully connected and ready to send messages!');
+            }
+        });
 
-    return sock;
+        sock.ev.on('creds.update', saveCreds);
+
+        sock.ev.on('messages.upsert', async (m) => {
+            const msg = m.messages[0];
+            if (!msg.message || !msg.key.remoteJid) return;
+            const text = msg.message.conversation || msg.message.extendedTextMessage?.text;
+            const remoteJid = msg.key.remoteJid;
+
+            if (text === '!id') {
+                if (remoteJid.endsWith('@g.us')) {
+                    await sock.sendMessage(remoteJid, { text: `Here is your Group ID:\n${remoteJid}` }, { quoted: msg });
+                }
+            }
+        });
+
+    } catch (error) {
+        console.error('❌ Fatal Bot Error:', error);
+        isConnecting = false;
+    }
 }
 
-// Reusable function for the rest of your backend
 async function sendLmsNotification(groupId, messageText) {
     if (!whatsappSocket) {
         console.error('❌ Cannot send message: WhatsApp bot is not initialized yet.');
@@ -63,8 +90,6 @@ async function sendLmsNotification(groupId, messageText) {
     }
 }
 
-// Start the bot connection
 connectToWhatsApp();
 
-// Export the notification function so other files can use it!
 module.exports = { sendLmsNotification };

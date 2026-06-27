@@ -11,18 +11,25 @@ const userSchema = mongoose.Schema(
       enum: ['student', 'teacher', 'admin'],
       default: 'student',
     },
-    // Contact Info
+    
+    // --- CONTACT INFO ---
     phone: { type: String, required: false },
     whatsappNumber: { type: String, required: false }, 
-    whatsappGroupId: { type: String, default: '' }, 
     timezone: { type: String, default: 'Africa/Cairo' },
+
+    // --- CALENDAR & BOT LINKING ---
+    teacherGroupId: { type: String, default: '' }, 
+    studentGroupId: { type: String, default: '' }, 
+    
+    // --- TEACHER PAYROLL ---
     hourlyRate: { type: Number, default: 3.0 },
+    currency: { type: String, default: 'USD' }, // <--- NEW: Currency tracking
     
     // The Adjustments Ledger for bonuses and deductions
     adjustments: [
       {
         amount: { type: Number, required: true }, 
-        reason: { type: String },                 
+        reason: { type: String },                
         date: { type: Date, default: Date.now }
       }
     ],
@@ -44,5 +51,4 @@ userSchema.methods.matchPassword = async function (enteredPassword) {
   return await bcrypt.compare(enteredPassword, this.password);
 };
 
-// This exact line is what makes .findOne() work in your controller!
 module.exports = mongoose.model('User', userSchema);

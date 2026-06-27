@@ -1,51 +1,38 @@
 const express = require('express');
 const router = express.Router();
-const {
-  scheduleClass,
-  getMyClasses,
-  deleteClass,
-  getAllClasses,
-  updateClass,
-  endClass,
-  markAttendance, // <--- New import!
-  getCompletedClasses,
-  getTeacherEarnings,
-  getAdminPayrollReport, 
-  addTeacherAdjustment   
+const { 
+    scheduleClass, 
+    getMyClasses, 
+    deleteClass, 
+    getAllClasses, 
+    updateClass, 
+    endClass, 
+    markAttendance, 
+    getCompletedClasses, 
+    getTeacherEarnings, 
+    getAdminPayrollReport, 
+    addTeacherAdjustment,
+    getTeacherSchedule // Our calendar engine
 } = require('../controllers/scheduleController');
+
+// Import your authentication middleware (adjust path or name if it's different in your project)
 const { protect } = require('../middleware/authMiddleware');
 
-// Admin creates the class
+// 🚨 THE FIXED ROUTE 🚨
+// Must be just '/google-calendar' and protected so we can read req.user.whatsappGroupId!
+router.get('/google-calendar', protect, getTeacherSchedule);
+
+// Your other existing routes
 router.post('/', protect, scheduleClass);
-
-// Teachers/Students view their classes
 router.get('/my-classes', protect, getMyClasses);
-
-// Admin view ALL classes
 router.get('/all', protect, getAllClasses);
-
-// View completed classes for Progress Hub (MUST BE ABOVE /:id)
-router.get('/completed', protect, getCompletedClasses);
-
-// View teacher earnings for the month (MUST BE ABOVE /:id)
 router.get('/earnings', protect, getTeacherEarnings);
-
-// Admin views master payroll report (MUST BE ABOVE /:id)
-router.get('/payroll-report', protect, getAdminPayrollReport);
-
-// Admin adds bonus/deduction to a teacher (MUST BE ABOVE /:id)
-router.post('/payroll-adjustment', protect, addTeacherAdjustment);
-
-// Teacher ends a class and saves notes (MUST BE ABOVE /:id)
+router.get('/admin-payroll', protect, getAdminPayrollReport);
+router.post('/adjustment', protect, addTeacherAdjustment);
+router.get('/completed', protect, getCompletedClasses);
 router.put('/end', protect, endClass);
-
-// --- NEW ATTENDANCE ROUTE --- (MUST BE ABOVE /:id)
 router.post('/attendance', protect, markAttendance);
-
-// Admin updates class time (Dynamic route)
 router.put('/:id', protect, updateClass);
-
-// Admin deletes a class (Dynamic route)
 router.delete('/:id', protect, deleteClass);
 
 module.exports = router;

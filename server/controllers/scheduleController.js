@@ -2,6 +2,21 @@ const asyncHandler = require('express-async-handler');
 const ClassSession = require('../models/ClassSession');
 const User = require('../models/User');
 const whatsappClient = require('../utils/whatsappBot');
+const { google } = require('googleapis');
+const mongoose = require('mongoose');
+const path = require('path');
+const fs = require('fs');
+
+// --- SMART PATH ROUTING FOR GOOGLE AUTH ---
+let CREDENTIALS_PATH = path.join(__dirname, '..', 'credentials.json'); 
+if (!fs.existsSync(CREDENTIALS_PATH)) {
+  CREDENTIALS_PATH = path.join(__dirname, '..', '..', 'credentials.json'); 
+}
+const auth = new google.auth.GoogleAuth({
+  keyFile: CREDENTIALS_PATH,
+  scopes: ['https://www.googleapis.com/auth/calendar.readonly'],
+});
+const calendar = google.calendar({ version: 'v3', auth });
 
 // @desc    Schedule a new class
 const scheduleClass = asyncHandler(async (req, res) => {
@@ -23,13 +38,12 @@ const scheduleClass = asyncHandler(async (req, res) => {
     durationMinutes,
   });
 
-  // 🚀 TEACHER UPDATE ALERT: NEW CLASS 🚀
   const teacher = await User.findById(teacherId);
   const student = await User.findById(studentId);
   
   if (teacher && teacher.whatsappGroupId) {
     const message = `⚠️ *Schedule Update Alert*\n\nالسلام عليكم / Assalamu Alaikum *${teacher.name}*,\n\nThere has been a change to your schedule regarding your class with *${student.name}*.\n\n📌 *Update Type:* 🔔 New Class Added\n🕒 *Class Time:* ${new Date(startTime).toLocaleString()}\n\nPlease check your Teacher Dashboard for full details. \n*Learn With Ayman Admin Team*`;
-    await whatsappClient.sendMessage(teacher.whatsappGroupId, message);
+    await whatsappClient.sendLmsNotification(teacher.whatsappGroupId, message);
   }
 
   res.status(201).json(session);
@@ -59,10 +73,9 @@ const deleteClass = asyncHandler(async (req, res) => {
     throw new Error('Class not found');
   }
 
-  // 🚀 TEACHER UPDATE ALERT: CLASS REMOVED 🚀
   if (session.teacher && session.teacher.whatsappGroupId) {
     const message = `⚠️ *Schedule Update Alert*\n\nالسلام عليكم / Assalamu Alaikum *${session.teacher.name}*,\n\nThere has been a change to your schedule regarding your class with *${session.student.name}*.\n\n📌 *Update Type:* ❌ Canceled\n\nThis class has been removed from your schedule.\n\nPlease check your Teacher Dashboard for full details. \n*Learn With Ayman Admin Team*`;
-    await whatsappClient.sendMessage(session.teacher.whatsappGroupId, message);
+    await whatsappClient.sendLmsNotification(session.teacher.whatsappGroupId, message);
   }
 
   await session.deleteOne();
@@ -93,76 +106,91 @@ const updateClass = asyncHandler(async (req, res) => {
   session.startTime = newStartTime;
   await session.save();
 
-  // 🚀 TEACHER UPDATE ALERT: RESCHEDULED 🚀
   if (session.teacher && session.teacher.whatsappGroupId) {
     const message = `⚠️ *Schedule Update Alert*\n\nالسلام عليكم / Assalamu Alaikum *${session.teacher.name}*,\n\nThere has been a change to your schedule regarding your class with *${session.student.name}*.\n\n📌 *Update Type:* 🔄 Rescheduled\n🕒 *New Class Time:* ${new Date(newStartTime).toLocaleString()}\n\nPlease check your Teacher Dashboard for full details. \n*Learn With Ayman Admin Team*`;
-    await whatsappClient.sendMessage(session.teacher.whatsappGroupId, message);
+    await whatsappClient.sendLmsNotification(session.teacher.whatsappGroupId, message);
   }
 
   res.status(200).json(session);
 });
 
-// END A CLASS AND SAVE NOTES
+// ✨ DYNAMIC END CLASS INTERCEPTOR ✨
 const endClass = async (req, res) => {
   try {
-    const { classId, notes, homework } = req.body;
+    const { classId, notes, homework, studentGroupId, title, startTime } = req.body;
+    let session;
 
-    const session = await ClassSession.findById(classId)
-      .populate('student', 'name whatsappGroupId');
-
-    if (!session) {
-      return res.status(404).json({ message: 'Class not found.' });
+    if (mongoose.Types.ObjectId.isValid(classId)) {
+      session = await ClassSession.findById(classId).populate('student', 'name whatsappGroupId');
+      if (!session) return res.status(404).json({ message: 'Class not found.' });
+      
+      session.status = 'completed';
+      session.notes = notes;
+      session.homework = homework;
+      await session.save();
+    } else {
+      // It's a Google Calendar Class! Find the student profile and write a session record into MongoDB
+      const studentUser = await User.findOne({ whatsappGroupId: studentGroupId });
+      
+      session = await ClassSession.create({
+        teacher: req.user._id,
+        student: studentUser ? studentUser._id : null,
+        subject: title || 'Quran Lesson',
+        startTime: startTime || new Date(),
+        durationMinutes: 60, // Maps a clean 1-hour session default for dynamic earnings calc
+        status: 'completed',
+        notes: notes,
+        homework: homework
+      });
+      if (studentUser) session.student = studentUser;
     }
 
-    session.status = 'completed';
-    session.notes = notes;
-    session.homework = homework;
-    await session.save();
-
-    // 🚀 STUDENT ALERT: END CLASS REPORT 🚀
-    if (session.student && session.student.whatsappGroupId) {
-      const message = `السلام عليكم / Assalamu Alaikum! 🌟\n\nToday's lesson with *${session.student.name}* has been successfully completed. Here is a quick summary of what was covered:\n\n📌 *Class Notes:*\n${notes || 'No notes provided.'}\n\n📝 *Assigned Homework:*\n${homework || 'No homework assigned.'}\n\nIf you have any questions, please feel free to reach out. Have a wonderful day!\n\nWarm regards,\n*Learn With Ayman Support Team*`;
-      await whatsappClient.sendMessage(session.student.whatsappGroupId, message);
+    if (session.student && studentGroupId) {
+      const message = `السلام عليكم / Assalamu Alaikum! 🌟\n\nToday's lesson with *${session.student.name || 'the student'}* has been successfully completed. Here is a quick summary of what was covered:\n\n📌 *Class Notes:*\n${notes || 'No notes provided.'}\n\n📝 *Assigned Homework:*\n${homework || 'No homework assigned.'}\n\nIf you have any questions, please feel free to reach out. Have a wonderful day!\n\nWarm regards,\n*Learn With Ayman Support Team*`;
+      await whatsappClient.sendLmsNotification(studentGroupId, message);
     }
 
     res.status(200).json({ message: 'Class ended successfully!', updatedClass: session });
-
   } catch (error) {
     console.error('Error ending class:', error);
     res.status(500).json({ message: 'Server error while ending class.' });
   }
 };
 
-// --- NEW AUTOMATED ATTENDANCE FUNCTION ---
+// --- AUTOMATED ATTENDANCE FUNCTION ---
 const markAttendance = async (req, res) => {
   try {
-    const { classId, attendanceStatus } = req.body;
+    const { classId, attendanceStatus, studentGroupId, title, startTime, zoomLink } = req.body;
+    let session;
+    let targetGroup = studentGroupId;
 
-    const session = await ClassSession.findById(classId)
-      .populate('student', 'name whatsappGroupId') 
-      .populate('teacher', 'name');
-
-    if (!session) {
-      return res.status(404).json({ message: 'Class not found' });
+    if (mongoose.Types.ObjectId.isValid(classId)) {
+      session = await ClassSession.findById(classId)
+        .populate('student', 'name whatsappGroupId') 
+        .populate('teacher', 'name');
+      if (!session) return res.status(404).json({ message: 'Class not found' });
+      targetGroup = session.student?.whatsappGroupId;
+    } else {
+      const studentUser = await User.findOne({ whatsappGroupId: studentGroupId });
+      const teacherUser = await User.findById(req.user._id);
+      session = {
+        student: { name: studentUser ? studentUser.name : 'Student' },
+        teacher: { name: teacherUser ? teacherUser.name : 'Teacher' },
+        meetingLink: zoomLink || ''
+      };
     }
 
-    const studentGroupId = session.student.whatsappGroupId; 
-
-    // 🚀 STUDENT ALERT: LATE OR ABSENT 🚀
-    if (studentGroupId) {
+    if (targetGroup) {
       let message = '';
-
       if (attendanceStatus === 'Late') {
         message = `السلام عليكم / Assalamu Alaikum *${session.student.name}*, ✨\n\nJust a gentle reminder that our class is scheduled to begin right now. Your teacher, *${session.teacher.name}*, has opened the room and is waiting for you!\n\n🔗 *Join the class here:*\n${session.meetingLink || 'No link provided'}\n\nWe hope you have a wonderful class! 📚\n\nWarm regards,\n*Learn With Ayman Support Team*`;
-      } 
-      else if (attendanceStatus === 'Absent') {
+      } else if (attendanceStatus === 'Absent') {
         message = `السلام عليكم / Assalamu Alaikum *${session.student.name}*,\n\nWe hope everything is proceeding smoothly on your end and that you are safe and well. 🌿\n\nWe noticed that you haven't joined the meeting today. Since the 15-minute waiting period has passed, the teacher has now closed the meeting room. \n\n⚠️ *Please note: As per our attendance policy, this session is marked as absent and is not eligible for a makeup class.*\n\nWe look forward to seeing you at your next scheduled time, Insha'Allah! \n\nWarm regards,\n*Learn With Ayman Support Team*`;
       }
-
-      await whatsappClient.sendMessage(studentGroupId, message);
+      await whatsappClient.sendLmsNotification(targetGroup, message);
     }
 
-    res.status(200).json({ message: `Attendance marked as ${attendanceStatus} and message sent!`, session });
+    res.status(200).json({ message: `Attendance marked as ${attendanceStatus} and message sent!` });
   } catch (error) {
     console.error('Error marking attendance:', error);
     res.status(500).json({ message: 'Server error while marking attendance.' });
@@ -185,16 +213,15 @@ const getTeacherEarnings = async (req, res) => {
   try {
     const now = new Date();
     const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
-    const endOfMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59);
 
     const completedClasses = await ClassSession.find({
       teacher: req.user._id,
       status: 'completed',
-      startTime: { $gte: startOfMonth, $lte: endOfMonth }
+      startTime: { $gte: startOfMonth }
     });
 
     const totalMinutes = completedClasses.reduce((sum, cls) => sum + (cls.durationMinutes || 0), 0);
-    const hourlyRate = req.user.hourlyRate || 3.0; 
+    const hourlyRate = req.user.hourlyRate || 4.0; 
     const totalHours = totalMinutes / 60;
     const currentEarnings = totalHours * hourlyRate;
 
@@ -269,8 +296,81 @@ const addTeacherAdjustment = async (req, res) => {
   }
 };
 
+// --- THE GOOGLE CALENDAR DASHBOARD ENGINE ---
+const getTeacherSchedule = async (req, res) => {
+  try {
+    const targetUserId = req.user?.id || req.user?._id;
+    const databaseUser = await User.findById(targetUserId);
+    
+    if (!databaseUser) {
+      return res.status(404).json({ message: 'Teacher profile not found' });
+    }
+
+    const teacherGroupId = databaseUser.whatsappGroupId || 
+                           databaseUser.teacherGroupId || 
+                           databaseUser.groupId || 
+                           databaseUser.whatsappGroup;
+
+    console.log(`📡 Fetching Google Calendar for Teacher: ${databaseUser.name}`);
+
+    if (!teacherGroupId) {
+      console.log('⚠️ --- MONGO SCHEMA DIAGNOSTIC ---');
+      console.log(Object.keys(databaseUser._doc || databaseUser));
+      return res.status(200).json([]); 
+    }
+
+    const myCalendarId = 'admin@learnwithayman.com'; 
+    
+    const now = new Date();
+    const nextWeek = new Date();
+    nextWeek.setDate(now.getDate() + 7);
+
+    const response = await calendar.events.list({
+      calendarId: myCalendarId,
+      timeMin: now.toISOString(),
+      timeMax: nextWeek.toISOString(),
+      singleEvents: true,
+      orderBy: 'startTime',
+    });
+
+    const events = response.data.items || [];
+
+    let processedClasses = events.map(event => {
+      const start = event.start.dateTime || event.start.date;
+      const description = event.description || "";
+      
+      const teacherMatch = description.match(/TeacherGroup[^\d]*([0-9]+@g\.us)/i);
+      const extractedTeacherId = teacherMatch ? teacherMatch[1] : null;
+
+      const studentMatch = description.match(/StudentGroup[^\d]*([0-9]+@g\.us)/i);
+      const studentGroupId = studentMatch ? studentMatch[1] : null;
+
+      const zoomMatch = description.match(/(https:\/\/[^\s<"]*zoom\.us[^\s<"]*)/i);
+      const zoomLink = zoomMatch ? zoomMatch[1] : null;
+
+      return {
+        id: event.id,
+        title: event.summary,
+        startTime: new Date(start),
+        teacherGroupId: extractedTeacherId,
+        studentGroupId: studentGroupId,
+        zoomLink: zoomLink
+      };
+    });
+
+    const teacherSpecificClasses = processedClasses.filter(
+      (cls) => cls.teacherGroupId === teacherGroupId
+    );
+
+    res.status(200).json(teacherSpecificClasses);
+  } catch (error) {
+    console.error('❌ Error fetching Teacher Schedule:', error.message);
+    res.status(500).json({ message: 'Server error while fetching schedule' });
+  }
+};
+
 module.exports = {
   scheduleClass, getMyClasses, deleteClass, getAllClasses, updateClass,
   endClass, markAttendance, getCompletedClasses, getTeacherEarnings,
-  getAdminPayrollReport, addTeacherAdjustment  
+  getAdminPayrollReport, addTeacherAdjustment, getTeacherSchedule 
 };
