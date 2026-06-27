@@ -2,15 +2,16 @@ const { makeWASocket, useMultiFileAuthState, DisconnectReason } = require('@whis
 const qrcode = require('qrcode-terminal');
 const pino = require('pino');
 const path = require('path');
+const fs = require('fs'); // 📂 Added to cleanly auto-detect your persistent cloud disk
 
 let whatsappSocket = null; 
 let isConnecting = false;
 
-// Path routing for local vs Render
+// Path routing for local vs Render production disks
 const isLocal = process.env.NODE_ENV !== 'production';
 const authFolder = isLocal 
     ? path.join(__dirname, '..', 'baileys_auth') 
-    : '/opt/render/project/src/data/baileys_auth';
+    : (fs.existsSync('/baileys_auth') ? '/baileys_auth' : path.join(__dirname, '..', 'baileys_auth'));
 
 async function connectToWhatsApp() {
     if (isConnecting) return;
@@ -22,7 +23,6 @@ async function connectToWhatsApp() {
         const sock = makeWASocket({
             auth: state,
             printQRInTerminal: false,
-            // 🚨 THE BLINDFOLD IS OFF: We will now see the exact crash errors 🚨
             logger: pino({ level: 'error' }), 
             browser: ['LMS Bot', 'Chrome', '1.0.0']
         });
@@ -32,16 +32,22 @@ async function connectToWhatsApp() {
         sock.ev.on('connection.update', (update) => {
             const { connection, lastDisconnect, qr } = update;
             
+            // ✨ THE RENDER CLOUD INTERCEPTOR ✨
             if (qr) {
-                console.log('🤖 SCAN THIS QR CODE WITH YOUR WHATSAPP:');
+                console.log('\n==================================================================');
+                console.log('🤖 WHATSAPP INSTANT SYNC ENGINE ACTIVE');
+                console.log('🔗 CLICK THE LIVE URL BELOW TO VIEW AND SCAN YOUR REFRESHED QR CODE:');
+                console.log(`👉 https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=${encodeURIComponent(qr)} 👈`);
+                console.log('==================================================================\n');
+                
+                // Fallback text render for local computer setups
                 qrcode.generate(qr, { small: true });
             }
             
             if (connection === 'close') {
                 isConnecting = false; 
                 
-                // 🚨 CAPTURING THE EXACT ERROR CODE 🚨
-                const statusCode = lastDisconnect.error?.output?.statusCode || 'Unknown';
+                const statusCode = lastDisconnect?.error?.output?.statusCode || 'Unknown';
                 const shouldReconnect = statusCode !== DisconnectReason.loggedOut;
                 
                 if (shouldReconnect) {
