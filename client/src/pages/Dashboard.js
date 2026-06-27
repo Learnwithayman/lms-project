@@ -3,6 +3,9 @@ import axios from 'axios';
 import { useNavigate } from 'react-router-dom';
 import '../App.css';
 
+// 🌐 LIVE PRODUCTION URL CONFIGURATION 
+const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:5000';
+
 function Dashboard() {
   const [classes, setClasses] = useState([]);
   const [user, setUser] = useState({});
@@ -23,28 +26,35 @@ function Dashboard() {
 
     const parsedUser = JSON.parse(userData);
     setUser(parsedUser);
-    fetchClasses(token);
+    
+    fetchClasses(token, parsedUser);
 
     if (parsedUser?.role?.toLowerCase() === 'teacher') {
       fetchEarnings(token);
     }
   }, [navigate]);
 
-  const fetchClasses = async (token) => {
+  const fetchClasses = async (token, parsedUser) => {
     try {
       const config = { headers: { Authorization: `Bearer ${token}` } };
-      // Keeping your original render links for your existing features
-      const res = await axios.get('https://lms-backend-02zs.onrender.com/api/schedule/my-classes', config);
+      let res;
+      
+      if (parsedUser?.role?.toLowerCase() === 'teacher') {
+        res = await axios.get(`${API_URL}/api/schedule/google-calendar`, config);
+      } else {
+        res = await axios.get(`${API_URL}/api/schedule/my-classes`, config);
+      }
+      
       setClasses(res.data);
     } catch (error) {
-      console.error(error);
+      console.error("Error fetching classes:", error);
     }
   };
 
   const fetchEarnings = async (token) => {
     try {
       const config = { headers: { Authorization: `Bearer ${token}` } };
-      const res = await axios.get('https://lms-backend-02zs.onrender.com/api/schedule/earnings', config);
+      const res = await axios.get(`${API_URL}/api/schedule/earnings`, config);
       setEarnings(res.data);
     } catch (error) {
       console.error("Failed to fetch earnings:", error);
@@ -56,45 +66,49 @@ function Dashboard() {
       const token = localStorage.getItem('token');
       const config = { headers: { Authorization: `Bearer ${token}` } };
 
-      await axios.put('https://lms-backend-02zs.onrender.com/api/schedule/end', {
+      const targetClass = classes.find(c => (c.id === currentClassId || c._id === currentClassId));
+
+      await axios.put(`${API_URL}/api/schedule/end`, {
         classId: currentClassId,
         notes: notes,
-        homework: homework
+        homework: homework,
+        studentGroupId: targetClass?.studentGroupId,
+        title: targetClass?.title,
+        startTime: targetClass?.startTime
       }, config);
 
       setIsModalOpen(false);
       setNotes('');
       setHomework('');
-      fetchClasses(token);
+      
+      fetchClasses(token, user);
+      fetchEarnings(token);
 
-      if (user?.role?.toLowerCase() === 'teacher') {
-        fetchEarnings(token);
-      }
-
+      alert('✅ Class ended successfully and hours logged!');
     } catch (error) {
       console.error('Error ending class:', error);
       alert('Failed to end class. Check console for details.');
     }
   };
 
-  // --- NEW AUTOMATED ATTENDANCE FUNCTION ---
-  const handleAttendance = async (classId, status) => {
+  const handleAttendance = async (cls, status) => {
     try {
       const token = localStorage.getItem('token');
       const config = { headers: { Authorization: `Bearer ${token}` } };
 
-      // We are pointing this specifically to your LOCAL running server to test the bot!
-      await axios.post('http://localhost:5000/api/schedule/attendance', {
-        classId: classId,
+      await axios.post(`${API_URL}/api/schedule/attendance`, {
+        classId: cls.id || cls._id,
         attendanceStatus: status,
-        // Hardcoding the "Maisa & Yusuf" group ID from your screenshot for this test run!
-        whatsappGroupId: '120363419360277721@g.us' 
+        studentGroupId: cls.studentGroupId,
+        title: cls.title,
+        startTime: cls.startTime,
+        zoomLink: cls.zoomLink || cls.meetingLink
       }, config);
 
       alert(`✅ Student marked as ${status}. WhatsApp message sent!`);
     } catch (error) {
       console.error('Error marking attendance:', error);
-      alert('Failed to mark attendance. Make sure your local node server.js is running!');
+      alert('Failed to mark attendance.');
     }
   };
 
@@ -102,6 +116,14 @@ function Dashboard() {
     localStorage.removeItem('token');
     localStorage.removeItem('user');
     navigate('/');
+  };
+
+  const isClassLive = (startTime) => {
+    const now = new Date();
+    const classStart = new Date(startTime);
+    const fifteenMinsBefore = new Date(classStart.getTime() - 15 * 60 * 1000);
+    const ninetyMinsAfter = new Date(classStart.getTime() + 90 * 60 * 1000);
+    return now >= fifteenMinsBefore && now <= ninetyMinsAfter;
   };
 
   return (
@@ -113,15 +135,9 @@ function Dashboard() {
 
       {user?.role?.toLowerCase() === 'teacher' && earnings && (
         <div style={{
-          backgroundColor: '#d4edda',
-          color: '#155724',
-          padding: '20px',
-          borderRadius: '8px',
-          marginBottom: '20px',
-          border: '1px solid #c3e6cb',
-          display: 'flex',
-          justifyContent: 'space-between',
-          alignItems: 'center',
+          backgroundColor: '#d4edda', color: '#155724', padding: '20px',
+          borderRadius: '8px', marginBottom: '20px', border: '1px solid #c3e6cb',
+          display: 'flex', justifyContent: 'space-between', alignItems: 'center',
           boxShadow: '0 2px 5px rgba(0,0,0,0.1)'
         }}>
           <div>
@@ -150,56 +166,75 @@ function Dashboard() {
       </button>
 
       <div style={{ display: 'grid', gap: '20px' }}>
-        {classes.filter(cls => cls.status !== 'completed').map((cls) => (
-          <div key={cls._id} className="card" style={{ borderLeft: '5px solid #3498db' }}>
-            <h3>📚 Subject: {cls.subject}</h3>
-            <p><strong>⏰ Time:</strong> {new Date(cls.startTime).toLocaleString()}</p>
-            <p><strong>⏳ Duration:</strong> {cls.durationMinutes} minutes</p>
+        {classes.length === 0 ? (
+           <p style={{ fontStyle: 'italic', color: 'gray' }}>No upcoming classes found on your calendar.</p>
+        ) : (
+          classes.filter(cls => cls.status !== 'completed').map((cls) => {
+            const isLive = isClassLive(cls.startTime);
+            const classIdentifier = cls._id || cls.id;
 
-            <div style={{ display: 'flex', alignItems: 'center', marginTop: '10px', gap: '10px', flexWrap: 'wrap' }}>
-              
-              {/* JOIN BUTTON */}
-              {cls.meetingLink ? (
-                <a href={cls.meetingLink} target="_blank" rel="noopener noreferrer" style={{ textDecoration: 'none' }}>
-                  <button className="btn-blue" style={{ padding: '10px 20px' }}>🎥 Join Class</button>
-                </a>
-              ) : (
-                <span style={{ color: 'grey', fontStyle: 'italic', fontSize: '14px' }}>No meeting link.</span>
-              )}
+            return (
+              <div key={classIdentifier} className="card" style={{ borderLeft: '5px solid #3498db' }}>
+                <h3>📚 {cls.title || cls.subject}</h3>
+                <p><strong>⏰ Time:</strong> {new Date(cls.startTime).toLocaleString()}</p>
+                
+                <div style={{ display: 'flex', alignItems: 'center', marginTop: '10px', gap: '10px', flexWrap: 'wrap' }}>
+                  
+                  {(cls.zoomLink || cls.meetingLink) ? (
+                    <a 
+                      href={isLive ? (cls.zoomLink || cls.meetingLink) : undefined} 
+                      target="_blank" 
+                      rel="noopener noreferrer" 
+                      style={{ textDecoration: 'none', pointerEvents: isLive ? 'auto' : 'none' }}
+                    >
+                      <button 
+                        className={isLive ? "btn-blue" : "btn-disabled"}
+                        disabled={!isLive}
+                        style={{ 
+                          padding: '10px 20px', 
+                          backgroundColor: isLive ? '#3498db' : '#bdc3c7',
+                          cursor: isLive ? 'pointer' : 'not-allowed'
+                        }}
+                      >
+                        🎥 {isLive ? "Join Class" : "Locked (Not Class Time)"}
+                      </button>
+                    </a>
+                  ) : (
+                    <span style={{ color: 'grey', fontStyle: 'italic', fontSize: '14px' }}>No meeting link.</span>
+                  )}
 
-              {user?.role?.toLowerCase() === 'teacher' && (
-                <>
-                  {/* LATE BUTTON */}
-                  <button 
-                    onClick={() => handleAttendance(cls._id, 'Late')}
-                    style={{ backgroundColor: '#ffc107', color: 'black', padding: '10px 15px', border: 'none', borderRadius: '4px', cursor: 'pointer', fontWeight: 'bold' }}
-                  >
-                    🏃‍♂️ Late
-                  </button>
+                  {user?.role?.toLowerCase() === 'teacher' && (
+                    <>
+                      <button 
+                        onClick={() => handleAttendance(cls, 'Late')}
+                        style={{ backgroundColor: '#ffc107', color: 'black', padding: '10px 15px', border: 'none', borderRadius: '4px', cursor: 'pointer', fontWeight: 'bold' }}
+                      >
+                        🏃‍♂️ Late
+                      </button>
 
-                  {/* ABSENT BUTTON */}
-                  <button 
-                    onClick={() => handleAttendance(cls._id, 'Absent')}
-                    style={{ backgroundColor: '#6c757d', color: 'white', padding: '10px 15px', border: 'none', borderRadius: '4px', cursor: 'pointer', fontWeight: 'bold' }}
-                  >
-                    ❌ Absent
-                  </button>
+                      <button 
+                        onClick={() => handleAttendance(cls, 'Absent')}
+                        style={{ backgroundColor: '#6c757d', color: 'white', padding: '10px 15px', border: 'none', borderRadius: '4px', cursor: 'pointer', fontWeight: 'bold' }}
+                      >
+                        ❌ Absent
+                      </button>
 
-                  {/* END CLASS BUTTON */}
-                  <button 
-                    onClick={() => {
-                      setCurrentClassId(cls._id); 
-                      setIsModalOpen(true);       
-                    }}
-                    style={{ backgroundColor: '#dc3545', color: 'white', padding: '10px 15px', border: 'none', borderRadius: '4px', cursor: 'pointer', fontWeight: 'bold' }}
-                  >
-                    🛑 End Class
-                  </button>
-                </>
-              )}
-            </div>
-          </div>
-        ))}
+                      <button 
+                        onClick={() => {
+                          setCurrentClassId(classIdentifier); 
+                          setIsModalOpen(true);       
+                        }}
+                        style={{ backgroundColor: '#dc3545', color: 'white', padding: '10px 15px', border: 'none', borderRadius: '4px', cursor: 'pointer', fontWeight: 'bold' }}
+                      >
+                        🛑 End Class
+                      </button>
+                    </>
+                  )}
+                </div>
+              </div>
+            );
+          })
+        )}
       </div>
 
       {/* THE END CLASS POPUP MODAL */}
