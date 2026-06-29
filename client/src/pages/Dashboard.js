@@ -16,7 +16,7 @@ function Dashboard() {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [currentClassId, setCurrentClassId] = useState(null);
   const [notes, setNotes] = useState('');
-  const [homework, setHomework] = useState('');
+  const [classroomChecked, setClassroomChecked] = useState(false); // <--- NEW CHECKBOX STATE
 
   useEffect(() => {
     const token = localStorage.getItem('token');
@@ -62,6 +62,10 @@ function Dashboard() {
   };
 
   const handleEndClass = async () => {
+    if (!classroomChecked) {
+      return alert("Please upload the homework and check the confirmation box first!");
+    }
+
     try {
       const token = localStorage.getItem('token');
       const config = { headers: { Authorization: `Bearer ${token}` } };
@@ -71,15 +75,16 @@ function Dashboard() {
       await axios.put(`${API_URL}/api/schedule/end`, {
         classId: currentClassId,
         notes: notes,
-        homework: homework,
+        classroomLink: targetClass?.classroomLink, // Sends the specific link to the bot
         studentGroupId: targetClass?.studentGroupId,
-        title: targetClass?.title,
+        whatsappGroupId: targetClass?.teacherGroupId, 
+        studentName: targetClass?.title,
         startTime: targetClass?.startTime
       }, config);
 
       setIsModalOpen(false);
       setNotes('');
-      setHomework('');
+      setClassroomChecked(false);
       
       fetchClasses(token, user);
       fetchEarnings(token);
@@ -125,6 +130,9 @@ function Dashboard() {
     const ninetyMinsAfter = new Date(classStart.getTime() + 90 * 60 * 1000);
     return now >= fifteenMinsBefore && now <= ninetyMinsAfter;
   };
+
+  // Find the currently selected class for the modal UI
+  const selectedClass = classes.find(c => (c.id === currentClassId || c._id === currentClassId));
 
   return (
     <div className="dashboard-container">
@@ -237,33 +245,52 @@ function Dashboard() {
         )}
       </div>
 
-      {/* THE END CLASS POPUP MODAL */}
+      {/* THE NEW, BEAUTIFUL END CLASS POPUP MODAL */}
       {isModalOpen && (
         <div style={{
           position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
           backgroundColor: 'rgba(0,0,0,0.6)', display: 'flex',
           alignItems: 'center', justifyContent: 'center', zIndex: 1000
         }}>
-          <div style={{ backgroundColor: 'white', padding: '30px', borderRadius: '8px', width: '400px', color: 'black' }}>
+          <div style={{ backgroundColor: 'white', padding: '30px', borderRadius: '8px', width: '450px', color: 'black' }}>
             <h2 style={{ marginTop: 0 }}>🛑 End Class</h2>
             
             <label style={{ fontWeight: 'bold' }}>Class Notes:</label>
             <textarea
               value={notes}
               onChange={(e) => setNotes(e.target.value)}
-              placeholder="What Surahs or Tajweed rules did you cover today?"
-              style={{ width: '100%', height: '80px', margin: '10px 0', padding: '10px' }}
+              placeholder="Write a brief summary of today's class..."
+              style={{ width: '100%', height: '80px', margin: '10px 0', padding: '10px', boxSizing: 'border-box' }}
             />
 
-            <label style={{ fontWeight: 'bold' }}>Homework Assigned:</label>
-            <textarea
-              value={homework}
-              onChange={(e) => setHomework(e.target.value)}
-              placeholder="What should the student practice?"
-              style={{ width: '100%', height: '60px', margin: '10px 0', padding: '10px' }}
-            />
+            {/* THE NEW GOOGLE CLASSROOM SECTION */}
+            <div style={{ marginTop: '20px', padding: '15px', background: '#f8f9fa', borderRadius: '8px', border: '1px solid #ddd' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
+                <span style={{ fontWeight: 'bold', color: '#333' }}>Step 2: Assign Homework</span>
+                <button 
+                  type="button" 
+                  onClick={() => window.open(selectedClass?.classroomLink || 'https://classroom.google.com', '_blank')}
+                  style={{ background: '#f4b400', color: 'white', border: 'none', padding: '8px 15px', borderRadius: '5px', cursor: 'pointer', fontWeight: 'bold' }}
+                >
+                  📚 Open Google Classroom
+                </button>
+              </div>
+              
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginTop: '15px' }}>
+                <input 
+                  type="checkbox" 
+                  id="hwCheck" 
+                  checked={classroomChecked} 
+                  onChange={(e) => setClassroomChecked(e.target.checked)} 
+                  style={{ transform: 'scale(1.2)', cursor: 'pointer' }}
+                />
+                <label htmlFor="hwCheck" style={{ cursor: 'pointer', fontSize: '14px', color: '#555' }}>
+                  ☑ I confirm I have checked/uploaded the homework to Google Classroom.
+                </label>
+              </div>
+            </div>
 
-            <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '15px' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '20px' }}>
               <button 
                 onClick={() => setIsModalOpen(false)} 
                 style={{ padding: '10px 15px', cursor: 'pointer', border: '1px solid #ccc', borderRadius: '4px', backgroundColor: '#f8f9fa' }}

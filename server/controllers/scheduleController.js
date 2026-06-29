@@ -114,45 +114,55 @@ const updateClass = asyncHandler(async (req, res) => {
   res.status(200).json(session);
 });
 
-// ✨ DYNAMIC END CLASS INTERCEPTOR ✨
+// ✨ BULLETPROOF END CLASS INTERCEPTOR ✨
 const endClass = async (req, res) => {
   try {
-    const { classId, notes, homework, studentGroupId, title, startTime } = req.body;
-    let session;
+    // 1. Extract dynamic payload from frontend
+    const { classId, studentName, notes, classroomLink, whatsappGroupId, studentGroupId } = req.body;
+    const targetGroupId = whatsappGroupId || studentGroupId; 
 
+    const teacher = await User.findById(req.user._id);
+    if (!teacher) return res.status(404).json({ message: 'Teacher not found' });
+
+    // 2. Format the beautiful WhatsApp message
+    let messageText = `🎓 *Class Completed!*\n*Teacher:* ${teacher.name}\n*Student:* ${studentName || 'Student'}\n\n📝 *Class Notes:*\n${notes || 'No notes provided.'}\n\n📚 *Homework:*\nHomework has been assigned! Please check Google Classroom to view the requirements and upload the completed assignment:\n🔗 ${classroomLink || 'https://classroom.google.com'}`;
+
+    // 3. Send via WhatsApp Bot
+    if (targetGroupId) {
+      await whatsappClient.sendLmsNotification(targetGroupId, messageText);
+      console.log(`✅ Post-class notes sent to ${targetGroupId}`);
+    }
+
+    // 4. Save to MongoDB so Payroll/Earnings calculates perfectly
+    let session;
+    
+    // A: Check if it's a native Mongo DB Class
     if (mongoose.Types.ObjectId.isValid(classId)) {
-      session = await ClassSession.findById(classId).populate('student', 'name whatsappGroupId');
-      if (!session) return res.status(404).json({ message: 'Class not found.' });
-      
-      session.status = 'completed';
-      session.notes = notes;
-      session.homework = homework;
-      await session.save();
-    } else {
-      // It's a Google Calendar Class! Find the student profile and write a session record into MongoDB
-      const studentUser = await User.findOne({ whatsappGroupId: studentGroupId });
-      
+      session = await ClassSession.findById(classId);
+      if (session) {
+        session.status = 'completed';
+        session.notes = notes;
+        await session.save();
+      }
+    } 
+    
+    // B: It's a Google Calendar Class! Create a new completed record for Payroll
+    if (!session) {
+      const studentUser = await User.findOne({ whatsappGroupId: targetGroupId });
       session = await ClassSession.create({
         teacher: req.user._id,
         student: studentUser ? studentUser._id : null,
-        subject: title || 'Quran Lesson',
-        startTime: startTime || new Date(),
-        durationMinutes: 60, // Maps a clean 1-hour session default for dynamic earnings calc
+        subject: studentName || 'Google Calendar Lesson',
+        startTime: new Date(),
+        durationMinutes: 60, // Default 1 hour for earnings calculation
         status: 'completed',
-        notes: notes,
-        homework: homework
+        notes: notes
       });
-      if (studentUser) session.student = studentUser;
-    }
-
-    if (session.student && studentGroupId) {
-      const message = `السلام عليكم / Assalamu Alaikum! 🌟\n\nToday's lesson with *${session.student.name || 'the student'}* has been successfully completed. Here is a quick summary of what was covered:\n\n📌 *Class Notes:*\n${notes || 'No notes provided.'}\n\n📝 *Assigned Homework:*\n${homework || 'No homework assigned.'}\n\nIf you have any questions, please feel free to reach out. Have a wonderful day!\n\nWarm regards,\n*Learn With Ayman Support Team*`;
-      await whatsappClient.sendLmsNotification(studentGroupId, message);
     }
 
     res.status(200).json({ message: 'Class ended successfully!', updatedClass: session });
   } catch (error) {
-    console.error('Error ending class:', error);
+    console.error('🚨 Error ending class:', error);
     res.status(500).json({ message: 'Server error while ending class.' });
   }
 };
@@ -314,8 +324,6 @@ const getTeacherSchedule = async (req, res) => {
     console.log(`📡 Fetching Google Calendar for Teacher: ${databaseUser.name}`);
 
     if (!teacherGroupId) {
-      console.log('⚠️ --- MONGO SCHEMA DIAGNOSTIC ---');
-      console.log(Object.keys(databaseUser._doc || databaseUser));
       return res.status(200).json([]); 
     }
 
@@ -339,14 +347,21 @@ const getTeacherSchedule = async (req, res) => {
       const start = event.start.dateTime || event.start.date;
       const description = event.description || "";
       
-      const teacherMatch = description.match(/TeacherGroup[^\d]*([0-9]+@g\.us)/i);
+      // 🛠️ SMART DETECTOR: Teacher ID
+      const teacherMatch = description.match(/(?:teachergroup|teacher id|group id|id)[\s*:-]*([0-9]+@g\.us)/i) || description.match(/TeacherGroup[^\d]*([0-9]+@g\.us)/i);
       const extractedTeacherId = teacherMatch ? teacherMatch[1] : null;
 
-      const studentMatch = description.match(/StudentGroup[^\d]*([0-9]+@g\.us)/i);
+      // 🛠️ SMART DETECTOR: Student ID
+      const studentMatch = description.match(/(?:studentgroup|student id|id)[\s*:-]*([0-9]+@g\.us)/i) || description.match(/StudentGroup[^\d]*([0-9]+@g\.us)/i);
       const studentGroupId = studentMatch ? studentMatch[1] : null;
 
+      // 🛠️ SMART DETECTOR: Zoom Link
       const zoomMatch = description.match(/(https:\/\/[^\s<"]*zoom\.us[^\s<"]*)/i);
       const zoomLink = zoomMatch ? zoomMatch[1] : null;
+
+      // 🛠️ SMART DETECTOR: Google Classroom Link
+      const classroomMatch = description.match(/(?:classroom|link|classwork)[\s*:-]*(https?:\/\/[^\s<"]+)/i) || description.match(/(https:\/\/classroom\.google\.com[^\s<"]*)/i);
+      const classroomLink = classroomMatch ? (classroomMatch[1] || classroomMatch[2]) : null;
 
       return {
         id: event.id,
@@ -354,7 +369,8 @@ const getTeacherSchedule = async (req, res) => {
         startTime: new Date(start),
         teacherGroupId: extractedTeacherId,
         studentGroupId: studentGroupId,
-        zoomLink: zoomLink
+        zoomLink: zoomLink,
+        classroomLink: classroomLink // <--- Sent to frontend!
       };
     });
 
