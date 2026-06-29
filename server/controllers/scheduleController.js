@@ -117,26 +117,26 @@ const updateClass = asyncHandler(async (req, res) => {
 // ✨ BULLETPROOF END CLASS INTERCEPTOR ✨
 const endClass = async (req, res) => {
   try {
-    // 1. Extract dynamic payload from frontend
     const { classId, studentName, notes, classroomLink, whatsappGroupId, studentGroupId } = req.body;
-    const targetGroupId = whatsappGroupId || studentGroupId; 
+    const targetGroupId = studentGroupId || whatsappGroupId; 
 
     const teacher = await User.findById(req.user._id);
     if (!teacher) return res.status(404).json({ message: 'Teacher not found' });
 
-    // 2. Format the beautiful WhatsApp message
     let messageText = `🎓 *Class Completed!*\n*Teacher:* ${teacher.name}\n*Student:* ${studentName || 'Student'}\n\n📝 *Class Notes:*\n${notes || 'No notes provided.'}\n\n📚 *Homework:*\nHomework has been assigned! Please check Google Classroom to view the requirements and upload the completed assignment:\n🔗 ${classroomLink || 'https://classroom.google.com'}`;
 
-    // 3. Send via WhatsApp Bot
-    if (targetGroupId) {
-      await whatsappClient.sendLmsNotification(targetGroupId, messageText);
-      console.log(`✅ Post-class notes sent to ${targetGroupId}`);
+    // 🛡️ THE WHATSAPP SAFETY NET
+    try {
+      if (targetGroupId) {
+        await whatsappClient.sendLmsNotification(targetGroupId, messageText);
+        console.log(`✅ Post-class notes sent to ${targetGroupId}`);
+      }
+    } catch (waError) {
+      console.error('⚠️ WhatsApp failed to send (Connection Closed), but saving class anyway:', waError.message);
     }
 
-    // 4. Save to MongoDB so Payroll/Earnings calculates perfectly
     let session;
     
-    // A: Check if it's a native Mongo DB Class
     if (mongoose.Types.ObjectId.isValid(classId)) {
       session = await ClassSession.findById(classId);
       if (session) {
@@ -146,15 +146,16 @@ const endClass = async (req, res) => {
       }
     } 
     
-    // B: It's a Google Calendar Class! Create a new completed record for Payroll
+    // Google Calendar Class - Saves perfectly now because student is required: false!
     if (!session) {
       const studentUser = await User.findOne({ whatsappGroupId: targetGroupId });
+      
       session = await ClassSession.create({
         teacher: req.user._id,
-        student: studentUser ? studentUser._id : null,
+        student: studentUser ? studentUser._id : null, 
         subject: studentName || 'Google Calendar Lesson',
         startTime: new Date(),
-        durationMinutes: 60, // Default 1 hour for earnings calculation
+        durationMinutes: 60, 
         status: 'completed',
         notes: notes
       });

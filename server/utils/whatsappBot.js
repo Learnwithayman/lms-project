@@ -9,9 +9,10 @@ let isConnecting = false;
 
 // Path routing for local vs Render production disks
 const isLocal = process.env.NODE_ENV !== 'production';
+// 🧹 WE CHANGED THE FOLDER NAME TO _v2 TO FORCE A FRESH QR CODE!
 const authFolder = isLocal 
-    ? path.join(__dirname, '..', 'baileys_auth') 
-    : (fs.existsSync('/baileys_auth') ? '/baileys_auth' : path.join(__dirname, '..', 'baileys_auth'));
+    ? path.join(__dirname, '..', 'baileys_auth_v2') 
+    : (fs.existsSync('/baileys_auth_v2') ? '/baileys_auth_v2' : path.join(__dirname, '..', 'baileys_auth_v2'));
 
 async function connectToWhatsApp() {
     if (isConnecting) return;

@@ -9,13 +9,12 @@ const classSessionSchema = mongoose.Schema({
   student: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'User',
-    required: true,
+    required: false, // 🔓 STRICT RULE REMOVED! Google classes will now save flawlessly.
   },
   subject: {
     type: String,
     required: true
   },
-  // The new field for Zoom links
   meetingLink: {
     type: String,
     default: '',
