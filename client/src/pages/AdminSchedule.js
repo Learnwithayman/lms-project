@@ -3,6 +3,9 @@ import axios from 'axios';
 import { useNavigate } from 'react-router-dom';
 import '../App.css';
 
+// 🌐 LIVE PRODUCTION URL CONFIGURATION 
+const API_URL = process.env.REACT_APP_API_URL || 'https://lms-backend-02zs.onrender.com';
+
 function AdminSchedule() {
   const [classes, setClasses] = useState([]);
   
@@ -21,7 +24,7 @@ function AdminSchedule() {
     try {
       const token = localStorage.getItem('token');
       const config = { headers: { Authorization: `Bearer ${token}` } };
-      const res = await axios.get('https://lms-backend-02zs.onrender.com/api/schedule/all', config);
+      const res = await axios.get(`${API_URL}/api/schedule/all`, config);
       setClasses(res.data);
     } catch (error) {
       console.error(error);
@@ -32,7 +35,7 @@ function AdminSchedule() {
   // 1. Open the Modal
   const openRescheduleModal = (cls) => {
     setSelectedClass(cls);
-    setNewTime(''); // Reset the input
+    setNewTime(''); 
     setIsModalOpen(true);
   };
 
@@ -46,13 +49,13 @@ function AdminSchedule() {
       
       const formattedDate = new Date(newTime).toISOString();
 
-      await axios.put(`https://lms-backend-02zs.onrender.com/api/schedule/${selectedClass._id}`, {
+      await axios.put(`${API_URL}/api/schedule/${selectedClass._id}`, {
         newStartTime: formattedDate
       }, config);
 
       alert('Class Rescheduled Successfully! 📅');
-      setIsModalOpen(false); // Close Modal
-      fetchClasses();        // Refresh List
+      setIsModalOpen(false); 
+      fetchClasses();        
     } catch (error) {
       alert('Failed to reschedule.');
       console.error(error);
@@ -64,7 +67,7 @@ function AdminSchedule() {
     try {
       const token = localStorage.getItem('token');
       const config = { headers: { Authorization: `Bearer ${token}` } };
-      await axios.delete(`https://lms-backend-02zs.onrender.com/api/schedule/${id}`, config);
+      await axios.delete(`${API_URL}/api/schedule/${id}`, config);
       setClasses(classes.filter(c => c._id !== id));
     } catch (error) {
       alert('Error deleting class');
@@ -76,59 +79,62 @@ function AdminSchedule() {
       <button onClick={() => navigate('/admin')} className="btn-grey" style={{ marginBottom: '20px' }}>⬅ Back</button>
       <h1>📅 Manage All Classes</h1>
       
-      <table>
-        <thead>
-          <tr>
-            <th>Subject</th>
-            <th>Teacher</th>
-            <th>Student</th>
-            <th>Time</th>
-            <th>Actions</th>
-          </tr>
-        </thead>
-        <tbody>
-          {classes.map((cls) => (
-            <tr key={cls._id}>
-              <td>{cls.subject}</td>
-              <td>{cls.teacher ? cls.teacher.name : 'Unknown'}</td>
-              <td>{cls.student ? cls.student.name : 'Unknown'}</td>
-              <td>{new Date(cls.startTime).toLocaleString()}</td>
-              <td style={{ display: 'flex', gap: '10px' }}>
-                <button 
-                  onClick={() => openRescheduleModal(cls)} 
-                  className="btn-blue"
-                  style={{ padding: '5px 10px', fontSize: '12px' }}
-                >
-                  🕒 Reschedule
-                </button>
-                <button 
-                  onClick={() => handleDelete(cls._id)} 
-                  className="role-admin"
-                  style={{ padding: '5px 10px', fontSize: '12px', border:'none' }}
-                >
-                  Delete
-                </button>
-              </td>
+      <div style={{ overflowX: 'auto' }}>
+        <table>
+          <thead>
+            <tr>
+              <th>Subject</th>
+              <th>Teacher</th>
+              <th>Student</th>
+              <th>Time</th>
+              <th>Actions</th>
             </tr>
-          ))}
-        </tbody>
-      </table>
+          </thead>
+          <tbody>
+            {classes.map((cls) => (
+              <tr key={cls._id}>
+                <td>{cls.subject}</td>
+                <td>{cls.teacher ? cls.teacher.name : 'Unknown'}</td>
+                <td>{cls.student ? cls.student.name : 'Unknown'}</td>
+                <td>{new Date(cls.startTime).toLocaleString()}</td>
+                <td style={{ display: 'flex', gap: '10px' }}>
+                  <button 
+                    onClick={() => openRescheduleModal(cls)} 
+                    className="btn-blue"
+                    style={{ padding: '5px 10px', fontSize: '12px' }}
+                  >
+                    🕒 Reschedule
+                  </button>
+                  <button 
+                    onClick={() => handleDelete(cls._id)} 
+                    className="role-admin"
+                    style={{ padding: '5px 10px', fontSize: '12px', border:'none' }}
+                  >
+                    Delete
+                  </button>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
 
       {/* --- THE POP-UP WINDOW (MODAL) --- */}
       {isModalOpen && (
         <div className="modal-overlay">
-          <div className="modal-content">
+          <div className="modal-content" style={{ color: 'black' }}>
             <h2>🕒 Reschedule Class</h2>
             <p>For: <strong>{selectedClass?.subject}</strong></p>
             
-            <label style={{ textAlign: 'left', display: 'block', marginBottom: '5px' }}>New Date & Time:</label>
+            <label style={{ textAlign: 'left', display: 'block', marginBottom: '5px', fontWeight: 'bold' }}>New Date & Time:</label>
             <input 
               type="datetime-local" 
               value={newTime} 
               onChange={(e) => setNewTime(e.target.value)} 
+              style={{ width: '100%', padding: '10px', marginBottom: '20px', boxSizing: 'border-box' }}
             />
 
-            <div className="modal-actions">
+            <div className="modal-actions" style={{ display: 'flex', gap: '10px' }}>
               <button 
                 onClick={() => setIsModalOpen(false)} 
                 className="btn-grey" 

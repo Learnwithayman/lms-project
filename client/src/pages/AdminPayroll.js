@@ -3,8 +3,12 @@ import axios from 'axios';
 import { useNavigate } from 'react-router-dom';
 import '../App.css';
 
+// 🌐 LIVE PRODUCTION URL CONFIGURATION 
+const API_URL = process.env.REACT_APP_API_URL || 'https://lms-backend-02zs.onrender.com';
+
 function AdminPayroll() {
   const [payrollData, setPayrollData] = useState([]);
+  const [isLoading, setIsLoading] = useState(true); // <-- Added Loading State
   const [user, setUser] = useState({});
   const navigate = useNavigate();
 
@@ -22,7 +26,6 @@ function AdminPayroll() {
     if (!token) return navigate('/');
     
     const parsedUser = JSON.parse(userData);
-    // Security check: Kick out anyone who isn't the admin!
     if (parsedUser?.role?.toLowerCase() !== 'admin') {
       return navigate('/dashboard');
     }
@@ -32,12 +35,17 @@ function AdminPayroll() {
   }, [navigate]);
 
   const fetchPayroll = async (token) => {
+    setIsLoading(true);
     try {
       const config = { headers: { Authorization: `Bearer ${token}` } };
-      const res = await axios.get('https://lms-backend-02zs.onrender.com/api/schedule/payroll-report', config);
+      const res = await axios.get(`${API_URL}/api/schedule/payroll-report`, config);
+      
+      console.log("📊 Payroll Data from Server:", res.data); // <-- Debugging log
       setPayrollData(res.data);
     } catch (error) {
       console.error("Failed to fetch payroll:", error);
+    } finally {
+      setIsLoading(false);
     }
   };
 
@@ -46,18 +54,15 @@ function AdminPayroll() {
       const token = localStorage.getItem('token');
       const config = { headers: { Authorization: `Bearer ${token}` } };
 
-      await axios.post('https://lms-backend-02zs.onrender.com/api/schedule/payroll-adjustment', {
+      await axios.post(`${API_URL}/api/schedule/payroll-adjustment`, {
         teacherId: selectedTeacherId,
         amount: amount, 
         reason: reason
       }, config);
 
-      // Close the popup and clear the form
       setIsModalOpen(false);
       setAmount('');
       setReason('');
-
-      // Refresh the report to instantly show the new math!
       fetchPayroll(token);
 
     } catch (error) {
@@ -70,7 +75,7 @@ function AdminPayroll() {
     <div className="dashboard-container">
       <div className="dashboard-header">
         <h1>💼 Admin Payroll Center</h1>
-        <button onClick={() => navigate('/dashboard')} className="btn-blue" style={{ padding: '8px 15px' }}>
+        <button onClick={() => navigate('/admin')} className="btn-blue" style={{ padding: '8px 15px' }}>
           ⬅ Back to Dashboard
         </button>
       </div>
@@ -78,8 +83,10 @@ function AdminPayroll() {
       <h2>Current Month Overview</h2>
 
       <div style={{ display: 'grid', gap: '20px', marginTop: '20px' }}>
-        {payrollData.length === 0 ? (
-          <p style={{ color: 'grey' }}>No teachers found or data is loading...</p>
+        {isLoading ? (
+          <p style={{ color: '#007bff', fontWeight: 'bold' }}>⏳ Calculating Payroll Data...</p>
+        ) : payrollData.length === 0 ? (
+          <p style={{ color: 'grey', fontStyle: 'italic' }}>No teachers with role 'teacher' found in the database.</p>
         ) : (
           payrollData.map((teacher) => (
             <div key={teacher.teacherId} className="card" style={{ borderLeft: '5px solid #6f42c1', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
@@ -130,7 +137,7 @@ function AdminPayroll() {
               value={amount}
               onChange={(e) => setAmount(e.target.value)}
               placeholder="e.g. 50 or -15"
-              style={{ width: '100%', padding: '10px', margin: '5px 0 15px 0', borderRadius: '4px', border: '1px solid #ccc' }}
+              style={{ width: '100%', padding: '10px', margin: '5px 0 15px 0', borderRadius: '4px', border: '1px solid #ccc', boxSizing: 'border-box' }}
             />
 
             <label style={{ fontWeight: 'bold' }}>Reason:</label>
@@ -139,7 +146,7 @@ function AdminPayroll() {
               value={reason}
               onChange={(e) => setReason(e.target.value)}
               placeholder="e.g. Excellent performance"
-              style={{ width: '100%', padding: '10px', margin: '5px 0 15px 0', borderRadius: '4px', border: '1px solid #ccc' }}
+              style={{ width: '100%', padding: '10px', margin: '5px 0 15px 0', borderRadius: '4px', border: '1px solid #ccc', boxSizing: 'border-box' }}
             />
 
             <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '15px' }}>
@@ -160,7 +167,6 @@ function AdminPayroll() {
           </div>
         </div>
       )}
-
     </div>
   );
 }
