@@ -255,7 +255,7 @@ const getAdminPayrollReport = async (req, res) => {
     const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
     const endOfMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59);
 
-    const teachers = await User.find({ role: { $regex: /^teacher$/i } });
+    const teachers = await User.find({ role: { $regex: /teacher/i } });
 
     const payrollReport = await Promise.all(teachers.map(async (teacher) => {
       const completedClasses = await ClassSession.find({
