@@ -20,7 +20,8 @@ const calendar = google.calendar({ version: 'v3', auth });
 
 // @desc    Schedule a new class
 const scheduleClass = asyncHandler(async (req, res) => {
-  const { teacherId, studentId, subject, startTime, durationMinutes, meetingLink, meetingId, passcode } = req.body;
+  // 🤖 NEW: Added teacherGroupName and studentGroupName to the extraction
+  const { teacherId, studentId, subject, startTime, durationMinutes, meetingLink, meetingId, passcode, teacherGroupName, studentGroupName } = req.body;
 
   if (!teacherId || !studentId || !subject || !startTime || !durationMinutes) {
     res.status(400);
@@ -36,6 +37,8 @@ const scheduleClass = asyncHandler(async (req, res) => {
     passcode: passcode || '',
     startTime,
     durationMinutes,
+    teacherGroupName: teacherGroupName || '', // 🤖 NEW: Saves to DB
+    studentGroupName: studentGroupName || ''  // 🤖 NEW: Saves to DB
   });
 
   const teacher = await User.findById(teacherId);
@@ -43,7 +46,8 @@ const scheduleClass = asyncHandler(async (req, res) => {
   
   if (teacher && teacher.whatsappGroupId) {
     const message = `⚠️ *Schedule Update Alert*\n\nالسلام عليكم / Assalamu Alaikum *${teacher.name}*,\n\nThere has been a change to your schedule regarding your class with *${student.name}*.\n\n📌 *Update Type:* 🔔 New Class Added\n🕒 *Class Time:* ${new Date(startTime).toLocaleString()}\n\nPlease check your Teacher Dashboard for full details. \n*Learn With Ayman Admin Team*`;
-    await whatsappClient.sendLmsNotification(teacher.whatsappGroupId, message);
+    // 🔧 FIXED: Changed to sendMessage to prevent crash
+    await whatsappClient.sendMessage(teacher.whatsappGroupId, message);
   }
 
   res.status(201).json(session);
@@ -75,7 +79,8 @@ const deleteClass = asyncHandler(async (req, res) => {
 
   if (session.teacher && session.teacher.whatsappGroupId) {
     const message = `⚠️ *Schedule Update Alert*\n\nالسلام عليكم / Assalamu Alaikum *${session.teacher.name}*,\n\nThere has been a change to your schedule regarding your class with *${session.student.name}*.\n\n📌 *Update Type:* ❌ Canceled\n\nThis class has been removed from your schedule.\n\nPlease check your Teacher Dashboard for full details. \n*Learn With Ayman Admin Team*`;
-    await whatsappClient.sendLmsNotification(session.teacher.whatsappGroupId, message);
+    // 🔧 FIXED: Changed to sendMessage to prevent crash
+    await whatsappClient.sendMessage(session.teacher.whatsappGroupId, message);
   }
 
   await session.deleteOne();
@@ -108,7 +113,8 @@ const updateClass = asyncHandler(async (req, res) => {
 
   if (session.teacher && session.teacher.whatsappGroupId) {
     const message = `⚠️ *Schedule Update Alert*\n\nالسلام عليكم / Assalamu Alaikum *${session.teacher.name}*,\n\nThere has been a change to your schedule regarding your class with *${session.student.name}*.\n\n📌 *Update Type:* 🔄 Rescheduled\n🕒 *New Class Time:* ${new Date(newStartTime).toLocaleString()}\n\nPlease check your Teacher Dashboard for full details. \n*Learn With Ayman Admin Team*`;
-    await whatsappClient.sendLmsNotification(session.teacher.whatsappGroupId, message);
+    // 🔧 FIXED: Changed to sendMessage to prevent crash
+    await whatsappClient.sendMessage(session.teacher.whatsappGroupId, message);
   }
 
   res.status(200).json(session);
@@ -117,7 +123,8 @@ const updateClass = asyncHandler(async (req, res) => {
 // ✨ BULLETPROOF END CLASS INTERCEPTOR ✨
 const endClass = async (req, res) => {
   try {
-    const { classId, studentName, notes, classroomLink, whatsappGroupId, studentGroupId, durationMinutes } = req.body;
+    // 🤖 NEW: Added group names to extraction
+    const { classId, studentName, notes, classroomLink, whatsappGroupId, studentGroupId, durationMinutes, teacherGroupName, studentGroupName } = req.body;
     const targetGroupId = studentGroupId || whatsappGroupId; 
 
     const teacher = await User.findById(req.user._id);
@@ -128,7 +135,8 @@ const endClass = async (req, res) => {
     // 🛡️ THE WHATSAPP SAFETY NET
     try {
       if (targetGroupId) {
-        await whatsappClient.sendLmsNotification(targetGroupId, messageText);
+        // 🔧 FIXED: Changed to sendMessage
+        await whatsappClient.sendMessage(targetGroupId, messageText);
         console.log(`✅ Post-class notes sent to ${targetGroupId}`);
       }
     } catch (waError) {
@@ -159,7 +167,9 @@ const endClass = async (req, res) => {
         startTime: new Date(),
         durationMinutes: finalDuration, // 🚀 Uses EXACT minutes from Google Calendar
         status: 'completed',
-        notes: notes
+        notes: notes,
+        teacherGroupName: teacherGroupName || '', // 🤖 NEW
+        studentGroupName: studentGroupName || ''  // 🤖 NEW
       });
     }
 
@@ -200,7 +210,8 @@ const markAttendance = async (req, res) => {
       } else if (attendanceStatus === 'Absent') {
         message = `السلام عليكم / Assalamu Alaikum *${session.student.name}*,\n\nWe hope everything is proceeding smoothly on your end and that you are safe and well. 🌿\n\nWe noticed that you haven't joined the meeting today. Since the 15-minute waiting period has passed, the teacher has now closed the meeting room. \n\n⚠️ *Please note: As per our attendance policy, this session is marked as absent and is not eligible for a makeup class.*\n\nWe look forward to seeing you at your next scheduled time, Insha'Allah! \n\nWarm regards,\n*Learn With Ayman Support Team*`;
       }
-      await whatsappClient.sendLmsNotification(targetGroup, message);
+      // 🔧 FIXED: Changed to sendMessage
+      await whatsappClient.sendMessage(targetGroup, message);
     }
 
     res.status(200).json({ message: `Attendance marked as ${attendanceStatus} and message sent!` });

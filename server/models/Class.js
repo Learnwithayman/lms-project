@@ -16,6 +16,16 @@ const classSchema = new mongoose.Schema({
         type: String, 
         required: true 
     },
+
+    // 🤖 NEW FIELDS FOR THE GHOST-BOT: The exact names of the WhatsApp groups
+    teacherGroupName: { 
+        type: String, 
+        required: false // Optional so old classes don't break your database!
+    },
+    studentGroupName: { 
+        type: String, 
+        required: false 
+    },
     
     // References to your separate user collections
     teacherId: { 
