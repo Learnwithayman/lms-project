@@ -117,7 +117,7 @@ const updateClass = asyncHandler(async (req, res) => {
 // ✨ BULLETPROOF END CLASS INTERCEPTOR ✨
 const endClass = async (req, res) => {
   try {
-    const { classId, studentName, notes, classroomLink, whatsappGroupId, studentGroupId } = req.body;
+    const { classId, studentName, notes, classroomLink, whatsappGroupId, studentGroupId, durationMinutes } = req.body;
     const targetGroupId = studentGroupId || whatsappGroupId; 
 
     const teacher = await User.findById(req.user._id);
@@ -146,16 +146,18 @@ const endClass = async (req, res) => {
       }
     } 
     
-    // Google Calendar Class - Saves perfectly now because student is required: false!
+    // Google Calendar Class - Now properly parses the true calendar duration!
     if (!session) {
       const studentUser = await User.findOne({ whatsappGroupId: targetGroupId });
       
+      const finalDuration = durationMinutes ? Number(durationMinutes) : 60; // Falls back to 60 only if math fails
+
       session = await ClassSession.create({
         teacher: req.user._id,
         student: studentUser ? studentUser._id : null, 
         subject: studentName || 'Google Calendar Lesson',
         startTime: new Date(),
-        durationMinutes: 60, 
+        durationMinutes: finalDuration, // 🚀 Uses EXACT minutes from Google Calendar
         status: 'completed',
         notes: notes
       });
@@ -253,7 +255,6 @@ const getAdminPayrollReport = async (req, res) => {
     const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
     const endOfMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59);
 
-    // 🔥 THE FIX: Use Regex to find "teacher", "Teacher", or "TEACHER" regardless of case!
     const teachers = await User.find({ role: { $regex: /^teacher$/i } });
 
     const payrollReport = await Promise.all(teachers.map(async (teacher) => {
@@ -349,21 +350,19 @@ const getTeacherSchedule = async (req, res) => {
 
     let processedClasses = events.map(event => {
       const start = event.start.dateTime || event.start.date;
+      const end = event.end?.dateTime || event.end?.date; // 🚀 GET END TIME
+      
       const description = event.description || "";
       
-      // 🛠️ SMART DETECTOR: Teacher ID
       const teacherMatch = description.match(/(?:teachergroup|teacher id|group id|id)[\s*:-]*([0-9]+@g\.us)/i) || description.match(/TeacherGroup[^\d]*([0-9]+@g\.us)/i);
       const extractedTeacherId = teacherMatch ? teacherMatch[1] : null;
 
-      // 🛠️ SMART DETECTOR: Student ID
       const studentMatch = description.match(/(?:studentgroup|student id|id)[\s*:-]*([0-9]+@g\.us)/i) || description.match(/StudentGroup[^\d]*([0-9]+@g\.us)/i);
       const studentGroupId = studentMatch ? studentMatch[1] : null;
 
-      // 🛠️ SMART DETECTOR: Zoom Link
       const zoomMatch = description.match(/(https:\/\/[^\s<"]*zoom\.us[^\s<"]*)/i);
       const zoomLink = zoomMatch ? zoomMatch[1] : null;
 
-      // 🛠️ SMART DETECTOR: Google Classroom Link
       const classroomMatch = description.match(/(?:classroom|link|classwork)[\s*:-]*(https?:\/\/[^\s<"]+)/i) || description.match(/(https:\/\/classroom\.google\.com[^\s<"]*)/i);
       const classroomLink = classroomMatch ? (classroomMatch[1] || classroomMatch[2]) : null;
 
@@ -371,10 +370,11 @@ const getTeacherSchedule = async (req, res) => {
         id: event.id,
         title: event.summary,
         startTime: new Date(start),
+        endTime: new Date(end), // 🚀 SEND END TIME TO FRONTEND
         teacherGroupId: extractedTeacherId,
         studentGroupId: studentGroupId,
         zoomLink: zoomLink,
-        classroomLink: classroomLink // <--- Sent to frontend!
+        classroomLink: classroomLink 
       };
     });
 

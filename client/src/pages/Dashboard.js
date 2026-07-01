@@ -4,7 +4,7 @@ import { useNavigate } from 'react-router-dom';
 import '../App.css';
 
 // 🌐 LIVE PRODUCTION URL CONFIGURATION 
-const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:5000';
+const API_URL = process.env.REACT_APP_API_URL || 'https://lms-backend-02zs.onrender.com';
 
 function Dashboard() {
   const [classes, setClasses] = useState([]);
@@ -16,7 +16,7 @@ function Dashboard() {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [currentClassId, setCurrentClassId] = useState(null);
   const [notes, setNotes] = useState('');
-  const [classroomChecked, setClassroomChecked] = useState(false); // <--- NEW CHECKBOX STATE
+  const [classroomChecked, setClassroomChecked] = useState(false);
 
   useEffect(() => {
     const token = localStorage.getItem('token');
@@ -72,14 +72,25 @@ function Dashboard() {
 
       const targetClass = classes.find(c => (c.id === currentClassId || c._id === currentClassId));
 
+      // ⏱️ DYNAMIC DURATION MATH: Calculate the exact minutes from the Calendar!
+      let dynamicDuration = 60; 
+      if (targetClass?.startTime && targetClass?.endTime) {
+        const start = new Date(targetClass.startTime).getTime();
+        const end = new Date(targetClass.endTime).getTime();
+        dynamicDuration = Math.round((end - start) / 60000); 
+      } else if (targetClass?.durationMinutes) {
+        dynamicDuration = targetClass.durationMinutes; 
+      }
+
       await axios.put(`${API_URL}/api/schedule/end`, {
         classId: currentClassId,
         notes: notes,
-        classroomLink: targetClass?.classroomLink, // Sends the specific link to the bot
+        classroomLink: targetClass?.classroomLink, 
         studentGroupId: targetClass?.studentGroupId,
         whatsappGroupId: targetClass?.teacherGroupId, 
         studentName: targetClass?.title,
-        startTime: targetClass?.startTime
+        startTime: targetClass?.startTime,
+        durationMinutes: dynamicDuration // 🚀 SEND THE EXACT MINUTES TO THE SERVER
       }, config);
 
       setIsModalOpen(false);
@@ -131,7 +142,6 @@ function Dashboard() {
     return now >= fifteenMinsBefore && now <= ninetyMinsAfter;
   };
 
-  // Find the currently selected class for the modal UI
   const selectedClass = classes.find(c => (c.id === currentClassId || c._id === currentClassId));
 
   return (
@@ -245,7 +255,6 @@ function Dashboard() {
         )}
       </div>
 
-      {/* THE NEW, BEAUTIFUL END CLASS POPUP MODAL */}
       {isModalOpen && (
         <div style={{
           position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
@@ -263,7 +272,6 @@ function Dashboard() {
               style={{ width: '100%', height: '80px', margin: '10px 0', padding: '10px', boxSizing: 'border-box' }}
             />
 
-            {/* THE NEW GOOGLE CLASSROOM SECTION */}
             <div style={{ marginTop: '20px', padding: '15px', background: '#f8f9fa', borderRadius: '8px', border: '1px solid #ddd' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
                 <span style={{ fontWeight: 'bold', color: '#333' }}>Step 2: Assign Homework</span>
@@ -308,7 +316,6 @@ function Dashboard() {
           </div>
         </div>
       )}
-
     </div>
   );
 }
