@@ -1,102 +1,44 @@
-const { makeWASocket, useMultiFileAuthState, DisconnectReason } = require('@whiskeysockets/baileys');
-const qrcode = require('qrcode-terminal');
-const pino = require('pino');
-const path = require('path');
-const fs = require('fs'); // 📂 Added to cleanly auto-detect your persistent cloud disk
+const axios = require('axios');
 
-let whatsappSocket = null; 
-let isConnecting = false;
+// The MacroDroid custom webhook link we built together
+const MACRODROID_URL = 'https://trigger.macrodroid.com/d46f0039-8cc1-4836-b82b-5461a745d0d5/send_msg';
 
-// Path routing for local vs Render production disks
-const isLocal = process.env.NODE_ENV !== 'production';
-// 🧹 WE CHANGED THE FOLDER NAME TO _v2 TO FORCE A FRESH QR CODE!
-const authFolder = isLocal 
-    ? path.join(__dirname, '..', 'baileys_auth_v2') 
-    : (fs.existsSync('/baileys_auth_v2') ? '/baileys_auth_v2' : path.join(__dirname, '..', 'baileys_auth_v2'));
-
-async function connectToWhatsApp() {
-    if (isConnecting) return;
-    isConnecting = true;
-
+/**
+ * Sends a WhatsApp message by physically taking over the connected Android phone screen.
+ * @param {string} remoteJid - The recipient's phone number (e.g., "201012345678@s.whatsapp.net" or just raw string)
+ * @param {string} text - The message body to send
+ */
+const sendMessage = async (remoteJid, text) => {
     try {
-        const { state, saveCreds } = await useMultiFileAuthState(authFolder);
+        // 1. Clean the phone number (extract numbers only, drop @s.whatsapp.net if present)
+        const cleanPhone = remoteJid.replace(/[^0-9]/g, '');
+        
+        console.log(`📱 Routing message through phone to: ${cleanPhone}`);
 
-        const sock = makeWASocket({
-            auth: state,
-            printQRInTerminal: false,
-            logger: pino({ level: 'error' }), 
-            browser: ['LMS Bot', 'Chrome', '1.0.0']
-        });
-
-        whatsappSocket = sock; 
-
-        sock.ev.on('connection.update', (update) => {
-            const { connection, lastDisconnect, qr } = update;
-            
-            // ✨ THE RENDER CLOUD INTERCEPTOR ✨
-            if (qr) {
-                console.log('\n==================================================================');
-                console.log('🤖 WHATSAPP INSTANT SYNC ENGINE ACTIVE');
-                console.log('🔗 CLICK THE LIVE URL BELOW TO VIEW AND SCAN YOUR REFRESHED QR CODE:');
-                console.log(`👉 https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=${encodeURIComponent(qr)} 👈`);
-                console.log('==================================================================\n');
-                
-                // Fallback text render for local computer setups
-                qrcode.generate(qr, { small: true });
-            }
-            
-            if (connection === 'close') {
-                isConnecting = false; 
-                
-                const statusCode = lastDisconnect?.error?.output?.statusCode || 'Unknown';
-                const shouldReconnect = statusCode !== DisconnectReason.loggedOut;
-                
-                if (shouldReconnect) {
-                    console.log(`⚠️ Bot disconnected. Error Code: ${statusCode}. Reconnecting in 3 seconds...`);
-                    setTimeout(connectToWhatsApp, 3000); 
-                } else {
-                    console.log('❌ Bot was logged out manually. You need to scan the QR code again.');
-                }
-            } else if (connection === 'open') {
-                console.log('✅ WhatsApp Bot is fully connected and ready to send messages!');
+        // 2. Fire the webhook to MacroDroid passing parameters in the URL query strings
+        const response = await axios.get(MACRODROID_URL, {
+            params: {
+                phone: cleanPhone,
+                message: text
             }
         });
 
-        sock.ev.on('creds.update', saveCreds);
-
-        sock.ev.on('messages.upsert', async (m) => {
-            const msg = m.messages[0];
-            if (!msg.message || !msg.key.remoteJid) return;
-            const text = msg.message.conversation || msg.message.extendedTextMessage?.text;
-            const remoteJid = msg.key.remoteJid;
-
-            if (text === '!id') {
-                if (remoteJid.endsWith('@g.us')) {
-                    await sock.sendMessage(remoteJid, { text: `Here is your Group ID:\n${remoteJid}` }, { quoted: msg });
-                }
-            }
-        });
-
-    } catch (error) {
-        console.error('❌ Fatal Bot Error:', error);
-        isConnecting = false;
-    }
-}
-
-async function sendLmsNotification(groupId, messageText) {
-    if (!whatsappSocket) {
-        console.error('❌ Cannot send message: WhatsApp bot is not initialized yet.');
-        return false;
-    }
-    try {
-        await whatsappSocket.sendMessage(groupId, { text: messageText });
+        console.log(`🚀 Phone trigger response:`, response.data);
         return true;
     } catch (error) {
-        console.error('❌ Failed to send WhatsApp notification:', error);
+        console.error('❌ Failed to trigger physical phone automation:', error.message);
         return false;
     }
-}
+};
 
-connectToWhatsApp();
+// Exporting a fake client object to match your existing code structure 
+// so you don't have to rewrite any other files in your system!
+const client = {
+    sendMessage: async (jid, payload) => {
+        // If your system passes an object like { text: "hello" }, unwrap it
+        const msgText = typeof payload === 'object' ? payload.text : payload;
+        return await sendMessage(jid, msgText);
+    }
+};
 
-module.exports = { sendLmsNotification };
+module.exports = { client, sendMessage };
