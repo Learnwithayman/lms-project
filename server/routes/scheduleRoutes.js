@@ -38,4 +38,26 @@ router.post('/attendance', protect, markAttendance);
 router.put('/:id', protect, updateClass);
 router.delete('/:id', protect, deleteClass);
 
+// 💰 FORCE RUN MONTHLY PAYROLL (Manual Trigger from Admin Dashboard Button)
+router.post('/force-payroll', protect, async (req, res) => {
+    try {
+        console.log('🔥 Admin clicked Force Run Payroll!');
+        
+        // This imports the payroll action script directly from your utility folder
+        const { calculateAndSendPayroll } = require('../utils/payrollCron'); 
+        
+        if (calculateAndSendPayroll) {
+            await calculateAndSendPayroll();
+            res.status(200).json({ message: 'Payroll sequence initiated successfully!' });
+        } else {
+            console.log('⚠️ Payroll calculation handler function not found inside payrollCron.js');
+            res.status(200).json({ message: 'Route connected, but execution function missing.' });
+        }
+
+    } catch (error) {
+        console.error('❌ Error triggering manual payroll:', error);
+        res.status(500).json({ message: 'Server error while forcing payroll process.' });
+    }
+});
+
 module.exports = router;
