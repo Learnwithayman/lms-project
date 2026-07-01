@@ -253,7 +253,8 @@ const getAdminPayrollReport = async (req, res) => {
     const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
     const endOfMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59);
 
-    const teachers = await User.find({ role: 'teacher' });
+    // 🔥 THE FIX: Use Regex to find "teacher", "Teacher", or "TEACHER" regardless of case!
+    const teachers = await User.find({ role: { $regex: /^teacher$/i } });
 
     const payrollReport = await Promise.all(teachers.map(async (teacher) => {
       const completedClasses = await ClassSession.find({
@@ -263,7 +264,7 @@ const getAdminPayrollReport = async (req, res) => {
       });
 
       const totalMinutes = completedClasses.reduce((sum, cls) => sum + (cls.durationMinutes || 0), 0);
-      const hourlyRate = teacher.hourlyRate || 3.0;
+      const hourlyRate = teacher.hourlyRate || 3.0; // Default rate fallback
       const totalHours = totalMinutes / 60;
       const baseEarnings = totalHours * hourlyRate;
 
@@ -287,8 +288,10 @@ const getAdminPayrollReport = async (req, res) => {
         finalEarnings: (baseEarnings + adjustmentsTotal).toFixed(2)
       };
     }));
+    
     res.status(200).json(payrollReport);
   } catch (error) {
+    console.error('Server error generating payroll report:', error);
     res.status(500).json({ message: 'Server error generating payroll report.' });
   }
 };
