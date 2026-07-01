@@ -15,7 +15,7 @@ const {
     getTeacherSchedule // Our calendar engine
 } = require('../controllers/scheduleController');
 
-// Import your authentication middleware (adjust path or name if it's different in your project)
+// Import your authentication middleware
 const { protect } = require('../middleware/authMiddleware');
 
 // 🚨 THE FIXED ROUTE 🚨
@@ -27,8 +27,11 @@ router.post('/', protect, scheduleClass);
 router.get('/my-classes', protect, getMyClasses);
 router.get('/all', protect, getAllClasses);
 router.get('/earnings', protect, getTeacherEarnings);
-router.get('/admin-payroll', protect, getAdminPayrollReport);
-router.post('/adjustment', protect, addTeacherAdjustment);
+
+// 🚪 THE FIXED DOORS: Renamed to match the frontend exactly!
+router.get('/payroll-report', protect, getAdminPayrollReport);
+router.post('/payroll-adjustment', protect, addTeacherAdjustment);
+
 router.get('/completed', protect, getCompletedClasses);
 router.put('/end', protect, endClass);
 router.post('/attendance', protect, markAttendance);
