@@ -12,6 +12,10 @@ connectDB();
 require('./utils/whatsappBot');
 require('./utils/cronJobs'); // Turns on the automated time-based WhatsApp alerts
 
+// 💰 Turn on the new Monthly Payroll Robotic Accountant
+const { startPayrollCron } = require('./utils/payrollCron');
+startPayrollCron(); 
+
 const app = express();
 
 // Middleware Configuration
