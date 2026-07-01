@@ -18,8 +18,27 @@ startPayrollCron();
 
 const app = express();
 
-// Middleware Configuration
-app.use(cors()); // Allows your live frontend web app to talk to this server smoothly
+// Middleware Configuration — Robust CORS Configuration
+const allowedOrigins = [
+  'https://lms.learnwithayman.com',
+  'http://localhost:3000' // Keeps it working for local tests too!
+];
+
+app.use(cors({
+  origin: function (origin, callback) {
+    // Allow requests with no origin (like mobile apps or curl requests)
+    if (!origin) return callback(null, true);
+    if (allowedOrigins.indexOf(origin) === -1) {
+      const msg = 'The CORS policy for this site does not allow access from the specified Origin.';
+      return callback(new Error(msg), false);
+    }
+    return callback(null, true);
+  },
+  credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization']
+}));
+
 app.use(express.json());
 app.use(express.urlencoded({ extended: false }));
 
