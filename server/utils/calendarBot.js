@@ -64,4 +64,4 @@ async function getUpcomingClasses() {
   }
 }
 
-module.exports = { getUpcomingClasses };
+module.exports = { getUpcomingClasses };git add .
