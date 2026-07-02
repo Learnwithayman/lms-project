@@ -38,12 +38,27 @@ async function getUpcomingClasses() {
       const start = event.start.dateTime || event.start.date;
       const description = event.description || "";
       
+      // ==========================================
+      // 1. EXTRACT IDs (Keeps your schedule working!)
+      // ==========================================
       const teacherMatch = description.match(/TeacherGroup[^\d]*([0-9]+@g\.us)/i);
       const teacherGroupId = teacherMatch ? teacherMatch[1] : null;
 
       const studentMatch = description.match(/StudentGroup[^\d]*([0-9]+@g\.us)/i);
       const studentGroupId = studentMatch ? studentMatch[1] : null;
 
+      // ==========================================
+      // 2. EXTRACT NAMES (For the MacroDroid Bot!)
+      // ==========================================
+      const teacherNameMatch = description.match(/TeacherGroupName[\s*:-]*([^\n<]+)/i);
+      const teacherGroupName = teacherNameMatch ? teacherNameMatch[1].trim() : null;
+
+      const studentNameMatch = description.match(/StudentGroupName[\s*:-]*([^\n<]+)/i);
+      const studentGroupName = studentNameMatch ? studentNameMatch[1].trim() : null;
+
+      // ==========================================
+      // 3. EXTRACT ZOOM LINK
+      // ==========================================
       const zoomMatch = description.match(/(https:\/\/[^\s<"]*zoom\.us[^\s<"]*)/i);
       const zoomLink = zoomMatch ? zoomMatch[1] : null;
 
@@ -52,6 +67,8 @@ async function getUpcomingClasses() {
         startTime: new Date(start),
         teacherGroupId: teacherGroupId,
         studentGroupId: studentGroupId,
+        teacherGroupName: teacherGroupName,
+        studentGroupName: studentGroupName,
         zoomLink: zoomLink
       };
     });
@@ -64,4 +81,4 @@ async function getUpcomingClasses() {
   }
 }
 
-module.exports = { getUpcomingClasses };git add .
+module.exports = { getUpcomingClasses };
