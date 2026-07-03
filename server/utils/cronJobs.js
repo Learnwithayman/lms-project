@@ -17,9 +17,15 @@ cron.schedule('* * * * *', async () => {
       const minutesUntilStart = Math.round(timeDifferenceMs / (1000 * 60));
       const timeString = new Date(cls.startTime).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', timeZone: "Africa/Cairo" });
 
-      // 🤖 GHOST-BOT UPGRADE: Prioritize Name, fallback to ID
-      const targetTeacher = cls.teacherGroupName || cls.teacherGroupId;
-      const targetStudent = cls.studentGroupName || cls.studentGroupId;
+      // ✨ THE SMART FALLBACK ENGINE ✨
+      // 1. Use the explicitly provided group name if it exists and isn't blank.
+      // 2. If it's missing, use the Calendar Event Title as the search term!
+      let teacherSearchTerm = (cls.teacherGroupName && cls.teacherGroupName.trim() !== '') ? cls.teacherGroupName : cls.title;
+      let studentSearchTerm = (cls.studentGroupName && cls.studentGroupName.trim() !== '') ? cls.studentGroupName : cls.title;
+
+      // 🚨 SAFETY CATCH: If the fallback somehow grabbed an old ID, stop it from breaking the phone!
+      if (teacherSearchTerm && teacherSearchTerm.includes('@g.us')) teacherSearchTerm = cls.title;
+      if (studentSearchTerm && studentSearchTerm.includes('@g.us')) studentSearchTerm = cls.title;
 
       // ==========================================
       // 1-HOUR REMINDERS
@@ -27,17 +33,17 @@ cron.schedule('* * * * *', async () => {
       if (minutesUntilStart === 60) {
         
         // 1. Message for the TEACHER & SUPPORT TEAM
-        if (targetTeacher) {
+        if (teacherSearchTerm) {
           const teacherMessage = `🔔 *Teacher Reminder*\n\nالسلام عليكم / Assalamu Alaikum,\n\nYour class *${cls.title}* is starting in exactly *1 Hour*.\n\n🕒 *Time:* ${timeString}\n\n🔗 *Class Link:*\n${cls.zoomLink || 'No link provided'}\n\n*Learn With Ayman Admin Team*`;
-          await sendMessage(targetTeacher, teacherMessage); 
-          console.log(`✅ Sent 1-hour Teacher reminder for ${cls.title}`);
+          await sendMessage(teacherSearchTerm, teacherMessage); 
+          console.log(`✅ Sent 1-hour Teacher reminder to search term: ${teacherSearchTerm}`);
         }
 
         // 2. Message for the STUDENT & PARENT
-        if (targetStudent) {
+        if (studentSearchTerm) {
           const studentMessage = `🔔 *Class Reminder*\n\nالسلام عليكم / Assalamu Alaikum,\n\nGet ready! Your class *${cls.title}* is starting in exactly *1 Hour*.\n\n🔗 *Join Here:*\n${cls.zoomLink || 'No link provided'}\n\n*Learn With Ayman Admin Team*`;
-          await sendMessage(targetStudent, studentMessage); 
-          console.log(`✅ Sent 1-hour Student reminder for ${cls.title}`);
+          await sendMessage(studentSearchTerm, studentMessage); 
+          console.log(`✅ Sent 1-hour Student reminder to search term: ${studentSearchTerm}`);
         }
       }
 
@@ -45,10 +51,10 @@ cron.schedule('* * * * *', async () => {
       // 2-MINUTE LATE ALERTS (TEACHER ONLY)
       // ==========================================
       if (minutesUntilStart === -2) {
-        if (targetTeacher) {
+        if (teacherSearchTerm) {
           const lateMessage = `🚨 *Action Required: Class Started*\n\nالسلام عليكم / Assalamu Alaikum,\n\nYour class *${cls.title}* was scheduled to begin at *${timeString}*.\n\nPlease jump into the room immediately so the student is not left waiting. If you have an emergency, please notify the admin team!\n\n🔗 *Join Class Here:*\n${cls.zoomLink || 'No link provided'}\n\n*Learn With Ayman Admin Team*`;
-          await sendMessage(targetTeacher, lateMessage); 
-          console.log(`🚨 Sent 2-minute late alert to Teacher for ${cls.title}`);
+          await sendMessage(teacherSearchTerm, lateMessage); 
+          console.log(`🚨 Sent 2-minute late alert to search term: ${teacherSearchTerm}`);
         }
       }
       
