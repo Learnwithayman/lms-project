@@ -5,20 +5,25 @@ const MACRODROID_URL = 'https://trigger.macrodroid.com/d46f0039-8cc1-4836-b82b-5
 
 /**
  * Sends a WhatsApp message by physically taking over the connected Android phone screen.
- * @param {string} remoteJid - The recipient's phone number (e.g., "201012345678@s.whatsapp.net" or just raw string)
+ * @param {string} remoteJid - The recipient's phone number OR Group Name
  * @param {string} text - The message body to send
  */
 const sendMessage = async (remoteJid, text) => {
     try {
-        // 1. Clean the phone number (extract numbers only, drop @s.whatsapp.net if present)
-        const cleanPhone = remoteJid.replace(/[^0-9]/g, '');
+        if (!remoteJid) {
+            console.log(`⚠️ Aborted: No name or number provided to MacroDroid.`);
+            return false;
+        }
+
+        // 1. Clean the target (Removes backend tags like @g.us, but KEEPS all English letters and names!)
+        const cleanTarget = remoteJid.replace(/@s\.whatsapp\.net/gi, '').replace(/@g\.us/gi, '').trim();
         
-        console.log(`📱 Routing message through phone to: ${cleanPhone}`);
+        console.log(`📱 Routing message through phone to: ${cleanTarget}`);
 
         // 2. Fire the webhook to MacroDroid passing parameters in the URL query strings
         const response = await axios.get(MACRODROID_URL, {
             params: {
-                phone: cleanPhone,
+                phone: cleanTarget,
                 message: text
             }
         });
