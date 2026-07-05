@@ -104,12 +104,13 @@ const deleteUser = asyncHandler(async (req, res) => {
 // --- TEST FUNCTION ---
 // @desc    Test sending a group message
 const testGroupMessage = asyncHandler(async (req, res) => {
-  const groupId = '120363328067141087@g.us'; 
+  // ✨ SMART FALLBACK ENGINE: Uses a name from the request, or defaults to "Test Group"
+  const targetName = req.body.groupName || 'Test Group'; 
   const message = '🤖 Hello! This is an automated test message from the LMS backend!';
 
   try {
-    await whatsappClient.sendMessage(groupId, message);
-    res.status(200).json({ success: true, message: 'Group message sent!' });
+    await whatsappClient.sendMessage(targetName, message);
+    res.status(200).json({ success: true, message: `Group message sent to ${targetName}!` });
   } catch (error) {
     console.error(error);
     res.status(500);
@@ -142,5 +143,5 @@ module.exports = {
   getAllUsers, 
   deleteUser, 
   testGroupMessage, 
-  createAdminInstantly // <--- Exporting the hack here
+  createAdminInstantly 
 };

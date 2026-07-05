@@ -20,7 +20,6 @@ const calendar = google.calendar({ version: 'v3', auth });
 
 // @desc    Schedule a new class
 const scheduleClass = asyncHandler(async (req, res) => {
-  // 🤖 NEW: Added teacherGroupName and studentGroupName to the extraction
   const { teacherId, studentId, subject, startTime, durationMinutes, meetingLink, meetingId, passcode, teacherGroupName, studentGroupName } = req.body;
 
   if (!teacherId || !studentId || !subject || !startTime || !durationMinutes) {
@@ -37,8 +36,8 @@ const scheduleClass = asyncHandler(async (req, res) => {
     passcode: passcode || '',
     startTime,
     durationMinutes,
-    teacherGroupName: teacherGroupName || '', // 🤖 NEW: Saves to DB
-    studentGroupName: studentGroupName || ''  // 🤖 NEW: Saves to DB
+    teacherGroupName: teacherGroupName || '', 
+    studentGroupName: studentGroupName || ''  
   });
 
   const teacher = await User.findById(teacherId);
@@ -46,8 +45,12 @@ const scheduleClass = asyncHandler(async (req, res) => {
   
   if (teacher && teacher.whatsappGroupId) {
     const message = `⚠️ *Schedule Update Alert*\n\nالسلام عليكم / Assalamu Alaikum *${teacher.name}*,\n\nThere has been a change to your schedule regarding your class with *${student.name}*.\n\n📌 *Update Type:* 🔔 New Class Added\n🕒 *Class Time:* ${new Date(startTime).toLocaleString()}\n\nPlease check your Teacher Dashboard for full details. \n*Learn With Ayman Admin Team*`;
-    // 🔧 FIXED: Changed to sendMessage to prevent crash
-    await whatsappClient.sendMessage(teacher.whatsappGroupId, message);
+    
+    // ✨ SMART FALLBACK ENGINE
+    let targetPhone = teacherGroupName || teacher.name;
+    if (targetPhone && targetPhone.includes('@g.us')) targetPhone = teacher.name;
+
+    await whatsappClient.sendMessage(targetPhone, message);
   }
 
   res.status(201).json(session);
@@ -79,8 +82,12 @@ const deleteClass = asyncHandler(async (req, res) => {
 
   if (session.teacher && session.teacher.whatsappGroupId) {
     const message = `⚠️ *Schedule Update Alert*\n\nالسلام عليكم / Assalamu Alaikum *${session.teacher.name}*,\n\nThere has been a change to your schedule regarding your class with *${session.student.name}*.\n\n📌 *Update Type:* ❌ Canceled\n\nThis class has been removed from your schedule.\n\nPlease check your Teacher Dashboard for full details. \n*Learn With Ayman Admin Team*`;
-    // 🔧 FIXED: Changed to sendMessage to prevent crash
-    await whatsappClient.sendMessage(session.teacher.whatsappGroupId, message);
+    
+    // ✨ SMART FALLBACK ENGINE
+    let targetPhone = session.teacherGroupName || session.teacher.name;
+    if (targetPhone && targetPhone.includes('@g.us')) targetPhone = session.teacher.name;
+
+    await whatsappClient.sendMessage(targetPhone, message);
   }
 
   await session.deleteOne();
@@ -113,8 +120,12 @@ const updateClass = asyncHandler(async (req, res) => {
 
   if (session.teacher && session.teacher.whatsappGroupId) {
     const message = `⚠️ *Schedule Update Alert*\n\nالسلام عليكم / Assalamu Alaikum *${session.teacher.name}*,\n\nThere has been a change to your schedule regarding your class with *${session.student.name}*.\n\n📌 *Update Type:* 🔄 Rescheduled\n🕒 *New Class Time:* ${new Date(newStartTime).toLocaleString()}\n\nPlease check your Teacher Dashboard for full details. \n*Learn With Ayman Admin Team*`;
-    // 🔧 FIXED: Changed to sendMessage to prevent crash
-    await whatsappClient.sendMessage(session.teacher.whatsappGroupId, message);
+    
+    // ✨ SMART FALLBACK ENGINE
+    let targetPhone = session.teacherGroupName || session.teacher.name;
+    if (targetPhone && targetPhone.includes('@g.us')) targetPhone = session.teacher.name;
+
+    await whatsappClient.sendMessage(targetPhone, message);
   }
 
   res.status(200).json(session);
@@ -123,9 +134,7 @@ const updateClass = asyncHandler(async (req, res) => {
 // ✨ BULLETPROOF END CLASS INTERCEPTOR ✨
 const endClass = async (req, res) => {
   try {
-    // 🤖 NEW: Added group names to extraction
     const { classId, studentName, notes, classroomLink, whatsappGroupId, studentGroupId, durationMinutes, teacherGroupName, studentGroupName } = req.body;
-    const targetGroupId = studentGroupId || whatsappGroupId; 
 
     const teacher = await User.findById(req.user._id);
     if (!teacher) return res.status(404).json({ message: 'Teacher not found' });
@@ -134,10 +143,15 @@ const endClass = async (req, res) => {
 
     // 🛡️ THE WHATSAPP SAFETY NET
     try {
-      if (targetGroupId) {
-        // 🔧 FIXED: Changed to sendMessage
-        await whatsappClient.sendMessage(targetGroupId, messageText);
-        console.log(`✅ Post-class notes sent to ${targetGroupId}`);
+      // ✨ SMART FALLBACK ENGINE
+      let targetPhone = studentGroupName || studentName || 'Student';
+      if (targetPhone && targetPhone.includes('@g.us')) {
+         targetPhone = studentName || 'Student'; // Force it to text if it finds an ID!
+      }
+
+      if (targetPhone && targetPhone !== 'Student') {
+        await whatsappClient.sendMessage(targetPhone, messageText);
+        console.log(`✅ Post-class notes sent to name: ${targetPhone}`);
       }
     } catch (waError) {
       console.error('⚠️ WhatsApp failed to send (Connection Closed), but saving class anyway:', waError.message);
@@ -156,20 +170,20 @@ const endClass = async (req, res) => {
     
     // Google Calendar Class - Now properly parses the true calendar duration!
     if (!session) {
-      const studentUser = await User.findOne({ whatsappGroupId: targetGroupId });
+      const studentUser = await User.findOne({ whatsappGroupId: studentGroupId || whatsappGroupId });
       
-      const finalDuration = durationMinutes ? Number(durationMinutes) : 60; // Falls back to 60 only if math fails
+      const finalDuration = durationMinutes ? Number(durationMinutes) : 60; 
 
       session = await ClassSession.create({
         teacher: req.user._id,
         student: studentUser ? studentUser._id : null, 
         subject: studentName || 'Google Calendar Lesson',
         startTime: new Date(),
-        durationMinutes: finalDuration, // 🚀 Uses EXACT minutes from Google Calendar
+        durationMinutes: finalDuration, 
         status: 'completed',
         notes: notes,
-        teacherGroupName: teacherGroupName || '', // 🤖 NEW
-        studentGroupName: studentGroupName || ''  // 🤖 NEW
+        teacherGroupName: teacherGroupName || '', 
+        studentGroupName: studentGroupName || ''  
       });
     }
 
@@ -183,34 +197,41 @@ const endClass = async (req, res) => {
 // --- AUTOMATED ATTENDANCE FUNCTION ---
 const markAttendance = async (req, res) => {
   try {
-    const { classId, attendanceStatus, studentGroupId, title, startTime, zoomLink } = req.body;
+    const { classId, attendanceStatus, studentGroupId, studentGroupName, title, startTime, zoomLink } = req.body;
     let session;
-    let targetGroup = studentGroupId;
+    let targetGroup = studentGroupName; // Start with the group name
 
     if (mongoose.Types.ObjectId.isValid(classId)) {
       session = await ClassSession.findById(classId)
         .populate('student', 'name whatsappGroupId') 
         .populate('teacher', 'name');
       if (!session) return res.status(404).json({ message: 'Class not found' });
-      targetGroup = session.student?.whatsappGroupId;
+      
+      if (!targetGroup) targetGroup = session.studentGroupName || session.student?.name;
     } else {
       const studentUser = await User.findOne({ whatsappGroupId: studentGroupId });
       const teacherUser = await User.findById(req.user._id);
       session = {
-        student: { name: studentUser ? studentUser.name : 'Student' },
+        student: { name: studentUser ? studentUser.name : (title || 'Student') },
         teacher: { name: teacherUser ? teacherUser.name : 'Teacher' },
         meetingLink: zoomLink || ''
       };
+      if (!targetGroup) targetGroup = session.student.name;
     }
 
-    if (targetGroup) {
+    // ✨ SMART FALLBACK ENGINE
+    if (targetGroup && targetGroup.includes('@g.us')) {
+        targetGroup = session.student?.name || title || 'Student';
+    }
+
+    if (targetGroup && targetGroup !== 'Student') {
       let message = '';
       if (attendanceStatus === 'Late') {
         message = `السلام عليكم / Assalamu Alaikum *${session.student.name}*, ✨\n\nJust a gentle reminder that our class is scheduled to begin right now. Your teacher, *${session.teacher.name}*, has opened the room and is waiting for you!\n\n🔗 *Join the class here:*\n${session.meetingLink || 'No link provided'}\n\nWe hope you have a wonderful class! 📚\n\nWarm regards,\n*Learn With Ayman Support Team*`;
       } else if (attendanceStatus === 'Absent') {
         message = `السلام عليكم / Assalamu Alaikum *${session.student.name}*,\n\nWe hope everything is proceeding smoothly on your end and that you are safe and well. 🌿\n\nWe noticed that you haven't joined the meeting today. Since the 15-minute waiting period has passed, the teacher has now closed the meeting room. \n\n⚠️ *Please note: As per our attendance policy, this session is marked as absent and is not eligible for a makeup class.*\n\nWe look forward to seeing you at your next scheduled time, Insha'Allah! \n\nWarm regards,\n*Learn With Ayman Support Team*`;
       }
-      // 🔧 FIXED: Changed to sendMessage
+      
       await whatsappClient.sendMessage(targetGroup, message);
     }
 
@@ -361,7 +382,7 @@ const getTeacherSchedule = async (req, res) => {
 
     let processedClasses = events.map(event => {
       const start = event.start.dateTime || event.start.date;
-      const end = event.end?.dateTime || event.end?.date; // 🚀 GET END TIME
+      const end = event.end?.dateTime || event.end?.date; 
       
       const description = event.description || "";
       
@@ -381,7 +402,7 @@ const getTeacherSchedule = async (req, res) => {
         id: event.id,
         title: event.summary,
         startTime: new Date(start),
-        endTime: new Date(end), // 🚀 SEND END TIME TO FRONTEND
+        endTime: new Date(end), 
         teacherGroupId: extractedTeacherId,
         studentGroupId: studentGroupId,
         zoomLink: zoomLink,

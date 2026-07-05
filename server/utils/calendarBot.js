@@ -65,6 +65,7 @@ async function getUpcomingClasses() {
       return {
         title: event.summary,
         startTime: new Date(start),
+        description: description, // ✨ ADDED THIS LINE FOR THE FILTER ✨
         teacherGroupId: teacherGroupId,
         studentGroupId: studentGroupId,
         teacherGroupName: teacherGroupName,

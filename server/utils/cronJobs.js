@@ -16,6 +16,14 @@ cron.schedule('* * * * *', async () => {
     const now = new Date();
 
     for (const cls of classes) {
+      
+      // 🚫 THE "DO NOT SEND" FILTER 
+      // If the description exists and contains "do not send", skip it entirely!
+      if (cls.description && cls.description.toLowerCase().includes('do not send')) {
+        console.log(`🚫 Skipped reminders for "${cls.title}" because it is marked as "do not send".`);
+        continue; // Skips to the next class in the list
+      }
+
       const timeDifferenceMs = cls.startTime - now;
       const minutesUntilStart = Math.round(timeDifferenceMs / (1000 * 60));
       const timeString = new Date(cls.startTime).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', timeZone: "Africa/Cairo" });
