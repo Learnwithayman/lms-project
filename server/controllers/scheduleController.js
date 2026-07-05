@@ -146,7 +146,7 @@ const endClass = async (req, res) => {
       // ✨ SMART FALLBACK ENGINE
       let targetPhone = studentGroupName || studentName || 'Student';
       if (targetPhone && targetPhone.includes('@g.us')) {
-         targetPhone = studentName || 'Student'; // Force it to text if it finds an ID!
+         targetPhone = studentName || 'Student'; 
       }
 
       if (targetPhone && targetPhone !== 'Student') {
@@ -199,7 +199,7 @@ const markAttendance = async (req, res) => {
   try {
     const { classId, attendanceStatus, studentGroupId, studentGroupName, title, startTime, zoomLink } = req.body;
     let session;
-    let targetGroup = studentGroupName; // Start with the group name
+    let targetGroup = studentGroupName; 
 
     if (mongoose.Types.ObjectId.isValid(classId)) {
       session = await ClassSession.findById(classId)
@@ -366,13 +366,15 @@ const getTeacherSchedule = async (req, res) => {
 
     const myCalendarId = 'admin@learnwithayman.com'; 
     
+    // ✨ THE 10-HOUR GRACE PERIOD ✨
     const now = new Date();
+    const tenHoursAgo = new Date(now.getTime() - (10 * 60 * 60 * 1000));
     const nextWeek = new Date();
     nextWeek.setDate(now.getDate() + 7);
 
     const response = await calendar.events.list({
       calendarId: myCalendarId,
-      timeMin: now.toISOString(),
+      timeMin: tenHoursAgo.toISOString(), // Fetches past 10 hours
       timeMax: nextWeek.toISOString(),
       singleEvents: true,
       orderBy: 'startTime',
@@ -392,6 +394,10 @@ const getTeacherSchedule = async (req, res) => {
       const studentMatch = description.match(/(?:studentgroup|student id|id)[\s*:-]*([0-9]+@g\.us)/i) || description.match(/StudentGroup[^\d]*([0-9]+@g\.us)/i);
       const studentGroupId = studentMatch ? studentMatch[1] : null;
 
+      // Extract names so we can match them with DB
+      const studentNameMatch = description.match(/StudentGroupName[\s*:-]*([^\n<]+)/i);
+      const studentGroupName = studentNameMatch ? studentNameMatch[1].trim() : null;
+
       const zoomMatch = description.match(/(https:\/\/[^\s<"]*zoom\.us[^\s<"]*)/i);
       const zoomLink = zoomMatch ? zoomMatch[1] : null;
 
@@ -405,16 +411,43 @@ const getTeacherSchedule = async (req, res) => {
         endTime: new Date(end), 
         teacherGroupId: extractedTeacherId,
         studentGroupId: studentGroupId,
+        studentGroupName: studentGroupName, // Saved for filtering!
         zoomLink: zoomLink,
         classroomLink: classroomLink 
       };
     });
 
+    // 1. Get classes that belong to this teacher
     const teacherSpecificClasses = processedClasses.filter(
       (cls) => cls.teacherGroupId === teacherGroupId
     );
 
-    res.status(200).json(teacherSpecificClasses);
+    // ✨ THE "HIDE COMPLETED" ENGINE ✨
+    const twelveHoursAgo = new Date(now.getTime() - (12 * 60 * 60 * 1000));
+    const recentlyCompletedDB = await ClassSession.find({
+      teacher: databaseUser._id,
+      status: 'completed',
+      startTime: { $gte: twelveHoursAgo } 
+    });
+
+    // 2. Filter out the ones they already clicked "End Class" on!
+    const finalSchedule = teacherSpecificClasses.filter(gcalClass => {
+      // Always show future classes
+      if (gcalClass.startTime > now) return true;
+
+      // If it's in the past, check if it matches a class we already saved in MongoDB
+      const alreadyDone = recentlyCompletedDB.some(dbClass => {
+        return (
+          (dbClass.studentGroupName && dbClass.studentGroupName === gcalClass.studentGroupName) || 
+          (dbClass.subject && dbClass.subject === gcalClass.title)
+        );
+      });
+
+      // Show it ONLY if it hasn't been completed yet
+      return !alreadyDone; 
+    });
+
+    res.status(200).json(finalSchedule);
   } catch (error) {
     console.error('❌ Error fetching Teacher Schedule:', error.message);
     res.status(500).json({ message: 'Server error while fetching schedule' });
