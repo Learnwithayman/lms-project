@@ -549,15 +549,20 @@ const resendNotes = async (req, res) => {
     
     if (!session) return res.status(404).json({ message: 'Class not found' });
 
-    let targetPhone = session.studentGroupName || 'Student';
+    // ✨ MUCH STRONGER FALLBACK ENGINE ✨
+    let targetPhone = session.studentGroupName || session.subject || 'Student';
     
-    // ✨ Smart Fallback
-    if (targetPhone && targetPhone.includes('@g.us')) targetPhone = session.subject || 'Student';
+    if (targetPhone && targetPhone.includes('@g.us')) {
+        targetPhone = session.subject || 'Student';
+    }
 
     let messageText = `🎓 *Class Completed! (Resent)*\n*Teacher:* ${session.teacher?.name || 'Teacher'}\n*Student:* ${targetPhone}\n\n📝 *Class Notes:*\n${session.notes || 'No notes provided.'}\n\n📚 *Homework:*\nHomework has been assigned! Please check Google Classroom to view the requirements and upload the completed assignment:\n🔗 https://classroom.google.com`;
 
-    if (targetPhone !== 'Student') {
+    if (targetPhone && targetPhone !== 'Student') {
+      console.log(`📡 Triggering MacroDroid to resend notes to: ${targetPhone}`);
       await whatsappClient.sendMessage(targetPhone, messageText);
+    } else {
+      console.log(`⚠️ Skipped resending notes: Could not find a valid student name for this class.`);
     }
 
     res.status(200).json({ message: 'Notes resent successfully!' });
@@ -592,5 +597,5 @@ module.exports = {
   scheduleClass, getMyClasses, deleteClass, getAllClasses, updateClass,
   endClass, markAttendance, getCompletedClasses, getTeacherEarnings,
   getAdminPayrollReport, addTeacherAdjustment, getTeacherSchedule,
-  getAdminLiveMonitor, resendReminder, resendNotes, joinClass // 👈 Added here!
+  getAdminLiveMonitor, resendReminder, resendNotes, joinClass 
 };
