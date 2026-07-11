@@ -12,7 +12,10 @@ const {
     getTeacherEarnings, 
     getAdminPayrollReport, 
     addTeacherAdjustment,
-    getTeacherSchedule // Our calendar engine
+    getTeacherSchedule, // Our calendar engine
+    getAdminLiveMonitor, // 👈 NEW
+    resendReminder,      // 👈 NEW
+    resendNotes          // 👈 NEW
 } = require('../controllers/scheduleController');
 
 // Import your authentication middleware
@@ -37,6 +40,13 @@ router.put('/end', protect, endClass);
 router.post('/attendance', protect, markAttendance);
 router.put('/:id', protect, updateClass);
 router.delete('/:id', protect, deleteClass);
+
+// ==========================================
+// 📡 NEW: ADMIN COMMAND CENTER ENDPOINTS
+// ==========================================
+router.get('/admin-live-monitor', protect, getAdminLiveMonitor);
+router.post('/resend-reminder', protect, resendReminder);
+router.post('/resend-notes', protect, resendNotes);
 
 // 💰 FORCE RUN MONTHLY PAYROLL (Manual Trigger from Admin Dashboard Button)
 router.post('/force-payroll', protect, async (req, res) => {

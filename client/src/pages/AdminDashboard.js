@@ -5,6 +5,8 @@ import '../App.css';
 function AdminDashboard() {
   const navigate = useNavigate();
   const [user, setUser] = useState({});
+  const [liveClasses, setLiveClasses] = useState([]);
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     const token = localStorage.getItem('token');
@@ -21,8 +23,73 @@ function AdminDashboard() {
     if (parsedUser.role !== 'admin') {
       alert('Access Denied');
       navigate('/dashboard');
+    } else {
+      // Fetch the grouped live data once admin is verified
+      fetchLiveClasses(token);
     }
   }, [navigate]);
+
+  // 📡 FETCH LIVE MONITOR DATA
+  const fetchLiveClasses = async (token) => {
+    try {
+      // We will build this backend route in the next step!
+      const response = await fetch(`${process.env.REACT_APP_API_URL || 'http://localhost:5000'}/api/schedule/admin-live-monitor`, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      if (response.ok) {
+        const data = await response.json();
+        setLiveClasses(data);
+      }
+    } catch (error) {
+      console.error('Error fetching live classes:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // 🔄 RESEND REMINDER HANDLER
+  const handleResendReminder = async (classData) => {
+    if (!window.confirm(`Resend reminder for ${classData.title}?`)) return;
+    
+    try {
+      const token = localStorage.getItem('token');
+      const response = await fetch(`${process.env.REACT_APP_API_URL || 'http://localhost:5000'}/api/schedule/resend-reminder`, {
+        method: 'POST',
+        headers: { 
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}` 
+        },
+        body: JSON.stringify({ classData })
+      });
+      
+      if (response.ok) alert('✅ Reminder resent successfully!');
+      else alert('❌ Failed to resend reminder.');
+    } catch (error) {
+      console.error(error);
+    }
+  };
+
+  // 🎓 RESEND NOTES HANDLER
+  const handleResendNotes = async (classData) => {
+    if (!window.confirm(`Resend completed notes for ${classData.title || classData.subject}?`)) return;
+
+    try {
+      const token = localStorage.getItem('token');
+      const response = await fetch(`${process.env.REACT_APP_API_URL || 'http://localhost:5000'}/api/schedule/resend-notes`, {
+        method: 'POST',
+        headers: { 
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}` 
+        },
+        body: JSON.stringify({ classId: classData._id || classData.id })
+      });
+      
+      if (response.ok) alert('✅ Notes resent successfully!');
+      else alert('❌ Failed to resend notes.');
+    } catch (error) {
+      console.error(error);
+    }
+  };
 
   const handleLogout = () => {
     localStorage.removeItem('token');
@@ -63,16 +130,73 @@ function AdminDashboard() {
             Create User
           </button>
         </div>
-
-        {/* Schedule Class Card */}
-        <div className="action-card" style={{ borderTopColor: '#2ecc71' }}>
-          <h3>📅 Schedule Class</h3>
-          <p>Assign a teacher to a student for a specific subject.</p>
-          <button onClick={() => navigate('/schedule-class')} className="action-btn btn-green">
-            Schedule Class
-          </button>
-        </div>
       </div>
+
+      {/* ✨ NEW COMMAND CENTER / LIVE CLASS MONITOR ✨ */}
+      <div className="live-monitor-section" style={{ marginTop: '40px', backgroundColor: '#f9f9f9', padding: '20px', borderRadius: '8px', border: '1px solid #ddd' }}>
+        <h2>📡 Live Class Monitor (24h)</h2>
+        <p style={{ marginBottom: '20px', color: '#555' }}>Real-time overview of all teacher schedules and communication triggers.</p>
+        
+        {loading ? (
+          <p>Loading live schedule...</p>
+        ) : liveClasses.length === 0 ? (
+          <p>No classes scheduled for the next 24 hours.</p>
+        ) : (
+          liveClasses.map((teacherGroup, index) => (
+            <div key={index} className="teacher-group-card" style={{ backgroundColor: 'white', padding: '15px', borderRadius: '8px', marginBottom: '20px', boxShadow: '0 2px 4px rgba(0,0,0,0.05)' }}>
+              <h3 style={{ borderBottom: '2px solid #3498db', paddingBottom: '10px', color: '#2c3e50' }}>
+                👨‍🏫 Teacher: {teacherGroup.teacherName}
+              </h3>
+              
+              {/* UPCOMING CLASSES */}
+              <div style={{ marginTop: '15px' }}>
+                <h4 style={{ color: '#e67e22' }}>⏳ Upcoming Classes</h4>
+                {teacherGroup.upcoming.length === 0 ? <p style={{ fontSize: '0.9em', color: '#7f8c8d' }}>No upcoming classes.</p> : (
+                  <ul style={{ listStyleType: 'none', padding: 0 }}>
+                    {teacherGroup.upcoming.map((cls, i) => (
+                      <li key={i} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '10px 0', borderBottom: '1px solid #eee' }}>
+                        <span>
+                          <strong>{cls.title}</strong><br/>
+                          <small>🕒 {new Date(cls.startTime).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</small>
+                        </span>
+                        <button 
+                          onClick={() => handleResendReminder(cls)} 
+                          style={{ padding: '6px 12px', backgroundColor: '#e67e22', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer', fontSize: '0.85em' }}>
+                          🔄 Resend Reminder
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+
+              {/* COMPLETED CLASSES */}
+              <div style={{ marginTop: '20px' }}>
+                <h4 style={{ color: '#2ecc71' }}>✅ Completed Classes</h4>
+                {teacherGroup.completed.length === 0 ? <p style={{ fontSize: '0.9em', color: '#7f8c8d' }}>No completed classes yet.</p> : (
+                  <ul style={{ listStyleType: 'none', padding: 0 }}>
+                    {teacherGroup.completed.map((cls, i) => (
+                      <li key={i} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '10px 0', borderBottom: '1px solid #eee' }}>
+                        <span>
+                          <strong>{cls.title || cls.subject}</strong><br/>
+                          <small>🕒 {new Date(cls.startTime).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</small>
+                        </span>
+                        <button 
+                          onClick={() => handleResendNotes(cls)} 
+                          style={{ padding: '6px 12px', backgroundColor: '#2ecc71', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer', fontSize: '0.85em' }}>
+                          🎓 Resend Notes
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+
+            </div>
+          ))
+        )}
+      </div>
+
     </div>
   );
 }

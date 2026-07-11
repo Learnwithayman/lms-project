@@ -7,6 +7,9 @@ const mongoose = require('mongoose');
 const path = require('path');
 const fs = require('fs');
 
+// --- DELAY HELPER FOR RESENDING ---
+const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
+
 // --- SMART PATH ROUTING FOR GOOGLE AUTH ---
 let CREDENTIALS_PATH = path.join(__dirname, '..', 'credentials.json'); 
 if (!fs.existsSync(CREDENTIALS_PATH)) {
@@ -168,7 +171,7 @@ const endClass = async (req, res) => {
       }
     } 
     
-    // Google Calendar Class - Now properly parses the true calendar duration!
+    // Google Calendar Class
     if (!session) {
       const studentUser = await User.findOne({ whatsappGroupId: studentGroupId || whatsappGroupId });
       
@@ -297,7 +300,7 @@ const getAdminPayrollReport = async (req, res) => {
       });
 
       const totalMinutes = completedClasses.reduce((sum, cls) => sum + (cls.durationMinutes || 0), 0);
-      const hourlyRate = teacher.hourlyRate || 3.0; // Default rate fallback
+      const hourlyRate = teacher.hourlyRate || 3.0; 
       const totalHours = totalMinutes / 60;
       const baseEarnings = totalHours * hourlyRate;
 
@@ -343,30 +346,18 @@ const addTeacherAdjustment = async (req, res) => {
   }
 };
 
-// --- THE GOOGLE CALENDAR DASHBOARD ENGINE ---
 const getTeacherSchedule = async (req, res) => {
   try {
     const targetUserId = req.user?.id || req.user?._id;
     const databaseUser = await User.findById(targetUserId);
     
-    if (!databaseUser) {
-      return res.status(404).json({ message: 'Teacher profile not found' });
-    }
+    if (!databaseUser) return res.status(404).json({ message: 'Teacher profile not found' });
 
-    const teacherGroupId = databaseUser.whatsappGroupId || 
-                           databaseUser.teacherGroupId || 
-                           databaseUser.groupId || 
-                           databaseUser.whatsappGroup;
+    const teacherGroupId = databaseUser.whatsappGroupId || databaseUser.teacherGroupId || databaseUser.groupId || databaseUser.whatsappGroup;
 
-    console.log(`📡 Fetching Google Calendar for Teacher: ${databaseUser.name}`);
-
-    if (!teacherGroupId) {
-      return res.status(200).json([]); 
-    }
+    if (!teacherGroupId) return res.status(200).json([]); 
 
     const myCalendarId = 'admin@learnwithayman.com'; 
-    
-    // ✨ THE 10-HOUR GRACE PERIOD ✨
     const now = new Date();
     const tenHoursAgo = new Date(now.getTime() - (10 * 60 * 60 * 1000));
     const nextWeek = new Date();
@@ -374,7 +365,7 @@ const getTeacherSchedule = async (req, res) => {
 
     const response = await calendar.events.list({
       calendarId: myCalendarId,
-      timeMin: tenHoursAgo.toISOString(), // Fetches past 10 hours
+      timeMin: tenHoursAgo.toISOString(), 
       timeMax: nextWeek.toISOString(),
       singleEvents: true,
       orderBy: 'startTime',
@@ -385,7 +376,6 @@ const getTeacherSchedule = async (req, res) => {
     let processedClasses = events.map(event => {
       const start = event.start.dateTime || event.start.date;
       const end = event.end?.dateTime || event.end?.date; 
-      
       const description = event.description || "";
       
       const teacherMatch = description.match(/(?:teachergroup|teacher id|group id|id)[\s*:-]*([0-9]+@g\.us)/i) || description.match(/TeacherGroup[^\d]*([0-9]+@g\.us)/i);
@@ -394,7 +384,6 @@ const getTeacherSchedule = async (req, res) => {
       const studentMatch = description.match(/(?:studentgroup|student id|id)[\s*:-]*([0-9]+@g\.us)/i) || description.match(/StudentGroup[^\d]*([0-9]+@g\.us)/i);
       const studentGroupId = studentMatch ? studentMatch[1] : null;
 
-      // Extract names so we can match them with DB
       const studentNameMatch = description.match(/StudentGroupName[\s*:-]*([^\n<]+)/i);
       const studentGroupName = studentNameMatch ? studentNameMatch[1].trim() : null;
 
@@ -411,18 +400,16 @@ const getTeacherSchedule = async (req, res) => {
         endTime: new Date(end), 
         teacherGroupId: extractedTeacherId,
         studentGroupId: studentGroupId,
-        studentGroupName: studentGroupName, // Saved for filtering!
+        studentGroupName: studentGroupName, 
         zoomLink: zoomLink,
         classroomLink: classroomLink 
       };
     });
 
-    // 1. Get classes that belong to this teacher
     const teacherSpecificClasses = processedClasses.filter(
       (cls) => cls.teacherGroupId === teacherGroupId
     );
 
-    // ✨ THE "HIDE COMPLETED" ENGINE ✨
     const twelveHoursAgo = new Date(now.getTime() - (12 * 60 * 60 * 1000));
     const recentlyCompletedDB = await ClassSession.find({
       teacher: databaseUser._id,
@@ -430,12 +417,9 @@ const getTeacherSchedule = async (req, res) => {
       startTime: { $gte: twelveHoursAgo } 
     });
 
-    // 2. Filter out the ones they already clicked "End Class" on!
     const finalSchedule = teacherSpecificClasses.filter(gcalClass => {
-      // Always show future classes
       if (gcalClass.startTime > now) return true;
 
-      // If it's in the past, check if it matches a class we already saved in MongoDB
       const alreadyDone = recentlyCompletedDB.some(dbClass => {
         return (
           (dbClass.studentGroupName && dbClass.studentGroupName === gcalClass.studentGroupName) || 
@@ -443,7 +427,6 @@ const getTeacherSchedule = async (req, res) => {
         );
       });
 
-      // Show it ONLY if it hasn't been completed yet
       return !alreadyDone; 
     });
 
@@ -454,8 +437,160 @@ const getTeacherSchedule = async (req, res) => {
   }
 };
 
+// ==========================================
+// 📡 NEW: ADMIN COMMAND CENTER LOGIC
+// ==========================================
+
+// 1. Fetch Live Monitor Data
+const getAdminLiveMonitor = async (req, res) => {
+  try {
+    const teachers = await User.find({ role: { $regex: /teacher/i } });
+    const now = new Date();
+    const yesterday = new Date(now.getTime() - (24 * 60 * 60 * 1000));
+    const tomorrow = new Date(now.getTime() + (24 * 60 * 60 * 1000));
+
+    // Get Google Calendar classes
+    const response = await calendar.events.list({
+      calendarId: 'admin@learnwithayman.com',
+      timeMin: yesterday.toISOString(),
+      timeMax: tomorrow.toISOString(),
+      singleEvents: true,
+      orderBy: 'startTime',
+    });
+    
+    const events = response.data.items || [];
+    const processedClasses = events.map(event => {
+      const description = event.description || "";
+      const teacherMatch = description.match(/(?:teachergroup|teacher id|group id|id)[\s*:-]*([0-9]+@g\.us)/i) || description.match(/TeacherGroup[^\d]*([0-9]+@g\.us)/i);
+      const studentNameMatch = description.match(/StudentGroupName[\s*:-]*([^\n<]+)/i);
+      const zoomMatch = description.match(/(https:\/\/[^\s<"]*zoom\.us[^\s<"]*)/i);
+      
+      return {
+        id: event.id,
+        title: event.summary,
+        startTime: new Date(event.start.dateTime || event.start.date),
+        teacherGroupId: teacherMatch ? teacherMatch[1] : null,
+        studentGroupName: studentNameMatch ? studentNameMatch[1].trim() : null,
+        zoomLink: zoomMatch ? zoomMatch[1] : null,
+      };
+    });
+
+    // Get DB Completed classes
+    const completedDB = await ClassSession.find({
+      status: 'completed',
+      startTime: { $gte: yesterday }
+    }).populate('teacher', 'name');
+
+    // Group by Teacher
+    const liveMonitorData = teachers.map(teacher => {
+      const teacherId = teacher.whatsappGroupId || teacher.teacherGroupId || teacher.groupId;
+      const teacherGcal = processedClasses.filter(cls => cls.teacherGroupId === teacherId);
+      const teacherCompleted = completedDB.filter(dbCls => dbCls.teacher && dbCls.teacher._id.toString() === teacher._id.toString());
+
+      // Filter out completed from upcoming
+      const upcoming = teacherGcal.filter(gcalClass => {
+        const isDone = teacherCompleted.some(dbClass => 
+          (dbClass.studentGroupName === gcalClass.studentGroupName) || (dbClass.subject === gcalClass.title)
+        );
+        return !isDone;
+      });
+
+      return {
+        teacherName: teacher.name,
+        upcoming: upcoming,
+        completed: teacherCompleted
+      };
+    }).filter(group => group.upcoming.length > 0 || group.completed.length > 0); 
+
+    res.status(200).json(liveMonitorData);
+  } catch (error) {
+    console.error('Error fetching Live Monitor:', error);
+    res.status(500).json({ message: 'Server error' });
+  }
+};
+
+// 2. Resend 1-Hour Reminder
+const resendReminder = async (req, res) => {
+  try {
+    const { classData } = req.body;
+    const timeString = new Date(classData.startTime).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', timeZone: "Africa/Cairo" });
+
+    let teacherSearchTerm = classData.teacherGroupId || classData.title;
+    let studentSearchTerm = classData.studentGroupName || classData.title;
+
+    // ✨ Smart Fallback
+    if (teacherSearchTerm && teacherSearchTerm.includes('@g.us')) teacherSearchTerm = classData.title;
+    if (studentSearchTerm && studentSearchTerm.includes('@g.us')) studentSearchTerm = classData.title;
+
+    if (teacherSearchTerm) {
+      const teacherMessage = `🔔 *Manual Reminder*\n\nالسلام عليكم / Assalamu Alaikum,\n\nYour class *${classData.title}* is coming up!\n\n🕒 *Time:* ${timeString}\n\n🔗 *Class Link:*\n${classData.zoomLink || 'No link provided'}\n\n*Learn With Ayman Admin Team*`;
+      await whatsappClient.sendMessage(teacherSearchTerm, teacherMessage);
+      
+      await delay(15000); // ⏳ Pause so the phone finishes the first message
+    }
+
+    if (studentSearchTerm) {
+      const studentMessage = `🔔 *Manual Reminder*\n\nالسلام عليكم / Assalamu Alaikum,\n\nGet ready! Your class *${classData.title}* is coming up!\n\n🔗 *Join Here:*\n${classData.zoomLink || 'No link provided'}\n\n*Learn With Ayman Admin Team*`;
+      await whatsappClient.sendMessage(studentSearchTerm, studentMessage);
+    }
+
+    res.status(200).json({ message: 'Reminders resent successfully!' });
+  } catch (error) {
+    console.error('Error resending reminder:', error);
+    res.status(500).json({ message: 'Failed to resend reminder' });
+  }
+};
+
+// 3. Resend Post-Class Notes
+const resendNotes = async (req, res) => {
+  try {
+    const { classId } = req.body;
+    const session = await ClassSession.findById(classId).populate('teacher', 'name');
+    
+    if (!session) return res.status(404).json({ message: 'Class not found' });
+
+    let targetPhone = session.studentGroupName || 'Student';
+    
+    // ✨ Smart Fallback
+    if (targetPhone && targetPhone.includes('@g.us')) targetPhone = session.subject || 'Student';
+
+    let messageText = `🎓 *Class Completed! (Resent)*\n*Teacher:* ${session.teacher?.name || 'Teacher'}\n*Student:* ${targetPhone}\n\n📝 *Class Notes:*\n${session.notes || 'No notes provided.'}\n\n📚 *Homework:*\nHomework has been assigned! Please check Google Classroom to view the requirements and upload the completed assignment:\n🔗 https://classroom.google.com`;
+
+    if (targetPhone !== 'Student') {
+      await whatsappClient.sendMessage(targetPhone, messageText);
+    }
+
+    res.status(200).json({ message: 'Notes resent successfully!' });
+  } catch (error) {
+    console.error('Error resending notes:', error);
+    res.status(500).json({ message: 'Failed to resend notes' });
+  }
+};
+
+// 📡 NEW: MARK CLASS AS "STARTED" WHEN TEACHER CLICKS JOIN
+const joinClass = async (req, res) => {
+  try {
+    const { title, studentGroupName, startTime } = req.body;
+    
+    // Create a temporary placeholder in the database so cronJobs.js knows they joined!
+    await ClassSession.create({
+      teacher: req.user._id,
+      subject: title,
+      studentGroupName: studentGroupName,
+      startTime: startTime || new Date(),
+      status: 'started' // 👈 This is the magic word that stops the late alert!
+    });
+
+    res.status(200).json({ message: 'Class marked as started!' });
+  } catch (error) {
+    console.error('Error marking class as joined:', error);
+    res.status(500).json({ message: 'Server error' });
+  }
+};
+
 module.exports = {
   scheduleClass, getMyClasses, deleteClass, getAllClasses, updateClass,
   endClass, markAttendance, getCompletedClasses, getTeacherEarnings,
-  getAdminPayrollReport, addTeacherAdjustment, getTeacherSchedule 
+  getAdminPayrollReport, addTeacherAdjustment, getTeacherSchedule,
+  getAdminLiveMonitor, resendReminder, resendNotes, joinClass // 👈 Added here!
 };

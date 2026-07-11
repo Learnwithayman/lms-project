@@ -61,6 +61,24 @@ function Dashboard() {
     }
   };
 
+  // 📡 NEW: SEND "I JOINED" SIGNAL TO SERVER
+  const handleJoinClassClick = async (cls) => {
+    try {
+      const token = localStorage.getItem('token');
+      const config = { headers: { Authorization: `Bearer ${token}` } };
+
+      await axios.post(`${API_URL}/api/schedule/join`, {
+        classId: cls.id || cls._id,
+        title: cls.title || cls.subject,
+        studentGroupName: cls.studentGroupName,
+        startTime: cls.startTime
+      }, config);
+      console.log('✅ Marked class as joined to stop late alert!');
+    } catch (error) {
+      console.error('⚠️ Silently failed to mark class as joined:', error);
+    }
+  };
+
   const handleEndClass = async () => {
     if (!classroomChecked) {
       return alert("Please upload the homework and check the confirmation box first!");
@@ -72,7 +90,6 @@ function Dashboard() {
 
       const targetClass = classes.find(c => (c.id === currentClassId || c._id === currentClassId));
 
-      // ⏱️ DYNAMIC DURATION MATH: Calculate the exact minutes from the Calendar!
       let dynamicDuration = 60; 
       if (targetClass?.startTime && targetClass?.endTime) {
         const start = new Date(targetClass.startTime).getTime();
@@ -90,7 +107,7 @@ function Dashboard() {
         whatsappGroupId: targetClass?.teacherGroupId, 
         studentName: targetClass?.title,
         startTime: targetClass?.startTime,
-        durationMinutes: dynamicDuration // 🚀 SEND THE EXACT MINUTES TO THE SERVER
+        durationMinutes: dynamicDuration 
       }, config);
 
       setIsModalOpen(false);
@@ -204,6 +221,9 @@ function Dashboard() {
                       target="_blank" 
                       rel="noopener noreferrer" 
                       style={{ textDecoration: 'none', pointerEvents: isLive ? 'auto' : 'none' }}
+                      onClick={() => {
+                        if (isLive) handleJoinClassClick(cls); // 👈 THIS IS WHERE THE MAGIC HAPPENS!
+                      }}
                     >
                       <button 
                         className={isLive ? "btn-blue" : "btn-disabled"}

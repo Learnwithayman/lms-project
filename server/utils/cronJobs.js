@@ -1,6 +1,7 @@
 const cron = require('node-cron');
 const { getUpcomingClasses } = require('./calendarBot');
 const { sendMessage } = require('./whatsappBot'); 
+const ClassSession = require('../models/ClassSession'); // 👈 NEW: Brings in the database!
 
 console.log('✅ Dual-Group Cron jobs initialized. Listening for upcoming classes...');
 
@@ -67,12 +68,31 @@ cron.schedule('* * * * *', async () => {
       // ==========================================
       if (minutesUntilStart === -2) {
         if (teacherSearchTerm) {
-          const lateMessage = `🚨 *Action Required: Class Started*\n\nالسلام عليكم / Assalamu Alaikum,\n\nYour class *${cls.title}* was scheduled to begin at *${timeString}*.\n\nPlease jump into the room immediately so the student is not left waiting. If you have an emergency, please notify the admin team!\n\n🔗 *Join Class Here:*\n${cls.zoomLink || 'No link provided'}\n\n*Learn With Ayman Admin Team*`;
-          await sendMessage(teacherSearchTerm, lateMessage); 
-          console.log(`🚨 Sent 2-minute late alert to search term: ${teacherSearchTerm}`);
           
-          // ⏳ Pause 25 seconds just in case multiple late alerts fire at the exact same minute
-          await delay(25000); 
+          // 🧠 SMART LATE ALERT CHECK 
+          // Check the database to see if the teacher already clicked "Join Class"
+          const oneHourAgo = new Date(now.getTime() - (60 * 60 * 1000));
+          const alreadyJoined = await ClassSession.findOne({
+            $or: [
+              { subject: cls.title },
+              { studentGroupName: cls.studentGroupName }
+            ],
+            startTime: { $gte: oneHourAgo }, // Look for classes that started recently
+            status: { $in: ['in-progress', 'started', 'completed'] } 
+          });
+
+          // If they already clicked join, log it and DO NOT text them!
+          if (alreadyJoined) {
+            console.log(`✅ Teacher already joined "${cls.title}". Skipping the 2-minute late alert!`);
+          } else {
+            // If the database has no record of them joining, fire the warning!
+            const lateMessage = `🚨 *Action Required: Class Started*\n\nالسلام عليكم / Assalamu Alaikum,\n\nYour class *${cls.title}* was scheduled to begin at *${timeString}*.\n\nPlease jump into the room immediately so the student is not left waiting. If you have an emergency, please notify the admin team!\n\n🔗 *Join Class Here:*\n${cls.zoomLink || 'No link provided'}\n\n*Learn With Ayman Admin Team*`;
+            await sendMessage(teacherSearchTerm, lateMessage); 
+            console.log(`🚨 Sent 2-minute late alert to search term: ${teacherSearchTerm}`);
+            
+            // ⏳ Pause 25 seconds just in case multiple late alerts fire at the exact same minute
+            await delay(25000); 
+          }
         }
       }
       
