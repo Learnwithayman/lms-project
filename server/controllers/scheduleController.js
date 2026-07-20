@@ -509,24 +509,25 @@ const getAdminLiveMonitor = async (req, res) => {
   }
 };
 
-// 2. Resend 1-Hour Reminder
+// ✨ 2. Resend 1-Hour Reminder (STRICT NAMES & DASHBOARD LINK INCLUDED)
 const resendReminder = async (req, res) => {
   try {
     const { classData } = req.body;
     const timeString = new Date(classData.startTime).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', timeZone: "Africa/Cairo" });
 
-    let teacherSearchTerm = classData.teacherGroupId || classData.title;
-    let studentSearchTerm = classData.studentGroupName || classData.title;
+    // ✨ STRICT NAME ENGINE
+    let teacherSearchTerm = classData.teacherGroupId ? classData.teacherGroupId.trim() : null;
+    let studentSearchTerm = classData.studentGroupName ? classData.studentGroupName.trim() : null;
 
-    // ✨ Smart Fallback
-    if (teacherSearchTerm && teacherSearchTerm.includes('@g.us')) teacherSearchTerm = classData.title;
-    if (studentSearchTerm && studentSearchTerm.includes('@g.us')) studentSearchTerm = classData.title;
+    if (teacherSearchTerm && teacherSearchTerm.includes('@g.us')) teacherSearchTerm = null;
+    if (studentSearchTerm && studentSearchTerm.includes('@g.us')) studentSearchTerm = null;
 
     if (teacherSearchTerm) {
-      const teacherMessage = `🔔 *Manual Reminder*\n\nالسلام عليكم / Assalamu Alaikum,\n\nYour class *${classData.title}* is coming up!\n\n🕒 *Time:* ${timeString}\n\n🔗 *Class Link:*\n${classData.zoomLink || 'No link provided'}\n\n*Learn With Ayman Admin Team*`;
+      // Dashboard link for teachers!
+      const teacherMessage = `🔔 *Manual Reminder*\n\nالسلام عليكم / Assalamu Alaikum,\n\nYour class *${classData.title}* is coming up!\n\n🕒 *Time:* ${timeString}\n\n🔗 *Teacher Dashboard:*\nhttps://lms.learnwithayman.com\n\n*Learn With Ayman Admin Team*`;
       await whatsappClient.sendMessage(teacherSearchTerm, teacherMessage);
       
-      await delay(15000); // ⏳ Pause so the phone finishes the first message
+      await delay(15000); 
     }
 
     if (studentSearchTerm) {
@@ -572,7 +573,7 @@ const resendNotes = async (req, res) => {
   }
 };
 
-// 📡 NEW: MARK CLASS AS "STARTED" WHEN TEACHER CLICKS JOIN
+// 📡 MARK CLASS AS "STARTED" WHEN TEACHER CLICKS JOIN
 const joinClass = async (req, res) => {
   try {
     const { title, studentGroupName, startTime } = req.body;

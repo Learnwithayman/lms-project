@@ -1,7 +1,7 @@
 const cron = require('node-cron');
 const { getUpcomingClasses } = require('./calendarBot');
 const { sendMessage } = require('./whatsappBot'); 
-const ClassSession = require('../models/ClassSession'); // 👈 NEW: Brings in the database!
+const ClassSession = require('../models/ClassSession'); 
 
 console.log('✅ Dual-Group Cron jobs initialized. Listening for upcoming classes...');
 
@@ -19,46 +19,43 @@ cron.schedule('* * * * *', async () => {
     for (const cls of classes) {
       
       // 🚫 THE "DO NOT SEND" FILTER 
-      // If the description exists and contains "do not send", skip it entirely!
       if (cls.description && cls.description.toLowerCase().includes('do not send')) {
         console.log(`🚫 Skipped reminders for "${cls.title}" because it is marked as "do not send".`);
-        continue; // Skips to the next class in the list
+        continue; 
       }
 
       const timeDifferenceMs = cls.startTime - now;
       const minutesUntilStart = Math.round(timeDifferenceMs / (1000 * 60));
       const timeString = new Date(cls.startTime).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', timeZone: "Africa/Cairo" });
 
-      // ✨ THE SMART FALLBACK ENGINE ✨
-      let teacherSearchTerm = (cls.teacherGroupName && cls.teacherGroupName.trim() !== '') ? cls.teacherGroupName : cls.title;
-      let studentSearchTerm = (cls.studentGroupName && cls.studentGroupName.trim() !== '') ? cls.studentGroupName : cls.title;
+      // ✨ 1. STRICT NAME ENGINE (Reads ONLY the exact name from the description)
+      let teacherSearchTerm = (cls.teacherGroupName && cls.teacherGroupName.trim() !== '') ? cls.teacherGroupName.trim() : null;
+      let studentSearchTerm = (cls.studentGroupName && cls.studentGroupName.trim() !== '') ? cls.studentGroupName.trim() : null;
 
-      // 🚨 SAFETY CATCH
-      if (teacherSearchTerm && teacherSearchTerm.includes('@g.us')) teacherSearchTerm = cls.title;
-      if (studentSearchTerm && studentSearchTerm.includes('@g.us')) studentSearchTerm = cls.title;
+      // Clean up old @g.us IDs if they are still hiding in the calendar
+      if (teacherSearchTerm && teacherSearchTerm.includes('@g.us')) teacherSearchTerm = null;
+      if (studentSearchTerm && studentSearchTerm.includes('@g.us')) studentSearchTerm = null;
 
       // ==========================================
       // 1-HOUR REMINDERS
       // ==========================================
       if (minutesUntilStart === 60) {
         
-        // 1. Message for the TEACHER & SUPPORT TEAM
+        // ✨ 2. DASHBOARD LINK FOR TEACHER REMINDER
         if (teacherSearchTerm) {
-          const teacherMessage = `🔔 *Teacher Reminder*\n\nالسلام عليكم / Assalamu Alaikum,\n\nYour class *${cls.title}* is starting in exactly *1 Hour*.\n\n🕒 *Time:* ${timeString}\n\n🔗 *Class Link:*\n${cls.zoomLink || 'No link provided'}\n\n*Learn With Ayman Admin Team*`;
+          const teacherMessage = `🔔 *Teacher Reminder*\n\nالسلام عليكم / Assalamu Alaikum,\n\nYour class *${cls.title}* is starting in exactly *1 Hour*.\n\n🕒 *Time:* ${timeString}\n\n🔗 *Teacher Dashboard:*\nhttps://lms.learnwithayman.com\n\n*Learn With Ayman Admin Team*`;
           await sendMessage(teacherSearchTerm, teacherMessage); 
           console.log(`✅ Sent 1-hour Teacher reminder to search term: ${teacherSearchTerm}`);
           
-          // ⏳ Pause 25 seconds for the phone to type, send, and go home
           await delay(25000); 
         }
 
-        // 2. Message for the STUDENT & PARENT
+        // Message for the STUDENT (Keeps the Zoom Link)
         if (studentSearchTerm) {
           const studentMessage = `🔔 *Class Reminder*\n\nالسلام عليكم / Assalamu Alaikum,\n\nGet ready! Your class *${cls.title}* is starting in exactly *1 Hour*.\n\n🔗 *Join Here:*\n${cls.zoomLink || 'No link provided'}\n\n*Learn With Ayman Admin Team*`;
           await sendMessage(studentSearchTerm, studentMessage); 
           console.log(`✅ Sent 1-hour Student reminder to search term: ${studentSearchTerm}`);
           
-          // ⏳ Pause 25 seconds for the phone to finish this message before moving to another class
           await delay(25000); 
         }
       }
@@ -69,28 +66,24 @@ cron.schedule('* * * * *', async () => {
       if (minutesUntilStart === -2) {
         if (teacherSearchTerm) {
           
-          // 🧠 SMART LATE ALERT CHECK 
-          // Check the database to see if the teacher already clicked "Join Class"
+          // ✨ 3. BULLETPROOF LATE ALERT CHECK 
           const oneHourAgo = new Date(now.getTime() - (60 * 60 * 1000));
+          
+          // We removed the $or array. It now strictly looks to see if THIS exact class title was started recently.
           const alreadyJoined = await ClassSession.findOne({
-            $or: [
-              { subject: cls.title },
-              { studentGroupName: cls.studentGroupName }
-            ],
-            startTime: { $gte: oneHourAgo }, // Look for classes that started recently
+            subject: cls.title,
+            startTime: { $gte: oneHourAgo }, 
             status: { $in: ['in-progress', 'started', 'completed'] } 
           });
 
-          // If they already clicked join, log it and DO NOT text them!
           if (alreadyJoined) {
             console.log(`✅ Teacher already joined "${cls.title}". Skipping the 2-minute late alert!`);
           } else {
-            // If the database has no record of them joining, fire the warning!
+            // Note: Keeping the Zoom link here just in case they are in an emergency panic off-dashboard!
             const lateMessage = `🚨 *Action Required: Class Started*\n\nالسلام عليكم / Assalamu Alaikum,\n\nYour class *${cls.title}* was scheduled to begin at *${timeString}*.\n\nPlease jump into the room immediately so the student is not left waiting. If you have an emergency, please notify the admin team!\n\n🔗 *Join Class Here:*\n${cls.zoomLink || 'No link provided'}\n\n*Learn With Ayman Admin Team*`;
             await sendMessage(teacherSearchTerm, lateMessage); 
             console.log(`🚨 Sent 2-minute late alert to search term: ${teacherSearchTerm}`);
             
-            // ⏳ Pause 25 seconds just in case multiple late alerts fire at the exact same minute
             await delay(25000); 
           }
         }
