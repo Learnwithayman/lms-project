@@ -8,6 +8,9 @@ function AdminDashboard() {
   const [liveClasses, setLiveClasses] = useState([]);
   const [loading, setLoading] = useState(true);
 
+  // ✨ NEW: State to handle the View Notes Modal
+  const [viewNotesModal, setViewNotesModal] = useState({ isOpen: false, text: '', student: '' });
+
   useEffect(() => {
     const token = localStorage.getItem('token');
     const userData = localStorage.getItem('user');
@@ -24,7 +27,6 @@ function AdminDashboard() {
       alert('Access Denied');
       navigate('/dashboard');
     } else {
-      // Fetch the grouped live data once admin is verified
       fetchLiveClasses(token);
     }
   }, [navigate]);
@@ -32,7 +34,6 @@ function AdminDashboard() {
   // 📡 FETCH LIVE MONITOR DATA
   const fetchLiveClasses = async (token) => {
     try {
-      // We will build this backend route in the next step!
       const response = await fetch(`${process.env.REACT_APP_API_URL || 'http://localhost:5000'}/api/schedule/admin-live-monitor`, {
         headers: { Authorization: `Bearer ${token}` }
       });
@@ -99,6 +100,22 @@ function AdminDashboard() {
 
   return (
     <div className="dashboard-container">
+      {/* Add a quick CSS style block for the pulsing red animation */}
+      <style>
+        {`
+          @keyframes pulseRed {
+            0% { opacity: 1; transform: scale(1); }
+            50% { opacity: 0.5; transform: scale(1.05); }
+            100% { opacity: 1; transform: scale(1); }
+          }
+          .live-badge {
+            color: #e74c3c;
+            font-weight: bold;
+            animation: pulseRed 1.5s infinite;
+          }
+        `}
+      </style>
+
       <div className="dashboard-header">
         <h1>🛡️ Admin Control Panel</h1>
         <button onClick={handleLogout} className="logout-btn">Logout</button>
@@ -107,7 +124,6 @@ function AdminDashboard() {
       <h2>👋 Welcome, {user.name}</h2>
       <p>Manage users, schedule classes, and organize the school.</p>
       
-      {/* Quick Actions */}
       <div style={{ marginTop: '20px', display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
         <button onClick={() => navigate('/users')} className="action-btn btn-grey" style={{width: 'auto', padding: '10px 20px'}}>
           📋 View Users
@@ -115,14 +131,12 @@ function AdminDashboard() {
         <button onClick={() => navigate('/all-classes')} className="action-btn btn-grey" style={{width: 'auto', padding: '10px 20px'}}>
           🗓️ Manage Classes
         </button>
-        {/* NEW PAYROLL BUTTON */}
         <button onClick={() => navigate('/admin-payroll')} className="action-btn btn-grey" style={{width: 'auto', padding: '10px 20px', backgroundColor: '#ffc107', color: '#333', fontWeight: 'bold', border: 'none'}}>
           💰 Manage Payroll
         </button>
       </div>
 
       <div className="admin-grid">
-        {/* Create User Card */}
         <div className="action-card" style={{ borderTopColor: '#3498db' }}>
           <h3>👤 Create New User</h3>
           <p>Register new teachers, students, or admins into the system.</p>
@@ -132,7 +146,6 @@ function AdminDashboard() {
         </div>
       </div>
 
-      {/* ✨ NEW COMMAND CENTER / LIVE CLASS MONITOR ✨ */}
       <div className="live-monitor-section" style={{ marginTop: '40px', backgroundColor: '#f9f9f9', padding: '20px', borderRadius: '8px', border: '1px solid #ddd' }}>
         <h2>📡 Live Class Monitor (24h)</h2>
         <p style={{ marginBottom: '20px', color: '#555' }}>Real-time overview of all teacher schedules and communication triggers.</p>
@@ -147,6 +160,23 @@ function AdminDashboard() {
               <h3 style={{ borderBottom: '2px solid #3498db', paddingBottom: '10px', color: '#2c3e50' }}>
                 👨‍🏫 Teacher: {teacherGroup.teacherName}
               </h3>
+
+              {/* 🔴 LIVE NOW CLASSES */}
+              {teacherGroup.live && teacherGroup.live.length > 0 && (
+                <div style={{ marginTop: '15px', padding: '10px', backgroundColor: '#fdf3f2', borderRadius: '5px', borderLeft: '4px solid #e74c3c' }}>
+                  <h4 className="live-badge">🔴 LIVE NOW</h4>
+                  <ul style={{ listStyleType: 'none', padding: 0, margin: 0 }}>
+                    {teacherGroup.live.map((cls, i) => (
+                      <li key={i} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '5px 0' }}>
+                        <span>
+                          <strong>{cls.subject || cls.title}</strong><br/>
+                          <small>🕒 Started at: {new Date(cls.startTime).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</small>
+                        </span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
               
               {/* UPCOMING CLASSES */}
               <div style={{ marginTop: '15px' }}>
@@ -181,11 +211,20 @@ function AdminDashboard() {
                           <strong>{cls.title || cls.subject}</strong><br/>
                           <small>🕒 {new Date(cls.startTime).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</small>
                         </span>
-                        <button 
-                          onClick={() => handleResendNotes(cls)} 
-                          style={{ padding: '6px 12px', backgroundColor: '#2ecc71', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer', fontSize: '0.85em' }}>
-                          🎓 Resend Notes
-                        </button>
+                        <div>
+                          {/* ✨ NEW: VIEW NOTES BUTTON */}
+                          <button 
+                            onClick={() => setViewNotesModal({ isOpen: true, text: cls.notes || 'No notes provided by teacher.', student: cls.title || cls.subject })} 
+                            style={{ padding: '6px 12px', backgroundColor: '#3498db', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer', fontSize: '0.85em', marginRight: '8px' }}>
+                            👁️ View Notes
+                          </button>
+                          
+                          <button 
+                            onClick={() => handleResendNotes(cls)} 
+                            style={{ padding: '6px 12px', backgroundColor: '#2ecc71', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer', fontSize: '0.85em' }}>
+                            🎓 Resend Notes
+                          </button>
+                        </div>
                       </li>
                     ))}
                   </ul>
@@ -196,6 +235,34 @@ function AdminDashboard() {
           ))
         )}
       </div>
+
+      {/* ✨ NEW: VIEW NOTES MODAL */}
+      {viewNotesModal.isOpen && (
+        <div style={{
+          position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
+          backgroundColor: 'rgba(0,0,0,0.6)', display: 'flex',
+          alignItems: 'center', justifyContent: 'center', zIndex: 1000
+        }}>
+          <div style={{ backgroundColor: 'white', padding: '30px', borderRadius: '8px', width: '450px', color: 'black' }}>
+            <h3 style={{ marginTop: 0, color: '#2c3e50', borderBottom: '2px solid #3498db', paddingBottom: '10px' }}>
+              📝 Notes: {viewNotesModal.student}
+            </h3>
+            
+            <div style={{ padding: '15px', backgroundColor: '#f8f9fa', borderRadius: '5px', minHeight: '100px', whiteSpace: 'pre-wrap', fontFamily: 'monospace', fontSize: '14px', border: '1px solid #eee' }}>
+              {viewNotesModal.text}
+            </div>
+
+            <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '20px' }}>
+              <button 
+                onClick={() => setViewNotesModal({ isOpen: false, text: '', student: '' })} 
+                style={{ padding: '10px 20px', cursor: 'pointer', backgroundColor: '#34495e', color: 'white', border: 'none', borderRadius: '4px' }}
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
     </div>
   );

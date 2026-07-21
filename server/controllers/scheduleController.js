@@ -438,7 +438,7 @@ const getTeacherSchedule = async (req, res) => {
 };
 
 // ==========================================
-// 📡 NEW: ADMIN COMMAND CENTER LOGIC
+// 📡 ADMIN COMMAND CENTER LOGIC (UPDATED WITH LIVE BADGES)
 // ==========================================
 
 // 1. Fetch Live Monitor Data
@@ -475,9 +475,9 @@ const getAdminLiveMonitor = async (req, res) => {
       };
     });
 
-    // Get DB Completed classes
-    const completedDB = await ClassSession.find({
-      status: 'completed',
+    // ✨ NEW: Fetch BOTH Completed AND Started Classes from DB
+    const dbClasses = await ClassSession.find({
+      status: { $in: ['completed', 'started', 'in-progress'] },
       startTime: { $gte: yesterday }
     }).populate('teacher', 'name');
 
@@ -485,22 +485,27 @@ const getAdminLiveMonitor = async (req, res) => {
     const liveMonitorData = teachers.map(teacher => {
       const teacherId = teacher.whatsappGroupId || teacher.teacherGroupId || teacher.groupId;
       const teacherGcal = processedClasses.filter(cls => cls.teacherGroupId === teacherId);
-      const teacherCompleted = completedDB.filter(dbCls => dbCls.teacher && dbCls.teacher._id.toString() === teacher._id.toString());
+      const teacherDbClasses = dbClasses.filter(dbCls => dbCls.teacher && dbCls.teacher._id.toString() === teacher._id.toString());
 
-      // Filter out completed from upcoming
+      // Split DB classes into Live and Completed
+      const teacherCompleted = teacherDbClasses.filter(cls => cls.status === 'completed');
+      const teacherLive = teacherDbClasses.filter(cls => cls.status === 'started' || cls.status === 'in-progress');
+
+      // Filter out completed AND live from upcoming
       const upcoming = teacherGcal.filter(gcalClass => {
-        const isDone = teacherCompleted.some(dbClass => 
+        const isInDb = teacherDbClasses.some(dbClass => 
           (dbClass.studentGroupName === gcalClass.studentGroupName) || (dbClass.subject === gcalClass.title)
         );
-        return !isDone;
+        return !isInDb;
       });
 
       return {
         teacherName: teacher.name,
         upcoming: upcoming,
+        live: teacherLive, // 🔴 This is our new Live array!
         completed: teacherCompleted
       };
-    }).filter(group => group.upcoming.length > 0 || group.completed.length > 0); 
+    }).filter(group => group.upcoming.length > 0 || group.completed.length > 0 || group.live.length > 0); 
 
     res.status(200).json(liveMonitorData);
   } catch (error) {
@@ -509,7 +514,7 @@ const getAdminLiveMonitor = async (req, res) => {
   }
 };
 
-// ✨ 2. Resend 1-Hour Reminder (STRICT NAMES & DASHBOARD LINK INCLUDED)
+// 2. Resend 1-Hour Reminder
 const resendReminder = async (req, res) => {
   try {
     const { classData } = req.body;
@@ -578,13 +583,12 @@ const joinClass = async (req, res) => {
   try {
     const { title, studentGroupName, startTime } = req.body;
     
-    // Create a temporary placeholder in the database so cronJobs.js knows they joined!
     await ClassSession.create({
       teacher: req.user._id,
       subject: title,
       studentGroupName: studentGroupName,
       startTime: startTime || new Date(),
-      status: 'started' // 👈 This is the magic word that stops the late alert!
+      status: 'started' 
     });
 
     res.status(200).json({ message: 'Class marked as started!' });
