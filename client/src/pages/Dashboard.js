@@ -17,6 +17,9 @@ function Dashboard() {
   const [currentClassId, setCurrentClassId] = useState(null);
   const [notes, setNotes] = useState('');
   const [classroomChecked, setClassroomChecked] = useState(false);
+  
+  // ✨ NEW: The "Double-Click" Prevention Lock
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   useEffect(() => {
     const token = localStorage.getItem('token');
@@ -61,7 +64,7 @@ function Dashboard() {
     }
   };
 
-  // 📡 NEW: SEND "I JOINED" SIGNAL TO SERVER
+  // 📡 SEND "I JOINED" SIGNAL TO SERVER
   const handleJoinClassClick = async (cls) => {
     try {
       const token = localStorage.getItem('token');
@@ -83,6 +86,9 @@ function Dashboard() {
     if (!classroomChecked) {
       return alert("Please upload the homework and check the confirmation box first!");
     }
+
+    // ✨ Lock the button so they can't click it again!
+    setIsSubmitting(true);
 
     try {
       const token = localStorage.getItem('token');
@@ -121,6 +127,9 @@ function Dashboard() {
     } catch (error) {
       console.error('Error ending class:', error);
       alert('Failed to end class. Check console for details.');
+    } finally {
+      // ✨ Unlock the button when the server responds
+      setIsSubmitting(false);
     }
   };
 
@@ -222,7 +231,7 @@ function Dashboard() {
                       rel="noopener noreferrer" 
                       style={{ textDecoration: 'none', pointerEvents: isLive ? 'auto' : 'none' }}
                       onClick={() => {
-                        if (isLive) handleJoinClassClick(cls); // 👈 THIS IS WHERE THE MAGIC HAPPENS!
+                        if (isLive) handleJoinClassClick(cls); 
                       }}
                     >
                       <button 
@@ -321,16 +330,26 @@ function Dashboard() {
             <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '20px' }}>
               <button 
                 onClick={() => setIsModalOpen(false)} 
-                style={{ padding: '10px 15px', cursor: 'pointer', border: '1px solid #ccc', borderRadius: '4px', backgroundColor: '#f8f9fa' }}
+                disabled={isSubmitting}
+                style={{ padding: '10px 15px', cursor: isSubmitting ? 'not-allowed' : 'pointer', border: '1px solid #ccc', borderRadius: '4px', backgroundColor: '#f8f9fa' }}
               >
                 Cancel
               </button>
+              
+              {/* ✨ The Button that physically disables itself! */}
               <button 
-                className="btn-green" 
-                style={{ padding: '10px 15px', cursor: 'pointer', backgroundColor: '#28a745', color: 'white', border: 'none', borderRadius: '4px' }}
+                disabled={isSubmitting}
+                style={{ 
+                  padding: '10px 15px', 
+                  cursor: isSubmitting ? 'not-allowed' : 'pointer', 
+                  backgroundColor: isSubmitting ? '#95a5a6' : '#28a745', 
+                  color: 'white', 
+                  border: 'none', 
+                  borderRadius: '4px' 
+                }}
                 onClick={handleEndClass} 
               >
-                Submit & End Class
+                {isSubmitting ? 'Ending Class...' : 'Submit & End Class'}
               </button>
             </div>
           </div>
