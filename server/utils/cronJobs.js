@@ -2,6 +2,7 @@ const cron = require('node-cron');
 const { getUpcomingClasses } = require('./calendarBot');
 const { sendMessage } = require('./whatsappBot'); 
 const ClassSession = require('../models/ClassSession'); 
+const User = require('../models/User'); // 👈 NEW: Imported User model for the Sweeper
 
 console.log('✅ Dual-Group Cron jobs initialized. Listening for upcoming classes...');
 
@@ -92,5 +93,37 @@ cron.schedule('* * * * *', async () => {
     }
   } catch (error) {
     console.error('❌ Error running minute-by-minute checks:', error);
+  }
+});
+
+// ==========================================
+// 🧹 MIDNIGHT SWEEPER: EXPIRED MAKEUP CREDITS
+// ==========================================
+// Runs every night at 12:00 AM
+cron.schedule('0 0 * * *', async () => {
+  try {
+    console.log('🧹 Midnight Sweeper initialized: Checking for expired makeup credits...');
+    const now = new Date();
+    
+    // Find all users who actually have makeup credits in their bank
+    const usersWithMakeups = await User.find({ 'makeupBank.0': { $exists: true } });
+    
+    let expiredCount = 0;
+
+    for (const student of usersWithMakeups) {
+      const originalLength = student.makeupBank.length;
+      
+      // Keep only the makeup credits that haven't expired yet
+      student.makeupBank = student.makeupBank.filter(credit => credit.expirationDate > now);
+      
+      if (student.makeupBank.length < originalLength) {
+        expiredCount += (originalLength - student.makeupBank.length);
+        await student.save();
+      }
+    }
+
+    console.log(`✅ Midnight Sweeper complete! Removed ${expiredCount} expired makeup credits.`);
+  } catch (error) {
+    console.error('❌ Error running Midnight Sweeper:', error);
   }
 });

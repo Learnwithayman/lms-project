@@ -13,9 +13,11 @@ const {
     getAdminPayrollReport, 
     addTeacherAdjustment,
     getTeacherSchedule, // Our calendar engine
-    getAdminLiveMonitor, // 👈 NEW
-    resendReminder,      // 👈 NEW
-    resendNotes          // 👈 NEW
+    getAdminLiveMonitor, 
+    resendReminder,      
+    resendNotes,         
+    joinClass,          // 👈 Restored from our earlier update today
+    grantMakeupCredit   // 👈 NEW: The Makeup Bank Engine
 } = require('../controllers/scheduleController');
 
 // Import your authentication middleware
@@ -42,11 +44,13 @@ router.put('/:id', protect, updateClass);
 router.delete('/:id', protect, deleteClass);
 
 // ==========================================
-// 📡 NEW: ADMIN COMMAND CENTER ENDPOINTS
+// 📡 ADMIN COMMAND CENTER & SUBSCRIPTIONS
 // ==========================================
 router.get('/admin-live-monitor', protect, getAdminLiveMonitor);
 router.post('/resend-reminder', protect, resendReminder);
 router.post('/resend-notes', protect, resendNotes);
+router.post('/join', protect, joinClass);           // 👈 Join route
+router.post('/makeup', protect, grantMakeupCredit); // 👈 NEW: 90-Day Makeup Route
 
 // 💰 FORCE RUN MONTHLY PAYROLL (Manual Trigger from Admin Dashboard Button)
 router.post('/force-payroll', protect, async (req, res) => {

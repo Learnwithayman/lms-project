@@ -190,6 +190,23 @@ const endClass = async (req, res) => {
       });
     }
 
+    // ==========================================
+    // 💰 SUBSCRIPTION ENGINE: DEDUCT COMPLETED CLASS
+    // ==========================================
+    if (session && session.student) {
+      const studentDoc = await User.findById(session.student);
+      if (studentDoc && studentDoc.subscription && studentDoc.subscription.status === 'active') {
+        studentDoc.subscription.classesUsed = (studentDoc.subscription.classesUsed || 0) + 1;
+        
+        // Check for Expiration!
+        if (studentDoc.subscription.classesUsed >= studentDoc.subscription.totalClassesBought && studentDoc.subscription.totalClassesBought > 0) {
+          studentDoc.subscription.status = 'expired';
+          console.log(`⚠️ ALERT: Student ${studentDoc.name}'s subscription has just expired!`);
+        }
+        await studentDoc.save();
+      }
+    }
+
     res.status(200).json({ message: 'Class ended successfully!', updatedClass: session });
   } catch (error) {
     console.error('🚨 Error ending class:', error);
@@ -215,7 +232,7 @@ const markAttendance = async (req, res) => {
       const studentUser = await User.findOne({ whatsappGroupId: studentGroupId });
       const teacherUser = await User.findById(req.user._id);
       session = {
-        student: { name: studentUser ? studentUser.name : (title || 'Student') },
+        student: { name: studentUser ? studentUser.name : (title || 'Student'), _id: studentUser?._id },
         teacher: { name: teacherUser ? teacherUser.name : 'Teacher' },
         meetingLink: zoomLink || ''
       };
@@ -236,6 +253,23 @@ const markAttendance = async (req, res) => {
       }
       
       await whatsappClient.sendMessage(targetGroup, message);
+    }
+
+    // ==========================================
+    // 💰 SUBSCRIPTION ENGINE: DEDUCT ABSENT CLASS
+    // ==========================================
+    if (attendanceStatus === 'Absent' && session.student && session.student._id) {
+      const studentDoc = await User.findById(session.student._id);
+      if (studentDoc && studentDoc.subscription && studentDoc.subscription.status === 'active') {
+        studentDoc.subscription.classesUsed = (studentDoc.subscription.classesUsed || 0) + 1;
+        
+        // Check for Expiration!
+        if (studentDoc.subscription.classesUsed >= studentDoc.subscription.totalClassesBought && studentDoc.subscription.totalClassesBought > 0) {
+          studentDoc.subscription.status = 'expired';
+          console.log(`⚠️ ALERT: Student ${studentDoc.name}'s subscription has just expired due to absence!`);
+        }
+        await studentDoc.save();
+      }
     }
 
     res.status(200).json({ message: `Attendance marked as ${attendanceStatus} and message sent!` });
@@ -438,7 +472,7 @@ const getTeacherSchedule = async (req, res) => {
 };
 
 // ==========================================
-// 📡 ADMIN COMMAND CENTER LOGIC (UPDATED WITH LIVE BADGES)
+// 📡 ADMIN COMMAND CENTER LOGIC
 // ==========================================
 
 // 1. Fetch Live Monitor Data
@@ -475,7 +509,6 @@ const getAdminLiveMonitor = async (req, res) => {
       };
     });
 
-    // ✨ NEW: Fetch BOTH Completed AND Started Classes from DB
     const dbClasses = await ClassSession.find({
       status: { $in: ['completed', 'started', 'in-progress'] },
       startTime: { $gte: yesterday }
@@ -502,7 +535,7 @@ const getAdminLiveMonitor = async (req, res) => {
       return {
         teacherName: teacher.name,
         upcoming: upcoming,
-        live: teacherLive, // 🔴 This is our new Live array!
+        live: teacherLive, 
         completed: teacherCompleted
       };
     }).filter(group => group.upcoming.length > 0 || group.completed.length > 0 || group.live.length > 0); 
@@ -598,9 +631,39 @@ const joinClass = async (req, res) => {
   }
 };
 
+// ==========================================
+// 🎒 NEW: ADMIN 90-DAY MAKEUP ENGINE
+// ==========================================
+const grantMakeupCredit = async (req, res) => {
+  try {
+    const { studentId, reason, originalDate } = req.body;
+    const student = await User.findById(studentId);
+    
+    if (!student) return res.status(404).json({ message: 'Student not found' });
+    
+    // Create expiration date exactly 90 days from today
+    const expDate = new Date();
+    expDate.setDate(expDate.getDate() + 90);
+    
+    student.makeupBank.push({
+      originalClassDate: originalDate || new Date(),
+      expirationDate: expDate,
+      reason: reason || 'Admin Granted Makeup Credit',
+      isUsed: false
+    });
+    
+    await student.save();
+    res.status(200).json({ message: 'Makeup credit granted successfully! Valid for 90 days.', student });
+  } catch (error) {
+    console.error('Error granting makeup credit:', error);
+    res.status(500).json({ message: 'Server error granting makeup credit' });
+  }
+};
+
 module.exports = {
   scheduleClass, getMyClasses, deleteClass, getAllClasses, updateClass,
   endClass, markAttendance, getCompletedClasses, getTeacherEarnings,
   getAdminPayrollReport, addTeacherAdjustment, getTeacherSchedule,
-  getAdminLiveMonitor, resendReminder, resendNotes, joinClass 
+  getAdminLiveMonitor, resendReminder, resendNotes, joinClass,
+  grantMakeupCredit // 👈 NEW ONE ADDED
 };

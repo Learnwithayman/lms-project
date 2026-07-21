@@ -33,6 +33,30 @@ const userSchema = mongoose.Schema(
         date: { type: Date, default: Date.now }
       }
     ],
+
+    // ==========================================
+    // ✨ NEW: SUBSCRIPTION & MAKEUP ENGINE 
+    // ==========================================
+    subscription: {
+      status: { 
+        type: String, 
+        enum: ['active', 'expired', 'paused', 'none'], 
+        default: 'none' 
+      },
+      startDate: { type: Date },
+      endDate: { type: Date },
+      totalClassesBought: { type: Number, default: 0 },
+      classesUsed: { type: Number, default: 0 }
+    },
+
+    makeupBank: [
+      {
+        originalClassDate: { type: Date, required: true },
+        expirationDate: { type: Date, required: true }, // Will automatically be set to +90 days
+        reason: { type: String }, // e.g., "Teacher Canceled", "Medical Emergency"
+        isUsed: { type: Boolean, default: false } // Flips to true when they take the makeup class
+      }
+    ]
   },
   { timestamps: true }
 );
