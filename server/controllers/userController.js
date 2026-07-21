@@ -136,6 +136,29 @@ const createAdminInstantly = asyncHandler(async (req, res) => {
   res.status(201).json({ message: 'SUCCESS! Admin created. Go log in!', user });
 });
 
+// ==========================================
+// 🎒 NEW: SUBSCRIPTION ENGINE
+// ==========================================
+// @desc    Update student subscription
+const updateSubscription = asyncHandler(async (req, res) => {
+  const { status, startDate, endDate, totalClassesBought } = req.body;
+  const user = await User.findById(req.params.id);
+
+  if (!user) {
+    res.status(404);
+    throw new Error('User not found');
+  }
+
+  // Update only the provided fields so we don't accidentally wipe out their classesUsed
+  if (status) user.subscription.status = status;
+  if (startDate) user.subscription.startDate = startDate;
+  if (endDate) user.subscription.endDate = endDate;
+  if (totalClassesBought !== undefined) user.subscription.totalClassesBought = Number(totalClassesBought);
+
+  await user.save();
+  res.status(200).json({ message: 'Subscription updated successfully!', user });
+});
+
 module.exports = {
   registerUser,
   loginUser,
@@ -143,5 +166,6 @@ module.exports = {
   getAllUsers, 
   deleteUser, 
   testGroupMessage, 
-  createAdminInstantly 
+  createAdminInstantly,
+  updateSubscription // 👈 NEW ONE EXPORTED
 };
