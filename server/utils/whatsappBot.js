@@ -1,4 +1,5 @@
 const axios = require('axios');
+const MessageLog = require('../models/MessageLog'); // 👈 NEW: Importing our log database
 
 // The MacroDroid custom webhook link we built together
 const MACRODROID_URL = 'https://trigger.macrodroid.com/d46f0039-8cc1-4836-b82b-5461a745d0d5/send_msg';
@@ -9,6 +10,8 @@ const MACRODROID_URL = 'https://trigger.macrodroid.com/d46f0039-8cc1-4836-b82b-5
  * @param {string} text - The message body to send
  */
 const sendMessage = async (remoteJid, text) => {
+    let cleanTarget = remoteJid;
+    
     try {
         if (!remoteJid) {
             console.log(`⚠️ Aborted: No name or number provided to MacroDroid.`);
@@ -16,7 +19,7 @@ const sendMessage = async (remoteJid, text) => {
         }
 
         // 1. Clean the target (Removes backend tags like @g.us, but KEEPS all English letters and names!)
-        const cleanTarget = remoteJid.replace(/@s\.whatsapp\.net/gi, '').replace(/@g\.us/gi, '').trim();
+        cleanTarget = remoteJid.replace(/@s\.whatsapp\.net/gi, '').replace(/@g\.us/gi, '').trim();
         
         console.log(`📱 Routing message through phone to: ${cleanTarget}`);
 
@@ -29,9 +32,34 @@ const sendMessage = async (remoteJid, text) => {
         });
 
         console.log(`🚀 Phone trigger response:`, response.data);
+
+        // ✨ 3. NEW: SAVE TO DATABASE (SUCCESS)
+        try {
+            await MessageLog.create({
+                recipient: cleanTarget,
+                messageBody: text,
+                status: 'sent'
+            });
+        } catch (dbError) {
+            console.error('⚠️ Could not save message log to database:', dbError.message);
+        }
+
         return true;
     } catch (error) {
         console.error('❌ Failed to trigger physical phone automation:', error.message);
+        
+        // ✨ 3. NEW: SAVE TO DATABASE (FAILED)
+        try {
+            await MessageLog.create({
+                recipient: cleanTarget || 'Unknown',
+                messageBody: text || 'No text provided',
+                status: 'failed',
+                errorMessage: error.message
+            });
+        } catch (dbError) {
+            console.error('⚠️ Could not save failed message log to database:', dbError.message);
+        }
+
         return false;
     }
 };

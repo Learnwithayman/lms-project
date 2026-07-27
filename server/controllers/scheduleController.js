@@ -1,6 +1,7 @@
 const asyncHandler = require('express-async-handler');
 const ClassSession = require('../models/ClassSession');
 const User = require('../models/User');
+const MessageLog = require('../models/MessageLog'); // 👈 NEW: Importing the Message Log database
 const whatsappClient = require('../utils/whatsappBot');
 const { google } = require('googleapis');
 const mongoose = require('mongoose');
@@ -729,11 +730,28 @@ const cancelUpcomingClass = async (req, res) => {
   }
 };
 
+// ==========================================
+// 📜 NEW: GET DAILY MESSAGE LOGS
+// ==========================================
+const getMessageLogs = async (req, res) => {
+  try {
+    // Get logs from the last 24 hours
+    const yesterday = new Date(new Date().getTime() - (24 * 60 * 60 * 1000));
+    
+    const logs = await MessageLog.find({ createdAt: { $gte: yesterday } })
+      .sort({ createdAt: -1 }); // Newest first
+
+    res.status(200).json(logs);
+  } catch (error) {
+    console.error('Error fetching message logs:', error);
+    res.status(500).json({ message: 'Server error while fetching logs.' });
+  }
+};
 
 module.exports = {
   scheduleClass, getMyClasses, deleteClass, getAllClasses, updateClass,
   endClass, markAttendance, getCompletedClasses, getTeacherEarnings,
   getAdminPayrollReport, addTeacherAdjustment, getTeacherSchedule,
   getAdminLiveMonitor, resendReminder, resendNotes, joinClass,
-  grantMakeupCredit, cancelUpcomingClass // 👈 Added here!
+  grantMakeupCredit, cancelUpcomingClass, getMessageLogs // 👈 Added getMessageLogs here!
 };

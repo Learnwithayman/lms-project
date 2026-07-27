@@ -7,8 +7,12 @@ function AdminDashboard() {
   const [user, setUser] = useState({});
   const [liveClasses, setLiveClasses] = useState([]);
   const [loading, setLoading] = useState(true);
+  
+  // ✨ NEW: Message Log States
+  const [messageLogs, setMessageLogs] = useState([]);
+  const [loadingLogs, setLoadingLogs] = useState(true);
 
-  // ✨ State to handle the View Notes Modal
+  // State to handle the View Notes Modal
   const [viewNotesModal, setViewNotesModal] = useState({ isOpen: false, text: '', student: '' });
 
   useEffect(() => {
@@ -28,6 +32,7 @@ function AdminDashboard() {
       navigate('/dashboard');
     } else {
       fetchLiveClasses(token);
+      fetchMessageLogs(token); // 👈 Fetch logs on load
     }
   }, [navigate]);
 
@@ -48,6 +53,23 @@ function AdminDashboard() {
     }
   };
 
+  // 📜 FETCH MESSAGE LOGS
+  const fetchMessageLogs = async (token) => {
+    try {
+      const response = await fetch(`${process.env.REACT_APP_API_URL || 'http://localhost:5000'}/api/schedule/message-logs`, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      if (response.ok) {
+        const data = await response.json();
+        setMessageLogs(data);
+      }
+    } catch (error) {
+      console.error('Error fetching message logs:', error);
+    } finally {
+      setLoadingLogs(false);
+    }
+  };
+
   // 🔄 RESEND REMINDER HANDLER
   const handleResendReminder = async (classData) => {
     if (!window.confirm(`Resend reminder for ${classData.title}?`)) return;
@@ -63,14 +85,16 @@ function AdminDashboard() {
         body: JSON.stringify({ classData })
       });
       
-      if (response.ok) alert('✅ Reminder resent successfully!');
-      else alert('❌ Failed to resend reminder.');
+      if (response.ok) {
+        alert('✅ Reminder resent successfully!');
+        fetchMessageLogs(token); // Refresh logs
+      } else alert('❌ Failed to resend reminder.');
     } catch (error) {
       console.error(error);
     }
   };
 
-  // 🚫 NEW: CANCEL UPCOMING CLASS HANDLER
+  // 🚫 CANCEL UPCOMING CLASS HANDLER
   const handleCancelClass = async (classData) => {
     if (!window.confirm(`Are you sure you want to cancel "${classData.title}"?\n\nThis will send a WhatsApp notification to both the teacher and the student.`)) return;
 
@@ -85,14 +109,15 @@ function AdminDashboard() {
         body: JSON.stringify({
           title: classData.title,
           studentGroupName: classData.studentGroupName,
-          teacherGroupName: classData.teacherGroupId, // Passed from GCAL parsing
+          teacherGroupName: classData.teacherGroupId,
           startTime: classData.startTime
         })
       });
       
       if (response.ok) {
         alert('🚫 Class canceled successfully! Notifications have been sent.');
-        fetchLiveClasses(token); // Refresh the monitor to hide the class immediately
+        fetchLiveClasses(token);
+        fetchMessageLogs(token); // Refresh logs
       } else {
         alert('❌ Failed to cancel class.');
       }
@@ -117,11 +142,19 @@ function AdminDashboard() {
         body: JSON.stringify({ classId: classData._id || classData.id })
       });
       
-      if (response.ok) alert('✅ Notes resent successfully!');
-      else alert('❌ Failed to resend notes.');
+      if (response.ok) {
+        alert('✅ Notes resent successfully!');
+        fetchMessageLogs(token); // Refresh logs
+      } else alert('❌ Failed to resend notes.');
     } catch (error) {
       console.error(error);
     }
+  };
+
+  // 📋 COPY TO CLIPBOARD HELPER
+  const copyToClipboard = (text) => {
+    navigator.clipboard.writeText(text);
+    alert('📋 Text copied to clipboard!');
   };
 
   const handleLogout = () => {
@@ -132,7 +165,6 @@ function AdminDashboard() {
 
   return (
     <div className="dashboard-container">
-      {/* Add a quick CSS style block for the pulsing red animation */}
       <style>
         {`
           @keyframes pulseRed {
@@ -222,7 +254,6 @@ function AdminDashboard() {
                           <small>🕒 {new Date(cls.startTime).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</small>
                         </span>
                         
-                        {/* ✨ NEW: CANCEL & RESEND REMINDER BUTTONS */}
                         <div style={{ display: 'flex', gap: '8px' }}>
                           <button 
                             onClick={() => handleCancelClass(cls)} 
@@ -235,7 +266,6 @@ function AdminDashboard() {
                             🔄 Resend Reminder
                           </button>
                         </div>
-
                       </li>
                     ))}
                   </ul>
@@ -254,7 +284,6 @@ function AdminDashboard() {
                           <small>🕒 {new Date(cls.startTime).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</small>
                         </span>
                         <div>
-                          {/* VIEW NOTES BUTTON */}
                           <button 
                             onClick={() => setViewNotesModal({ isOpen: true, text: cls.notes || 'No notes provided by teacher.', student: cls.title || cls.subject })} 
                             style={{ padding: '6px 12px', backgroundColor: '#3498db', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer', fontSize: '0.85em', marginRight: '8px' }}>
@@ -275,6 +304,53 @@ function AdminDashboard() {
 
             </div>
           ))
+        )}
+      </div>
+
+      {/* ========================================== */}
+      {/* 📜 NEW: SYSTEM MESSAGE LOG SECTION */}
+      {/* ========================================== */}
+      <div style={{ marginTop: '40px', backgroundColor: '#2c3e50', padding: '20px', borderRadius: '8px', color: 'white' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '15px' }}>
+          <h2 style={{ margin: 0, color: '#ecf0f1' }}>🤖 Bot Message Log (Last 24h)</h2>
+          <button onClick={() => fetchMessageLogs(localStorage.getItem('token'))} style={{ padding: '8px 15px', backgroundColor: '#3498db', color: 'white', border: 'none', borderRadius: '5px', cursor: 'pointer' }}>
+            🔄 Refresh Logs
+          </button>
+        </div>
+        <p style={{ color: '#bdc3c7', marginBottom: '20px' }}>A complete paper trail of every WhatsApp message sent by your system.</p>
+        
+        {loadingLogs ? (
+          <p>Loading messages...</p>
+        ) : messageLogs.length === 0 ? (
+          <p>No messages sent in the last 24 hours.</p>
+        ) : (
+          <div style={{ maxHeight: '400px', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '15px', paddingRight: '10px' }}>
+            {messageLogs.map((log) => (
+              <div key={log._id} style={{ backgroundColor: '#34495e', padding: '15px', borderRadius: '8px', borderLeft: log.status === 'failed' ? '5px solid #e74c3c' : '5px solid #2ecc71' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '10px', color: '#ecf0f1' }}>
+                  <strong>📞 To: {log.recipient}</strong>
+                  <span style={{ fontSize: '13px', color: '#bdc3c7' }}>
+                    {new Date(log.createdAt).toLocaleString()}
+                  </span>
+                </div>
+                
+                <div style={{ backgroundColor: '#1abc9c', color: 'white', padding: '12px', borderRadius: '5px', fontSize: '14px', whiteSpace: 'pre-wrap', fontFamily: 'monospace', marginBottom: '10px', border: '1px solid #16a085' }}>
+                  {log.messageBody}
+                </div>
+                
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <span style={{ fontSize: '13px', fontWeight: 'bold', color: log.status === 'failed' ? '#e74c3c' : '#2ecc71' }}>
+                    {log.status === 'failed' ? `❌ FAILED: ${log.errorMessage}` : '✅ SUCCESS'}
+                  </span>
+                  <button 
+                    onClick={() => copyToClipboard(log.messageBody)}
+                    style={{ padding: '6px 12px', backgroundColor: '#ecf0f1', color: '#2c3e50', border: 'none', borderRadius: '4px', cursor: 'pointer', fontSize: '12px', fontWeight: 'bold' }}>
+                    📋 Copy Draft
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
         )}
       </div>
 
