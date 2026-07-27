@@ -53,6 +53,7 @@ app.use('/api/courses', require('./routes/courseRoutes'));
 app.use('/api/users', require('./routes/userRoutes'));
 app.use('/api/admin', require('./routes/adminRoutes'));
 app.use('/api/schedule', require('./routes/scheduleRoutes'));
+app.use('/api/leads', require('./routes/leadRoutes')); // 👈 NEW: The Lead Receiver Bridge!
 
 // 🚀 FIXED: Added '0.0.0.0' to explicitly open the port for Render!
 app.listen(port, '0.0.0.0', () => console.log(`Server started on port ${port}`));
