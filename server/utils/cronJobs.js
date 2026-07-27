@@ -2,7 +2,7 @@ const cron = require('node-cron');
 const { getUpcomingClasses } = require('./calendarBot');
 const { sendMessage } = require('./whatsappBot'); 
 const ClassSession = require('../models/ClassSession'); 
-const User = require('../models/User'); // 👈 NEW: Imported User model for the Sweeper
+const User = require('../models/User'); // Used for the Midnight Sweeper
 
 console.log('✅ Dual-Group Cron jobs initialized. Listening for upcoming classes...');
 
@@ -62,28 +62,30 @@ cron.schedule('* * * * *', async () => {
       }
 
       // ==========================================
-      // 2-MINUTE LATE ALERTS (TEACHER ONLY)
+      // 3-MINUTE LATE ALERTS (TEACHER ONLY)
       // ==========================================
-      if (minutesUntilStart === -2) {
+      if (minutesUntilStart === -3) {
         if (teacherSearchTerm) {
           
           // ✨ 3. BULLETPROOF LATE ALERT CHECK 
           const oneHourAgo = new Date(now.getTime() - (60 * 60 * 1000));
           
-          // We removed the $or array. It now strictly looks to see if THIS exact class title was started recently.
+          // Smarter check: Looks for BOTH title OR the student group name to ensure we don't miss it
           const alreadyJoined = await ClassSession.findOne({
-            subject: cls.title,
+            $or: [
+              { subject: cls.title },
+              { studentGroupName: cls.studentGroupName }
+            ],
             startTime: { $gte: oneHourAgo }, 
             status: { $in: ['in-progress', 'started', 'completed'] } 
           });
 
           if (alreadyJoined) {
-            console.log(`✅ Teacher already joined "${cls.title}". Skipping the 2-minute late alert!`);
+            console.log(`✅ Teacher already joined "${cls.title}". Skipping the 3-minute late alert!`);
           } else {
-            // Note: Keeping the Zoom link here just in case they are in an emergency panic off-dashboard!
-            const lateMessage = `🚨 *Action Required: Class Started*\n\nالسلام عليكم / Assalamu Alaikum,\n\nYour class *${cls.title}* was scheduled to begin at *${timeString}*.\n\nPlease jump into the room immediately so the student is not left waiting. If you have an emergency, please notify the admin team!\n\n🔗 *Join Class Here:*\n${cls.zoomLink || 'No link provided'}\n\n*Learn With Ayman Admin Team*`;
+            const lateMessage = `🚨 *Action Required: You are 3 minutes late!*\n\nالسلام عليكم / Assalamu Alaikum,\n\nYour class *${cls.title}* was scheduled to begin at *${timeString}*.\n\nYou are currently 3 minutes late. Please jump into the room immediately so the student is not left waiting. If you have an emergency, please notify the admin team!\n\n🔗 *Join Class Here:*\n${cls.zoomLink || 'No link provided'}\n\n*Learn With Ayman Admin Team*`;
             await sendMessage(teacherSearchTerm, lateMessage); 
-            console.log(`🚨 Sent 2-minute late alert to search term: ${teacherSearchTerm}`);
+            console.log(`🚨 Sent 3-minute late alert to search term: ${teacherSearchTerm}`);
             
             await delay(25000); 
           }

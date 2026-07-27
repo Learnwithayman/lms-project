@@ -8,7 +8,7 @@ function AdminDashboard() {
   const [liveClasses, setLiveClasses] = useState([]);
   const [loading, setLoading] = useState(true);
 
-  // ✨ NEW: State to handle the View Notes Modal
+  // ✨ State to handle the View Notes Modal
   const [viewNotesModal, setViewNotesModal] = useState({ isOpen: false, text: '', student: '' });
 
   useEffect(() => {
@@ -67,6 +67,38 @@ function AdminDashboard() {
       else alert('❌ Failed to resend reminder.');
     } catch (error) {
       console.error(error);
+    }
+  };
+
+  // 🚫 NEW: CANCEL UPCOMING CLASS HANDLER
+  const handleCancelClass = async (classData) => {
+    if (!window.confirm(`Are you sure you want to cancel "${classData.title}"?\n\nThis will send a WhatsApp notification to both the teacher and the student.`)) return;
+
+    try {
+      const token = localStorage.getItem('token');
+      const response = await fetch(`${process.env.REACT_APP_API_URL || 'http://localhost:5000'}/api/schedule/admin-cancel`, {
+        method: 'POST',
+        headers: { 
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}` 
+        },
+        body: JSON.stringify({
+          title: classData.title,
+          studentGroupName: classData.studentGroupName,
+          teacherGroupName: classData.teacherGroupId, // Passed from GCAL parsing
+          startTime: classData.startTime
+        })
+      });
+      
+      if (response.ok) {
+        alert('🚫 Class canceled successfully! Notifications have been sent.');
+        fetchLiveClasses(token); // Refresh the monitor to hide the class immediately
+      } else {
+        alert('❌ Failed to cancel class.');
+      }
+    } catch (error) {
+      console.error(error);
+      alert('❌ Server error while canceling class.');
     }
   };
 
@@ -189,11 +221,21 @@ function AdminDashboard() {
                           <strong>{cls.title}</strong><br/>
                           <small>🕒 {new Date(cls.startTime).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</small>
                         </span>
-                        <button 
-                          onClick={() => handleResendReminder(cls)} 
-                          style={{ padding: '6px 12px', backgroundColor: '#e67e22', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer', fontSize: '0.85em' }}>
-                          🔄 Resend Reminder
-                        </button>
+                        
+                        {/* ✨ NEW: CANCEL & RESEND REMINDER BUTTONS */}
+                        <div style={{ display: 'flex', gap: '8px' }}>
+                          <button 
+                            onClick={() => handleCancelClass(cls)} 
+                            style={{ padding: '6px 12px', backgroundColor: '#e74c3c', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer', fontSize: '0.85em' }}>
+                            🚫 Cancel
+                          </button>
+                          <button 
+                            onClick={() => handleResendReminder(cls)} 
+                            style={{ padding: '6px 12px', backgroundColor: '#e67e22', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer', fontSize: '0.85em' }}>
+                            🔄 Resend Reminder
+                          </button>
+                        </div>
+
                       </li>
                     ))}
                   </ul>
@@ -212,7 +254,7 @@ function AdminDashboard() {
                           <small>🕒 {new Date(cls.startTime).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</small>
                         </span>
                         <div>
-                          {/* ✨ NEW: VIEW NOTES BUTTON */}
+                          {/* VIEW NOTES BUTTON */}
                           <button 
                             onClick={() => setViewNotesModal({ isOpen: true, text: cls.notes || 'No notes provided by teacher.', student: cls.title || cls.subject })} 
                             style={{ padding: '6px 12px', backgroundColor: '#3498db', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer', fontSize: '0.85em', marginRight: '8px' }}>
@@ -236,7 +278,7 @@ function AdminDashboard() {
         )}
       </div>
 
-      {/* ✨ NEW: VIEW NOTES MODAL */}
+      {/* VIEW NOTES MODAL */}
       {viewNotesModal.isOpen && (
         <div style={{
           position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,

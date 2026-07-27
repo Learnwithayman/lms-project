@@ -17,7 +17,8 @@ const {
     resendReminder,      
     resendNotes,         
     joinClass,          // 👈 Restored from our earlier update today
-    grantMakeupCredit   // 👈 NEW: The Makeup Bank Engine
+    grantMakeupCredit,  // 👈 NEW: The Makeup Bank Engine
+    cancelUpcomingClass // 👈 NEW: Admin Cancel
 } = require('../controllers/scheduleController');
 
 // Import your authentication middleware
@@ -51,6 +52,7 @@ router.post('/resend-reminder', protect, resendReminder);
 router.post('/resend-notes', protect, resendNotes);
 router.post('/join', protect, joinClass);           // 👈 Join route
 router.post('/makeup', protect, grantMakeupCredit); // 👈 NEW: 90-Day Makeup Route
+router.post('/admin-cancel', protect, cancelUpcomingClass); // 👈 NEW: Admin Cancel Route
 
 // 💰 FORCE RUN MONTHLY PAYROLL (Manual Trigger from Admin Dashboard Button)
 router.post('/force-payroll', protect, async (req, res) => {

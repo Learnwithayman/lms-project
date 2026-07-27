@@ -214,10 +214,10 @@ const endClass = async (req, res) => {
   }
 };
 
-// --- AUTOMATED ATTENDANCE FUNCTION ---
+// --- AUTOMATED ATTENDANCE FUNCTION (NOW WITH PAYROLL SUPPORT) ---
 const markAttendance = async (req, res) => {
   try {
-    const { classId, attendanceStatus, studentGroupId, studentGroupName, title, startTime, zoomLink } = req.body;
+    const { classId, attendanceStatus, studentGroupId, studentGroupName, title, startTime, zoomLink, durationMinutes, teacherGroupName } = req.body;
     let session;
     let targetGroup = studentGroupName; 
 
@@ -233,8 +233,9 @@ const markAttendance = async (req, res) => {
       const teacherUser = await User.findById(req.user._id);
       session = {
         student: { name: studentUser ? studentUser.name : (title || 'Student'), _id: studentUser?._id },
-        teacher: { name: teacherUser ? teacherUser.name : 'Teacher' },
-        meetingLink: zoomLink || ''
+        teacher: { name: teacherUser ? teacherUser.name : 'Teacher', _id: teacherUser?._id },
+        meetingLink: zoomLink || '',
+        subject: title || 'Google Calendar Lesson'
       };
       if (!targetGroup) targetGroup = session.student.name;
     }
@@ -263,12 +264,39 @@ const markAttendance = async (req, res) => {
       if (studentDoc && studentDoc.subscription && studentDoc.subscription.status === 'active') {
         studentDoc.subscription.classesUsed = (studentDoc.subscription.classesUsed || 0) + 1;
         
-        // Check for Expiration!
         if (studentDoc.subscription.classesUsed >= studentDoc.subscription.totalClassesBought && studentDoc.subscription.totalClassesBought > 0) {
           studentDoc.subscription.status = 'expired';
           console.log(`⚠️ ALERT: Student ${studentDoc.name}'s subscription has just expired due to absence!`);
         }
         await studentDoc.save();
+      }
+    }
+
+    // ==========================================
+    // 💸 PAYROLL ENGINE: LOG ABSENT CLASS FOR TEACHER PAY
+    // ==========================================
+    if (attendanceStatus === 'Absent') {
+      const finalDuration = durationMinutes ? Number(durationMinutes) : 60; // Default 60 mins if not provided
+
+      // If it's a real DB record, update it to 'completed' so it counts for payroll
+      if (mongoose.Types.ObjectId.isValid(classId) && session.save) {
+        session.status = 'completed'; 
+        session.notes = 'Student marked Absent. Class fully counted for teacher payroll.';
+        if (!session.durationMinutes) session.durationMinutes = finalDuration;
+        await session.save();
+      } else {
+        // If it was just a Google Calendar event, we MUST create the record so the teacher gets paid
+        await ClassSession.create({
+          teacher: req.user._id,
+          student: session.student?._id || null,
+          subject: session.subject,
+          startTime: startTime || new Date(),
+          durationMinutes: finalDuration,
+          status: 'completed', // 'completed' ensures the payroll script grabs it
+          notes: 'Student marked Absent. Class fully counted for teacher payroll.',
+          teacherGroupName: teacherGroupName || '',
+          studentGroupName: studentGroupName || ''
+        });
       }
     }
 
@@ -510,7 +538,7 @@ const getAdminLiveMonitor = async (req, res) => {
     });
 
     const dbClasses = await ClassSession.find({
-      status: { $in: ['completed', 'started', 'in-progress'] },
+      status: { $in: ['completed', 'started', 'in-progress', 'cancelled'] }, // 👈 Added cancelled here so they stay hidden
       startTime: { $gte: yesterday }
     }).populate('teacher', 'name');
 
@@ -524,7 +552,7 @@ const getAdminLiveMonitor = async (req, res) => {
       const teacherCompleted = teacherDbClasses.filter(cls => cls.status === 'completed');
       const teacherLive = teacherDbClasses.filter(cls => cls.status === 'started' || cls.status === 'in-progress');
 
-      // Filter out completed AND live from upcoming
+      // Filter out completed, live, and CANCELLED from upcoming
       const upcoming = teacherGcal.filter(gcalClass => {
         const isInDb = teacherDbClasses.some(dbClass => 
           (dbClass.studentGroupName === gcalClass.studentGroupName) || (dbClass.subject === gcalClass.title)
@@ -660,10 +688,52 @@ const grantMakeupCredit = async (req, res) => {
   }
 };
 
+// ==========================================
+// 🚫 NEW: ADMIN CANCEL UPCOMING CLASS
+// ==========================================
+const cancelUpcomingClass = async (req, res) => {
+  try {
+    const { title, studentGroupName, teacherGroupName, startTime } = req.body;
+
+    // 1. Create a "cancelled" record so the Live Monitor hides it from "Upcoming"
+    await ClassSession.create({
+      subject: title || 'Google Calendar Lesson',
+      studentGroupName: studentGroupName || '',
+      teacherGroupName: teacherGroupName || '',
+      startTime: startTime || new Date(),
+      status: 'cancelled' 
+    });
+
+    // 2. Alert the Teacher
+    let teacherSearchTerm = teacherGroupName ? teacherGroupName.trim() : null;
+    if (teacherSearchTerm && teacherSearchTerm.includes('@g.us')) teacherSearchTerm = null;
+    
+    if (teacherSearchTerm) {
+      const teacherMessage = `⚠️ *Class Canceled Alert*\n\nالسلام عليكم / Assalamu Alaikum,\n\nYour upcoming class *${title}* has been canceled by the Admin.\n\nPlease check your dashboard for updates. \n*Learn With Ayman Admin Team*`;
+      await whatsappClient.sendMessage(teacherSearchTerm, teacherMessage);
+    }
+
+    // 3. Alert the Student
+    let studentSearchTerm = studentGroupName ? studentGroupName.trim() : null;
+    if (studentSearchTerm && studentSearchTerm.includes('@g.us')) studentSearchTerm = null;
+    
+    if (studentSearchTerm) {
+      const studentMessage = `⚠️ *Class Canceled Alert*\n\nالسلام عليكم / Assalamu Alaikum,\n\nYour upcoming class *${title}* has been canceled.\n\n*Learn With Ayman Admin Team*`;
+      await whatsappClient.sendMessage(studentSearchTerm, studentMessage);
+    }
+
+    res.status(200).json({ message: 'Class officially canceled and notifications sent!' });
+  } catch (error) {
+    console.error('Error canceling class:', error);
+    res.status(500).json({ message: 'Server error while canceling class.' });
+  }
+};
+
+
 module.exports = {
   scheduleClass, getMyClasses, deleteClass, getAllClasses, updateClass,
   endClass, markAttendance, getCompletedClasses, getTeacherEarnings,
   getAdminPayrollReport, addTeacherAdjustment, getTeacherSchedule,
   getAdminLiveMonitor, resendReminder, resendNotes, joinClass,
-  grantMakeupCredit // 👈 NEW ONE ADDED
+  grantMakeupCredit, cancelUpcomingClass // 👈 Added here!
 };
