@@ -1,7 +1,8 @@
 const axios = require('axios');
 const MessageLog = require('../models/MessageLog'); 
 
-const MACRODROID_URL = 'https://trigger.macrodroid.com/d46f0039-8cc1-4836-b82b-5461a745d0d5/send_msg';
+// 🔴 Updated with your exact MacroDroid Webhook URL
+const MACRODROID_URL = 'https://trigger.macrodroid.com/e9592791-c348-4013-81ca-1586b671b80c/send_msg';
 
 const sendMessage = async (remoteJid, text) => {
     // Clean the target immediately for logging
