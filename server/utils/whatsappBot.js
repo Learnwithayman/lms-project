@@ -1,14 +1,8 @@
 const axios = require('axios');
-const MessageLog = require('../models/MessageLog'); // 👈 NEW: Importing our log database
+const MessageLog = require('../models/MessageLog'); 
 
-// The MacroDroid custom webhook link we built together
 const MACRODROID_URL = 'https://trigger.macrodroid.com/d46f0039-8cc1-4836-b82b-5461a745d0d5/send_msg';
 
-/**
- * Sends a WhatsApp message by physically taking over the connected Android phone screen.
- * @param {string} remoteJid - The recipient's phone number OR Group Name
- * @param {string} text - The message body to send
- */
 const sendMessage = async (remoteJid, text) => {
     let cleanTarget = remoteJid;
     
@@ -18,12 +12,9 @@ const sendMessage = async (remoteJid, text) => {
             return false;
         }
 
-        // 1. Clean the target (Removes backend tags like @g.us, but KEEPS all English letters and names!)
         cleanTarget = remoteJid.replace(/@s\.whatsapp\.net/gi, '').replace(/@g\.us/gi, '').trim();
-        
         console.log(`📱 Routing message through phone to: ${cleanTarget}`);
 
-        // 2. Fire the webhook to MacroDroid passing parameters in the URL query strings
         const response = await axios.get(MACRODROID_URL, {
             params: {
                 phone: cleanTarget,
@@ -40,6 +31,7 @@ const sendMessage = async (remoteJid, text) => {
                 messageBody: text,
                 status: 'sent'
             });
+            console.log(`✅ SUCCESS: Message log securely saved to the database!`); // 👈 Added this!
         } catch (dbError) {
             console.error('⚠️ Could not save message log to database:', dbError.message);
         }
@@ -56,6 +48,7 @@ const sendMessage = async (remoteJid, text) => {
                 status: 'failed',
                 errorMessage: error.message
             });
+            console.log(`✅ LOGGED FAILED MESSAGE TO DATABASE`); // 👈 Added this!
         } catch (dbError) {
             console.error('⚠️ Could not save failed message log to database:', dbError.message);
         }
@@ -64,11 +57,8 @@ const sendMessage = async (remoteJid, text) => {
     }
 };
 
-// Exporting a fake client object to match your existing code structure 
-// so you don't have to rewrite any other files in your system!
 const client = {
     sendMessage: async (jid, payload) => {
-        // If your system passes an object like { text: "hello" }, unwrap it
         const msgText = typeof payload === 'object' ? payload.text : payload;
         return await sendMessage(jid, msgText);
     }
