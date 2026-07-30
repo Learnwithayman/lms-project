@@ -23,7 +23,7 @@ const auth = new google.auth.GoogleAuth({
 const calendar = google.calendar({ version: 'v3', auth });
 
 // ==========================================
-// ✨ MACRODROID LINK EXTRACTOR HELPER ✨
+// ✨ MACRODROID LINK EXTRACTOR HELPER (HTML-PROOF) ✨
 // Dynamically grabs Group Invite Codes directly from Google Calendar!
 // ==========================================
 const extractGroupCodes = async (classTitle) => {
@@ -48,11 +48,13 @@ const extractGroupCodes = async (classTitle) => {
     // Scan matching events for the Link Codes
     for (const event of events) {
       if (event.description && event.description.includes('GroupLink')) {
-        const tMatch = event.description.match(/TeacherGroupLink:\s*https?:\/\/chat\.whatsapp\.com\/([a-zA-Z0-9_-]+)/i);
-        if (tMatch) codes.teacher = tMatch[1].trim();
         
-        const sMatch = event.description.match(/StudentGroupLink:\s*https?:\/\/chat\.whatsapp\.com\/([a-zA-Z0-9_-]+)/i);
-        if (sMatch) codes.student = sMatch[1].trim();
+        // ✨ HTML-Proof Regex: Jumps over hidden Google Calendar <a href="..."> tags!
+        const tMatch = event.description.match(/TeacherGroupLink[\s\S]*?chat\.whatsapp\.com\/([a-zA-Z0-9_-]+)/i);
+        if (tMatch && tMatch[1] !== 'null') codes.teacher = tMatch[1].trim();
+        
+        const sMatch = event.description.match(/StudentGroupLink[\s\S]*?chat\.whatsapp\.com\/([a-zA-Z0-9_-]+)/i);
+        if (sMatch && sMatch[1] !== 'null') codes.student = sMatch[1].trim();
         
         if (codes.teacher || codes.student) break; // Stop loop once found!
       }
