@@ -29,13 +29,23 @@ cron.schedule('* * * * *', async () => {
       const minutesUntilStart = Math.round(timeDifferenceMs / (1000 * 60));
       const timeString = new Date(cls.startTime).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', timeZone: "Africa/Cairo" });
 
-      // ✨ 1. STRICT NAME ENGINE (Reads ONLY the exact name from the description)
-      let teacherSearchTerm = (cls.teacherGroupName && cls.teacherGroupName.trim() !== '') ? cls.teacherGroupName.trim() : null;
-      let studentSearchTerm = (cls.studentGroupName && cls.studentGroupName.trim() !== '') ? cls.studentGroupName.trim() : null;
+      // ✨ 1. WHATSAPP LINK EXTRACTION (Grabs the unique group code from the Description)
+      let teacherSearchTerm = null;
+      let studentSearchTerm = null;
 
-      // Clean up old @g.us IDs if they are still hiding in the calendar
-      if (teacherSearchTerm && teacherSearchTerm.includes('@g.us')) teacherSearchTerm = null;
-      if (studentSearchTerm && studentSearchTerm.includes('@g.us')) studentSearchTerm = null;
+      if (cls.description) {
+        // Regex looks for "TeacherGroupLink: https://chat.whatsapp.com/CODE" and extracts the CODE
+        const teacherMatch = cls.description.match(/TeacherGroupLink:\s*https?:\/\/chat\.whatsapp\.com\/([a-zA-Z0-9_-]+)/i);
+        if (teacherMatch && teacherMatch[1]) {
+          teacherSearchTerm = teacherMatch[1].trim(); 
+        }
+
+        // Regex looks for "StudentGroupLink: https://chat.whatsapp.com/CODE" and extracts the CODE
+        const studentMatch = cls.description.match(/StudentGroupLink:\s*https?:\/\/chat\.whatsapp\.com\/([a-zA-Z0-9_-]+)/i);
+        if (studentMatch && studentMatch[1]) {
+          studentSearchTerm = studentMatch[1].trim(); 
+        }
+      }
 
       // ==========================================
       // 1-HOUR REMINDERS
@@ -46,7 +56,7 @@ cron.schedule('* * * * *', async () => {
         if (teacherSearchTerm) {
           const teacherMessage = `🔔 *Teacher Reminder*\n\nالسلام عليكم / Assalamu Alaikum,\n\nYour class *${cls.title}* is starting in exactly *1 Hour*.\n\n🕒 *Time:* ${timeString}\n\n🔗 *Teacher Dashboard:*\nhttps://lms.learnwithayman.com\n\n*Learn With Ayman Admin Team*`;
           await sendMessage(teacherSearchTerm, teacherMessage); 
-          console.log(`✅ Sent 1-hour Teacher reminder to search term: ${teacherSearchTerm}`);
+          console.log(`✅ Sent 1-hour Teacher reminder to group code: ${teacherSearchTerm}`);
           
           await delay(25000); 
         }
@@ -55,7 +65,7 @@ cron.schedule('* * * * *', async () => {
         if (studentSearchTerm) {
           const studentMessage = `🔔 *Class Reminder*\n\nالسلام عليكم / Assalamu Alaikum,\n\nGet ready! Your class *${cls.title}* is starting in exactly *1 Hour*.\n\n🔗 *Join Here:*\n${cls.zoomLink || 'No link provided'}\n\n*Learn With Ayman Admin Team*`;
           await sendMessage(studentSearchTerm, studentMessage); 
-          console.log(`✅ Sent 1-hour Student reminder to search term: ${studentSearchTerm}`);
+          console.log(`✅ Sent 1-hour Student reminder to group code: ${studentSearchTerm}`);
           
           await delay(25000); 
         }
@@ -74,7 +84,7 @@ cron.schedule('* * * * *', async () => {
           const alreadyJoined = await ClassSession.findOne({
             $or: [
               { subject: cls.title },
-              { studentGroupName: cls.studentGroupName }
+              { studentGroupName: cls.studentGroupName } // Safely uses the original database string, not the URL code
             ],
             startTime: { $gte: oneHourAgo }, 
             status: { $in: ['in-progress', 'started', 'completed'] } 
@@ -85,7 +95,7 @@ cron.schedule('* * * * *', async () => {
           } else {
             const lateMessage = `🚨 *Action Required: You are 3 minutes late!*\n\nالسلام عليكم / Assalamu Alaikum,\n\nYour class *${cls.title}* was scheduled to begin at *${timeString}*.\n\nYou are currently 3 minutes late. Please jump into the room immediately so the student is not left waiting. If you have an emergency, please notify the admin team!\n\n🔗 *Join Class Here:*\n${cls.zoomLink || 'No link provided'}\n\n*Learn With Ayman Admin Team*`;
             await sendMessage(teacherSearchTerm, lateMessage); 
-            console.log(`🚨 Sent 3-minute late alert to search term: ${teacherSearchTerm}`);
+            console.log(`🚨 Sent 3-minute late alert to group code: ${teacherSearchTerm}`);
             
             await delay(25000); 
           }
