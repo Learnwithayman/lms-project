@@ -641,7 +641,8 @@ const resendReminder = async (req, res) => {
 const resendNotes = async (req, res) => {
   try {
     const { classId } = req.body;
-    const session = await ClassSession.findById(classId).populate('teacher', 'name');
+    // ✨ FIX: Added .populate('student', 'name') here so we can grab the real name!
+    const session = await ClassSession.findById(classId).populate('teacher', 'name').populate('student', 'name');
     
     if (!session) return res.status(404).json({ message: 'Class not found' });
 
@@ -654,7 +655,10 @@ const resendNotes = async (req, res) => {
         targetPhone = session.subject || 'Student';
     }
 
-    let messageText = `🎓 *Class Completed! (Resent)*\n*Teacher:* ${session.teacher?.name || 'Teacher'}\n*Student:* ${targetPhone}\n\n📝 *Class Notes:*\n${session.notes || 'No notes provided.'}\n\n📚 *Homework:*\nHomework has been assigned! Please check Google Classroom to view the requirements and upload the completed assignment:\n🔗 https://classroom.google.com`;
+    // ✨ FIX: Separate the display name from the invite code!
+    const displayStudentName = session.student?.name || session.studentGroupName || session.subject || 'Student';
+
+    let messageText = `🎓 *Class Completed! (Resent)*\n*Teacher:* ${session.teacher?.name || 'Teacher'}\n*Student:* ${displayStudentName}\n\n📝 *Class Notes:*\n${session.notes || 'No notes provided.'}\n\n📚 *Homework:*\nHomework has been assigned! Please check Google Classroom to view the requirements and upload the completed assignment:\n🔗 https://classroom.google.com`;
 
     if (targetPhone && targetPhone !== 'Student') {
       console.log(`📡 Triggering MacroDroid to resend notes to code/name: ${targetPhone}`);
