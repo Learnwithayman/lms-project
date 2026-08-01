@@ -1,10 +1,3 @@
-I hear you! No shortcuts, no placeholders.
-
-Here is your entire `scheduleController.js` file, fully updated with both the HTML-proof calendar extraction fix AND the fix that correctly displays the Student's actual name in the WhatsApp message instead of their invite code.
-
-Select all, copy, and paste this completely over your current file:
-
-```javascript
 const asyncHandler = require('express-async-handler');
 const ClassSession = require('../models/ClassSession');
 const User = require('../models/User');
