@@ -19,7 +19,7 @@ cron.schedule('* * * * *', async () => {
 
     for (const cls of classes) {
       
-      // 🚫 THE "DO NOT SEND" FILTER 
+      // 🚫 THE "DO NOT SEND" FILTER (Working perfectly!)
       if (cls.description && cls.description.toLowerCase().includes('do not send')) {
         console.log(`🚫 Skipped reminders for "${cls.title}" because it is marked as "do not send".`);
         continue; 
@@ -29,19 +29,18 @@ cron.schedule('* * * * *', async () => {
       const minutesUntilStart = Math.round(timeDifferenceMs / (1000 * 60));
       const timeString = new Date(cls.startTime).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', timeZone: "Africa/Cairo" });
 
-      // ✨ 1. WHATSAPP LINK EXTRACTION (Grabs the unique group code from the Description)
+      // ✨ 1. WHATSAPP LINK EXTRACTION (HTML-Proof Fix Applied!)
       let teacherSearchTerm = null;
       let studentSearchTerm = null;
 
       if (cls.description) {
-        // Regex looks for "TeacherGroupLink: https://chat.whatsapp.com/CODE" and extracts the CODE
-        const teacherMatch = cls.description.match(/TeacherGroupLink:\s*https?:\/\/chat\.whatsapp\.com\/([a-zA-Z0-9_-]+)/i);
+        // ✨ HTML-Proof Regex: Jumps over hidden Google Calendar tags!
+        const teacherMatch = cls.description.match(/TeacherGroupLink[\s\S]*?chat\.whatsapp\.com\/([a-zA-Z0-9_-]+)/i);
         if (teacherMatch && teacherMatch[1]) {
           teacherSearchTerm = teacherMatch[1].trim(); 
         }
 
-        // Regex looks for "StudentGroupLink: https://chat.whatsapp.com/CODE" and extracts the CODE
-        const studentMatch = cls.description.match(/StudentGroupLink:\s*https?:\/\/chat\.whatsapp\.com\/([a-zA-Z0-9_-]+)/i);
+        const studentMatch = cls.description.match(/StudentGroupLink[\s\S]*?chat\.whatsapp\.com\/([a-zA-Z0-9_-]+)/i);
         if (studentMatch && studentMatch[1]) {
           studentSearchTerm = studentMatch[1].trim(); 
         }
