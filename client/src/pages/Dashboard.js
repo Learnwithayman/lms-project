@@ -224,28 +224,30 @@ function Dashboard() {
                 
                 <div style={{ display: 'flex', alignItems: 'center', marginTop: '10px', gap: '10px', flexWrap: 'wrap' }}>
                   
+                  {/* ✨ FIXED HTML-PROOF JOIN BUTTON ✨ */}
                   {(cls.zoomLink || cls.meetingLink) ? (
-                    <a 
-                      href={isLive ? (cls.zoomLink || cls.meetingLink) : undefined} 
-                      target="_blank" 
-                      rel="noopener noreferrer" 
-                      style={{ textDecoration: 'none', pointerEvents: isLive ? 'auto' : 'none' }}
+                    <button 
+                      className={isLive ? "btn-blue" : "btn-disabled"}
+                      disabled={!isLive}
+                      style={{ 
+                        padding: '10px 20px', 
+                        backgroundColor: isLive ? '#3498db' : '#bdc3c7',
+                        cursor: isLive ? 'pointer' : 'not-allowed',
+                        border: 'none',
+                        color: 'white',
+                        borderRadius: '4px'
+                      }}
                       onClick={() => {
-                        if (isLive) handleJoinClassClick(cls); 
+                        if (isLive) {
+                          // 1. Fire the database signal FIRST
+                          handleJoinClassClick(cls);
+                          // 2. Then open the Zoom link in a new tab
+                          window.open(cls.zoomLink || cls.meetingLink, '_blank');
+                        }
                       }}
                     >
-                      <button 
-                        className={isLive ? "btn-blue" : "btn-disabled"}
-                        disabled={!isLive}
-                        style={{ 
-                          padding: '10px 20px', 
-                          backgroundColor: isLive ? '#3498db' : '#bdc3c7',
-                          cursor: isLive ? 'pointer' : 'not-allowed'
-                        }}
-                      >
-                        🎥 {isLive ? "Join Class" : "Locked (Not Class Time)"}
-                      </button>
-                    </a>
+                      🎥 {isLive ? "Join Class" : "Locked (Not Class Time)"}
+                    </button>
                   ) : (
                     <span style={{ color: 'grey', fontStyle: 'italic', fontSize: '14px' }}>No meeting link.</span>
                   )}
