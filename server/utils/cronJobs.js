@@ -77,15 +77,26 @@ cron.schedule('* * * * *', async () => {
         if (teacherSearchTerm) {
           
           // ✨ 3. BULLETPROOF LATE ALERT CHECK 
-          const oneHourAgo = new Date(now.getTime() - (60 * 60 * 1000));
           
-          // Smarter check: Looks for BOTH title OR the student group name to ensure we don't miss it
+          // Fix 1: Actually extract the Student Group Name so the database fallback works!
+          let dbStudentName = null;
+          if (cls.description) {
+            const nameMatch = cls.description.match(/StudentGroupName[\s*:-]*([^\n<]+)/i);
+            if (nameMatch) dbStudentName = nameMatch[1].trim();
+          }
+
+          // Fix 2: Widen the search window to 3 hours just in case they joined early
+          const threeHoursAgo = new Date(now.getTime() - (3 * 60 * 60 * 1000));
+          
+          // Fix 3: Trim the title to prevent trailing-space mismatch errors
+          const safeTitle = cls.title ? cls.title.trim() : "NO_TITLE";
+
           const alreadyJoined = await ClassSession.findOne({
             $or: [
-              { subject: cls.title },
-              { studentGroupName: cls.studentGroupName } // Safely uses the original database string, not the URL code
+              { subject: safeTitle },
+              { studentGroupName: dbStudentName || "NO_STUDENT_NAME" } 
             ],
-            startTime: { $gte: oneHourAgo }, 
+            startTime: { $gte: threeHoursAgo }, 
             status: { $in: ['in-progress', 'started', 'completed'] } 
           });
 
