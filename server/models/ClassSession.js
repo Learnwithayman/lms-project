@@ -25,12 +25,22 @@ const classSessionSchema = mongoose.Schema({
   },
   durationMinutes: {
     type: Number,
-    required: true,
+    required: false, // 🔓 Changed to false so "Join Class" doesn't crash!
+    default: 60
   },
   status: {
     type: String,
-    enum: ['scheduled', 'completed', 'cancelled'],
+    // 🔓 Added 'started' and 'in-progress' so the DB accepts the button click!
+    enum: ['scheduled', 'started', 'in-progress', 'completed', 'cancelled'],
     default: 'scheduled',
+  },
+  studentGroupName: {
+    type: String,
+    default: '' // 🔓 Added so cron.js can actually find the student name!
+  },
+  teacherGroupName: {
+    type: String,
+    default: ''
   },
   notes: { 
     type: String, 
