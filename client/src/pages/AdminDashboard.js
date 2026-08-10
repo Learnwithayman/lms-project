@@ -39,7 +39,7 @@ function AdminDashboard() {
   // 📡 FETCH LIVE MONITOR DATA
   const fetchLiveClasses = async (token) => {
     try {
-      const response = await fetch(`${process.env.REACT_APP_API_URL || 'http://localhost:5000'}/api/schedule/admin-live-monitor`, {
+      const response = await fetch(`${process.env.REACT_APP_API_URL || 'https://lms-backend-02zs.onrender.com'}/api/schedule/admin-live-monitor`, {
         headers: { Authorization: `Bearer ${token}` }
       });
       if (response.ok) {
@@ -56,7 +56,7 @@ function AdminDashboard() {
   // 📜 FETCH MESSAGE LOGS
   const fetchMessageLogs = async (token) => {
     try {
-      const response = await fetch(`${process.env.REACT_APP_API_URL || 'http://localhost:5000'}/api/schedule/message-logs`, {
+      const response = await fetch(`${process.env.REACT_APP_API_URL || 'https://lms-backend-02zs.onrender.com'}/api/schedule/message-logs`, {
         headers: { Authorization: `Bearer ${token}` }
       });
       if (response.ok) {
@@ -76,7 +76,7 @@ function AdminDashboard() {
     
     try {
       const token = localStorage.getItem('token');
-      const response = await fetch(`${process.env.REACT_APP_API_URL || 'http://localhost:5000'}/api/schedule/resend-reminder`, {
+      const response = await fetch(`${process.env.REACT_APP_API_URL || 'https://lms-backend-02zs.onrender.com'}/api/schedule/resend-reminder`, {
         method: 'POST',
         headers: { 
           'Content-Type': 'application/json',
@@ -100,7 +100,7 @@ function AdminDashboard() {
 
     try {
       const token = localStorage.getItem('token');
-      const response = await fetch(`${process.env.REACT_APP_API_URL || 'http://localhost:5000'}/api/schedule/admin-cancel`, {
+      const response = await fetch(`${process.env.REACT_APP_API_URL || 'https://lms-backend-02zs.onrender.com'}/api/schedule/admin-cancel`, {
         method: 'POST',
         headers: { 
           'Content-Type': 'application/json',
@@ -133,7 +133,7 @@ function AdminDashboard() {
 
     try {
       const token = localStorage.getItem('token');
-      const response = await fetch(`${process.env.REACT_APP_API_URL || 'http://localhost:5000'}/api/schedule/resend-notes`, {
+      const response = await fetch(`${process.env.REACT_APP_API_URL || 'https://lms-backend-02zs.onrender.com'}/api/schedule/resend-notes`, {
         method: 'POST',
         headers: { 
           'Content-Type': 'application/json',
@@ -172,10 +172,19 @@ function AdminDashboard() {
             50% { opacity: 0.5; transform: scale(1.05); }
             100% { opacity: 1; transform: scale(1); }
           }
+          @keyframes pulseGreen {
+            0% { transform: scale(1); opacity: 1; }
+            50% { transform: scale(1.2); opacity: 0.8; }
+            100% { transform: scale(1); opacity: 1; }
+          }
           .live-badge {
             color: #e74c3c;
             font-weight: bold;
             animation: pulseRed 1.5s infinite;
+          }
+          .joined-pulse {
+            display: inline-block;
+            animation: pulseGreen 1.5s infinite;
           }
         `}
       </style>
@@ -211,8 +220,15 @@ function AdminDashboard() {
       </div>
 
       <div className="live-monitor-section" style={{ marginTop: '40px', backgroundColor: '#f9f9f9', padding: '20px', borderRadius: '8px', border: '1px solid #ddd' }}>
-        <h2>📡 Live Class Monitor (24h)</h2>
-        <p style={{ marginBottom: '20px', color: '#555' }}>Real-time overview of all teacher schedules and communication triggers.</p>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
+          <div>
+            <h2 style={{ margin: 0 }}>📡 Live Class Monitor (24h)</h2>
+            <p style={{ color: '#555', margin: '5px 0 0 0' }}>Real-time overview of all teacher schedules and communication triggers.</p>
+          </div>
+          <button onClick={() => fetchLiveClasses(localStorage.getItem('token'))} style={{ padding: '8px 15px', backgroundColor: '#3498db', color: 'white', border: 'none', borderRadius: '5px', cursor: 'pointer', fontWeight: 'bold' }}>
+            🔄 Refresh Monitor
+          </button>
+        </div>
         
         {loading ? (
           <p>Loading live schedule...</p>
@@ -225,16 +241,21 @@ function AdminDashboard() {
                 👨‍🏫 Teacher: {teacherGroup.teacherName}
               </h3>
 
-              {/* 🔴 LIVE NOW CLASSES */}
+              {/* ✨ 🟢 THE NEW TEACHER JOINED TRACKER */}
               {teacherGroup.live && teacherGroup.live.length > 0 && (
-                <div style={{ marginTop: '15px', padding: '10px', backgroundColor: '#fdf3f2', borderRadius: '5px', borderLeft: '4px solid #e74c3c' }}>
-                  <h4 className="live-badge">🔴 LIVE NOW</h4>
+                <div style={{ marginTop: '15px', padding: '15px', backgroundColor: '#e8f8f5', borderRadius: '5px', borderLeft: '5px solid #2ecc71', boxShadow: '0 2px 5px rgba(0,0,0,0.1)' }}>
+                  <h4 style={{ color: '#27ae60', fontWeight: 'bold', margin: '0 0 10px 0', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <span className="joined-pulse">🟢</span> TEACHER HAS JOINED (LIVE NOW)
+                  </h4>
                   <ul style={{ listStyleType: 'none', padding: 0, margin: 0 }}>
                     {teacherGroup.live.map((cls, i) => (
-                      <li key={i} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '5px 0' }}>
+                      <li key={i} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px 0', borderBottom: i !== teacherGroup.live.length - 1 ? '1px solid #d1f2eb' : 'none' }}>
                         <span>
-                          <strong>{cls.subject || cls.title}</strong><br/>
-                          <small>🕒 Started at: {new Date(cls.startTime).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</small>
+                          <strong style={{ color: '#2c3e50', fontSize: '1.1em' }}>{cls.subject || cls.title}</strong><br/>
+                          <small style={{ color: '#16a085', fontWeight: 'bold' }}>🕒 Button Clicked at: {new Date(cls.createdAt || cls.startTime).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</small>
+                        </span>
+                        <span style={{ padding: '6px 12px', backgroundColor: '#2ecc71', color: 'white', borderRadius: '20px', fontSize: '0.8em', fontWeight: 'bold' }}>
+                          Active Session
                         </span>
                       </li>
                     ))}
@@ -308,7 +329,7 @@ function AdminDashboard() {
       </div>
 
       {/* ========================================== */}
-      {/* 📜 NEW: SYSTEM MESSAGE LOG SECTION */}
+      {/* 📜 SYSTEM MESSAGE LOG SECTION */}
       {/* ========================================== */}
       <div style={{ marginTop: '40px', backgroundColor: '#2c3e50', padding: '20px', borderRadius: '8px', color: 'white' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '15px' }}>
