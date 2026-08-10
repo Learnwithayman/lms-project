@@ -8,6 +8,13 @@ console.log('✅ Dual-Group Cron jobs initialized. Listening for upcoming classe
 
 const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
+// ✨ NEW: The "Special Character" Shield! 
+// This stops parentheses, brackets, or dashes in your class titles from breaking the database search.
+const escapeRegex = (text) => {
+  if (!text) return "";
+  return text.replace(/[-[\]{}()*+?.,\\^$|#\s]/g, '\\$&');
+};
+
 cron.schedule('* * * * *', async () => {
   try {
     const classes = await getUpcomingClasses();
@@ -71,11 +78,14 @@ cron.schedule('* * * * *', async () => {
       if (minutesUntilStart === -3) {
         if (teacherSearchTerm) {
           const threeHoursAgo = new Date(now.getTime() - (3 * 60 * 60 * 1000));
-          const safeStudentRegex = dbStudentName ? new RegExp(dbStudentName, 'i') : /NO_STUDENT_NAME/;
+          
+          // ✨ NEW: Using the Escape Shield on our search variables!
+          const safeStudentRegex = dbStudentName ? new RegExp(escapeRegex(dbStudentName), 'i') : /NO_STUDENT_NAME/;
+          const safeTitleRegex = new RegExp(escapeRegex(safeTitle), 'i');
 
           const alreadyJoined = await ClassSession.findOne({
             $or: [
-              { subject: new RegExp(safeTitle, 'i') },
+              { subject: safeTitleRegex },
               { studentGroupName: safeStudentRegex } 
             ],
             startTime: { $gte: threeHoursAgo }, 
@@ -100,12 +110,15 @@ cron.schedule('* * * * *', async () => {
       if (minutesSinceEnd === 50) {
         if (teacherSearchTerm) {
           const twelveHoursAgo = new Date(now.getTime() - (12 * 60 * 60 * 1000));
-          const safeStudentRegex = dbStudentName ? new RegExp(dbStudentName, 'i') : /NO_STUDENT_NAME/;
+          
+          // ✨ NEW: Using the Escape Shield here too!
+          const safeStudentRegex = dbStudentName ? new RegExp(escapeRegex(dbStudentName), 'i') : /NO_STUDENT_NAME/;
+          const safeTitleRegex = new RegExp(escapeRegex(safeTitle), 'i');
 
           // Check if the class is STILL marked as 'started' (meaning they didn't end it)
           const stillRunning = await ClassSession.findOne({
             $or: [
-              { subject: new RegExp(safeTitle, 'i') },
+              { subject: safeTitleRegex },
               { studentGroupName: safeStudentRegex } 
             ],
             startTime: { $gte: twelveHoursAgo }, 
