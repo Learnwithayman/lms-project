@@ -2,70 +2,65 @@ const cron = require('node-cron');
 const { getUpcomingClasses } = require('./calendarBot');
 const { sendMessage } = require('./whatsappBot'); 
 const ClassSession = require('../models/ClassSession'); 
-const User = require('../models/User'); // Used for the Midnight Sweeper
+const User = require('../models/User'); 
 
 console.log('✅ Dual-Group Cron jobs initialized. Listening for upcoming classes...');
 
-// ⏱️ 25-Second Delay Helper Function
 const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
-// ---------------------------------------------------------
-// EVERY MINUTE CHECKS (1-Hour Reminders & Late Alerts)
-// ---------------------------------------------------------
 cron.schedule('* * * * *', async () => {
   try {
     const classes = await getUpcomingClasses();
     const now = new Date();
 
     for (const cls of classes) {
-      
-      // 🚫 THE "DO NOT SEND" FILTER (Working perfectly!)
       if (cls.description && cls.description.toLowerCase().includes('do not send')) {
         console.log(`🚫 Skipped reminders for "${cls.title}" because it is marked as "do not send".`);
         continue; 
       }
 
+      // ✨ TIME CALCULATORS
       const timeDifferenceMs = cls.startTime - now;
       const minutesUntilStart = Math.round(timeDifferenceMs / (1000 * 60));
+      
+      // ✨ NEW: Calculate exactly when the class ends
+      const classEndTime = cls.endTime ? new Date(cls.endTime) : new Date(cls.startTime.getTime() + (60 * 60 * 1000));
+      const minutesSinceEnd = Math.round((now - classEndTime) / (1000 * 60));
+
       const timeString = new Date(cls.startTime).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', timeZone: "Africa/Cairo" });
 
-      // ✨ 1. WHATSAPP LINK EXTRACTION (HTML-Proof Fix Applied!)
       let teacherSearchTerm = null;
       let studentSearchTerm = null;
+      let dbStudentName = null;
 
       if (cls.description) {
-        // ✨ HTML-Proof Regex: Jumps over hidden Google Calendar tags!
         const teacherMatch = cls.description.match(/TeacherGroupLink[\s\S]*?chat\.whatsapp\.com\/([a-zA-Z0-9_-]+)/i);
-        if (teacherMatch && teacherMatch[1]) {
-          teacherSearchTerm = teacherMatch[1].trim(); 
-        }
+        if (teacherMatch && teacherMatch[1]) teacherSearchTerm = teacherMatch[1].trim(); 
 
         const studentMatch = cls.description.match(/StudentGroupLink[\s\S]*?chat\.whatsapp\.com\/([a-zA-Z0-9_-]+)/i);
-        if (studentMatch && studentMatch[1]) {
-          studentSearchTerm = studentMatch[1].trim(); 
-        }
+        if (studentMatch && studentMatch[1]) studentSearchTerm = studentMatch[1].trim(); 
+
+        const nameMatch = cls.description.match(/StudentGroupName[\s*:-]*([^\n<]+)/i);
+        if (nameMatch) dbStudentName = nameMatch[1].trim();
       }
+
+      const safeTitle = cls.title ? cls.title.trim() : "NO_TITLE";
 
       // ==========================================
       // 1-HOUR REMINDERS
       // ==========================================
       if (minutesUntilStart === 60) {
-        
-        // ✨ 2. DASHBOARD LINK FOR TEACHER REMINDER
         if (teacherSearchTerm) {
           const teacherMessage = `🔔 *Teacher Reminder*\n\nالسلام عليكم / Assalamu Alaikum,\n\nYour class *${cls.title}* is starting in exactly *1 Hour*.\n\n🕒 *Time:* ${timeString}\n\n🔗 *Teacher Dashboard:*\nhttps://lms.learnwithayman.com\n\n*Learn With Ayman Admin Team*`;
           await sendMessage(teacherSearchTerm, teacherMessage); 
           console.log(`✅ Sent 1-hour Teacher reminder to group code: ${teacherSearchTerm}`);
-          
           await delay(25000); 
         }
 
-        // Message for the STUDENT (Keeps the Zoom Link)
         if (studentSearchTerm) {
           const studentMessage = `🔔 *Class Reminder*\n\nالسلام عليكم / Assalamu Alaikum,\n\nGet ready! Your class *${cls.title}* is starting in exactly *1 Hour*.\n\n🔗 *Join Here:*\n${cls.zoomLink || 'No link provided'}\n\n*Learn With Ayman Admin Team*`;
           await sendMessage(studentSearchTerm, studentMessage); 
           console.log(`✅ Sent 1-hour Student reminder to group code: ${studentSearchTerm}`);
-          
           await delay(25000); 
         }
       }
@@ -75,26 +70,13 @@ cron.schedule('* * * * *', async () => {
       // ==========================================
       if (minutesUntilStart === -3) {
         if (teacherSearchTerm) {
-          
-          // ✨ 3. BULLETPROOF LATE ALERT CHECK 
-          
-          // Fix 1: Actually extract the Student Group Name so the database fallback works!
-          let dbStudentName = null;
-          if (cls.description) {
-            const nameMatch = cls.description.match(/StudentGroupName[\s*:-]*([^\n<]+)/i);
-            if (nameMatch) dbStudentName = nameMatch[1].trim();
-          }
-
-          // Fix 2: Widen the search window to 3 hours just in case they joined early
           const threeHoursAgo = new Date(now.getTime() - (3 * 60 * 60 * 1000));
-          
-          // Fix 3: Trim the title to prevent trailing-space mismatch errors
-          const safeTitle = cls.title ? cls.title.trim() : "NO_TITLE";
+          const safeStudentRegex = dbStudentName ? new RegExp(dbStudentName, 'i') : /NO_STUDENT_NAME/;
 
           const alreadyJoined = await ClassSession.findOne({
             $or: [
-              { subject: safeTitle },
-              { studentGroupName: dbStudentName || "NO_STUDENT_NAME" } 
+              { subject: new RegExp(safeTitle, 'i') },
+              { studentGroupName: safeStudentRegex } 
             ],
             startTime: { $gte: threeHoursAgo }, 
             status: { $in: ['in-progress', 'started', 'completed'] } 
@@ -106,8 +88,37 @@ cron.schedule('* * * * *', async () => {
             const lateMessage = `🚨 *Action Required: You are 3 minutes late!*\n\nالسلام عليكم / Assalamu Alaikum,\n\nYour class *${cls.title}* was scheduled to begin at *${timeString}*.\n\nYou are currently 3 minutes late. Please jump into the room immediately so the student is not left waiting. If you have an emergency, please notify the admin team!\n\n🔗 *Join Class Here:*\n${cls.zoomLink || 'No link provided'}\n\n*Learn With Ayman Admin Team*`;
             await sendMessage(teacherSearchTerm, lateMessage); 
             console.log(`🚨 Sent 3-minute late alert to group code: ${teacherSearchTerm}`);
-            
             await delay(25000); 
+          }
+        }
+      }
+
+      // ==========================================
+      // ⏳ 50-MINUTE "FORGOT TO END CLASS" REMINDER
+      // ==========================================
+      // ✨ NEW: This now triggers 50 minutes AFTER the class was scheduled to end!
+      if (minutesSinceEnd === 50) {
+        if (teacherSearchTerm) {
+          const twelveHoursAgo = new Date(now.getTime() - (12 * 60 * 60 * 1000));
+          const safeStudentRegex = dbStudentName ? new RegExp(dbStudentName, 'i') : /NO_STUDENT_NAME/;
+
+          // Check if the class is STILL marked as 'started' (meaning they didn't end it)
+          const stillRunning = await ClassSession.findOne({
+            $or: [
+              { subject: new RegExp(safeTitle, 'i') },
+              { studentGroupName: safeStudentRegex } 
+            ],
+            startTime: { $gte: twelveHoursAgo }, 
+            status: { $in: ['in-progress', 'started'] } 
+          });
+
+          if (stillRunning) {
+            const forgotMsg = `🔔 *Action Required: End Class Reminder*\n\nالسلام عليكم / Assalamu Alaikum,\n\nYour class *${cls.title}* ended over 50 minutes ago.\n\nIf the class is finished, please remember to click the *🛑 End Class* button on your dashboard so your teaching hours are logged and homework is submitted!\n\n🔗 *Teacher Dashboard:*\nhttps://lms.learnwithayman.com\n\n*Learn With Ayman Admin Team*`;
+            await sendMessage(teacherSearchTerm, forgotMsg); 
+            console.log(`🚨 Sent post-class "End Class" reminder to group code: ${teacherSearchTerm}`);
+            await delay(25000); 
+          } else {
+             console.log(`✅ Teacher already ended "${cls.title}". Skipping reminder.`);
           }
         }
       }
@@ -121,29 +132,21 @@ cron.schedule('* * * * *', async () => {
 // ==========================================
 // 🧹 MIDNIGHT SWEEPER: EXPIRED MAKEUP CREDITS
 // ==========================================
-// Runs every night at 12:00 AM
 cron.schedule('0 0 * * *', async () => {
   try {
     console.log('🧹 Midnight Sweeper initialized: Checking for expired makeup credits...');
     const now = new Date();
-    
-    // Find all users who actually have makeup credits in their bank
     const usersWithMakeups = await User.find({ 'makeupBank.0': { $exists: true } });
-    
     let expiredCount = 0;
 
     for (const student of usersWithMakeups) {
       const originalLength = student.makeupBank.length;
-      
-      // Keep only the makeup credits that haven't expired yet
       student.makeupBank = student.makeupBank.filter(credit => credit.expirationDate > now);
-      
       if (student.makeupBank.length < originalLength) {
         expiredCount += (originalLength - student.makeupBank.length);
         await student.save();
       }
     }
-
     console.log(`✅ Midnight Sweeper complete! Removed ${expiredCount} expired makeup credits.`);
   } catch (error) {
     console.error('❌ Error running Midnight Sweeper:', error);
