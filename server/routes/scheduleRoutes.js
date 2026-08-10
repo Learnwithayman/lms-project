@@ -19,7 +19,8 @@ const {
     joinClass,          // 👈 Restored from our earlier update today
     grantMakeupCredit,  // 👈 NEW: The Makeup Bank Engine
     cancelUpcomingClass, // 👈 NEW: Admin Cancel
-    getMessageLogs      // 👈 NEW: The missing link!
+    getMessageLogs,      // 👈 NEW: The missing link!
+    adminForceEndClass   // 👈 ✨ NEW: The Force End Superpower!
 } = require('../controllers/scheduleController');
 
 // Import your authentication middleware
@@ -51,10 +52,12 @@ router.delete('/:id', protect, deleteClass);
 router.get('/admin-live-monitor', protect, getAdminLiveMonitor);
 router.post('/resend-reminder', protect, resendReminder);
 router.post('/resend-notes', protect, resendNotes);
-router.post('/join', protect, joinClass);           // 👈 Join route
+router.post('/join', protect, joinClass);          // 👈 Join route
 router.post('/makeup', protect, grantMakeupCredit); // 👈 NEW: 90-Day Makeup Route
 router.post('/admin-cancel', protect, cancelUpcomingClass); // 👈 NEW: Admin Cancel Route
-router.get('/message-logs', protect, getMessageLogs); // 👈 🚨 THE MISSING ROUTE IS HERE 🚨
+router.get('/message-logs', protect, getMessageLogs); 
+
+router.put('/admin-force-end', protect, adminForceEndClass); // 👈 🚨 THE MISSING ROUTE IS HERE 🚨
 
 // 💰 FORCE RUN MONTHLY PAYROLL (Manual Trigger from Admin Dashboard Button)
 router.post('/force-payroll', protect, async (req, res) => {
