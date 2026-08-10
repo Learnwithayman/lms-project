@@ -210,20 +210,23 @@ const endClass = async (req, res) => {
       console.error('⚠️ WhatsApp failed to send (Connection Closed), but saving class anyway:', waError.message);
     }
 
+    // 🔓 THE FIX: We capture the exact duration sent from your frontend!
+    const finalDuration = durationMinutes ? Number(durationMinutes) : 60; 
+
     if (session) {
       session.status = 'completed';
       session.notes = notes;
+      session.durationMinutes = finalDuration; // 🔓 Magic Line: Updates the database with the real time!
       await session.save();
     } else {
       const studentUser = await User.findOne({ whatsappGroupId: studentGroupId || whatsappGroupId });
-      const finalDuration = durationMinutes ? Number(durationMinutes) : 60; 
-
+      
       session = await ClassSession.create({
         teacher: req.user._id,
         student: studentUser ? studentUser._id : null, 
         subject: subjectToSearch || 'Google Calendar Lesson',
         startTime: new Date(),
-        durationMinutes: finalDuration, 
+        durationMinutes: finalDuration, // 🔓 Sets the real time on fallback creation
         status: 'completed',
         notes: notes,
         teacherGroupName: teacherGroupName || '', 
