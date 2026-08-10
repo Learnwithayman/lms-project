@@ -151,6 +151,33 @@ function AdminDashboard() {
     }
   };
 
+  // 🛑 FORCE END CLASS HANDLER
+  const handleForceEnd = async (classId, title) => {
+    if (!window.confirm(`Are you sure you want to FORCE END "${title}"? This will mark it as completed and stop all 50-minute reminders.`)) return;
+
+    try {
+      const token = localStorage.getItem('token');
+      const response = await fetch(`${process.env.REACT_APP_API_URL || 'https://lms-backend-02zs.onrender.com'}/api/schedule/admin-force-end`, {
+        method: 'PUT',
+        headers: { 
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}` 
+        },
+        body: JSON.stringify({ classId })
+      });
+      
+      if (response.ok) {
+        alert('🛑 Class forcefully ended!');
+        fetchLiveClasses(token); // Refresh the monitor to remove it from the green box
+      } else {
+        alert('❌ Failed to force end class.');
+      }
+    } catch (error) {
+      console.error(error);
+      alert('❌ Server error while force ending class.');
+    }
+  };
+
   // 📋 COPY TO CLIPBOARD HELPER
   const copyToClipboard = (text) => {
     navigator.clipboard.writeText(text);
@@ -241,7 +268,7 @@ function AdminDashboard() {
                 👨‍🏫 Teacher: {teacherGroup.teacherName}
               </h3>
 
-              {/* ✨ 🟢 THE NEW TEACHER JOINED TRACKER */}
+              {/* ✨ 🟢 THE NEW TEACHER JOINED TRACKER WITH FORCE END BUTTON */}
               {teacherGroup.live && teacherGroup.live.length > 0 && (
                 <div style={{ marginTop: '15px', padding: '15px', backgroundColor: '#e8f8f5', borderRadius: '5px', borderLeft: '5px solid #2ecc71', boxShadow: '0 2px 5px rgba(0,0,0,0.1)' }}>
                   <h4 style={{ color: '#27ae60', fontWeight: 'bold', margin: '0 0 10px 0', display: 'flex', alignItems: 'center', gap: '8px' }}>
@@ -254,9 +281,13 @@ function AdminDashboard() {
                           <strong style={{ color: '#2c3e50', fontSize: '1.1em' }}>{cls.subject || cls.title}</strong><br/>
                           <small style={{ color: '#16a085', fontWeight: 'bold' }}>🕒 Button Clicked at: {new Date(cls.createdAt || cls.startTime).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</small>
                         </span>
-                        <span style={{ padding: '6px 12px', backgroundColor: '#2ecc71', color: 'white', borderRadius: '20px', fontSize: '0.8em', fontWeight: 'bold' }}>
-                          Active Session
-                        </span>
+                        
+                        {/* 🛑 NEW: FORCE END BUTTON */}
+                        <button 
+                          onClick={() => handleForceEnd(cls._id, cls.subject || cls.title)}
+                          style={{ padding: '6px 12px', backgroundColor: '#e74c3c', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer', fontSize: '0.85em', fontWeight: 'bold' }}>
+                          🛑 Force End
+                        </button>
                       </li>
                     ))}
                   </ul>

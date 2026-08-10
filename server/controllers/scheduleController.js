@@ -771,10 +771,36 @@ const getMessageLogs = async (req, res) => {
   }
 };
 
+// 🛑 FORCE END CLASS (Admin Superpower)
+const adminForceEndClass = async (req, res) => {
+  try {
+    const { classId } = req.body;
+    const session = await ClassSession.findById(classId);
+    
+    if (!session) {
+      return res.status(404).json({ message: 'Class session not found.' });
+    }
+
+    session.status = 'completed';
+    session.notes = 'System Note: Class forcefully ended by Admin to clear dashboard.';
+    
+    // Fallback duration if it somehow missed it
+    if (!session.durationMinutes) {
+      session.durationMinutes = 60;
+    }
+
+    await session.save();
+    res.status(200).json({ message: 'Class forcefully ended by Admin.' });
+  } catch (error) {
+    console.error('Error force ending class:', error);
+    res.status(500).json({ message: 'Server error while force ending class.' });
+  }
+};
+
 module.exports = {
   scheduleClass, getMyClasses, deleteClass, getAllClasses, updateClass,
   endClass, markAttendance, getCompletedClasses, getTeacherEarnings,
   getAdminPayrollReport, addTeacherAdjustment, getTeacherSchedule,
   getAdminLiveMonitor, resendReminder, resendNotes, joinClass,
-  grantMakeupCredit, cancelUpcomingClass, getMessageLogs
+  grantMakeupCredit, cancelUpcomingClass, getMessageLogs, adminForceEndClass
 };
