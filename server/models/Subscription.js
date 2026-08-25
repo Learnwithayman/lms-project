@@ -21,4 +21,16 @@ const subscriptionSchema = mongoose.Schema(
   { timestamps: true }
 );
 
+// ==========================================
+// ✨ NEW: REMAINING CLASSES CALCULATOR
+// ==========================================
+// This automatically calculates the remaining classes without altering the database
+subscriptionSchema.virtual('remainingClasses').get(function() {
+  return this.totalClasses - this.classesUsed;
+});
+
+// Ensure virtuals are included when sending data to the frontend
+subscriptionSchema.set('toJSON', { virtuals: true });
+subscriptionSchema.set('toObject', { virtuals: true });
+
 module.exports = mongoose.model('Subscription', subscriptionSchema);

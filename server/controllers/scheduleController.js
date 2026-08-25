@@ -723,8 +723,9 @@ const grantMakeupCredit = async (req, res) => {
 
 const cancelUpcomingClass = async (req, res) => {
   try {
-    const { title, studentGroupName, teacherGroupName, startTime } = req.body;
+    const { title, studentGroupName, teacherGroupName, startTime, canceledBy } = req.body;
 
+    // 1. Log the canceled class
     await ClassSession.create({
       subject: title || 'Google Calendar Lesson',
       studentGroupName: studentGroupName || '',
@@ -733,7 +734,33 @@ const cancelUpcomingClass = async (req, res) => {
       status: 'cancelled' 
     });
 
-    // ✨ MACRODROID LINK ENGINE
+    // ✨ 2. THE NEW 90-DAY MAKEUP ENGINE AUTO-TRIGGER
+    // If the Teacher or Admin cancels, automatically find the student and issue a 90-day credit
+    if (canceledBy === 'teacher' || canceledBy === 'admin') {
+      // Find student by their group ID (since that's what frontend sends)
+      const student = await User.findOne({ 
+        $or: [
+          { whatsappGroupId: studentGroupName }, 
+          { studentGroupId: studentGroupName }
+        ] 
+      });
+
+      if (student) {
+        const expDate = new Date();
+        expDate.setDate(expDate.getDate() + 90); // Exact 90-day expiration
+        
+        student.makeupBank.push({
+          originalClassDate: startTime || new Date(),
+          expirationDate: expDate,
+          reason: `Auto-Credit: Canceled by ${canceledBy}`,
+          isUsed: false
+        });
+        await student.save();
+        console.log(`✅ 90-Day Makeup Credit automatically issued to ${student.name}`);
+      }
+    }
+
+    // 3. MACRODROID LINK ENGINE (Notifications)
     const codes = await extractGroupCodes(title);
 
     let teacherSearchTerm = codes.teacher || (teacherGroupName ? teacherGroupName.trim() : null);
@@ -748,11 +775,11 @@ const cancelUpcomingClass = async (req, res) => {
     if (studentSearchTerm && studentSearchTerm.includes('@g.us')) studentSearchTerm = null;
     
     if (studentSearchTerm) {
-      const studentMessage = `⚠️ *Class Canceled Alert*\n\nالسلام عليكم / Assalamu Alaikum,\n\nYour upcoming class *${title}* has been canceled.\n\n*Learn With Ayman Admin Team*`;
+      const studentMessage = `⚠️ *Class Canceled Alert*\n\nالسلام عليكم / Assalamu Alaikum,\n\nYour upcoming class *${title}* has been canceled. A makeup credit has been applied to your account if applicable.\n\n*Learn With Ayman Admin Team*`;
       await whatsappClient.sendMessage(studentSearchTerm, studentMessage);
     }
 
-    res.status(200).json({ message: 'Class officially canceled and notifications sent!' });
+    res.status(200).json({ message: 'Class officially canceled, notifications sent, and makeup logic applied!' });
   } catch (error) {
     console.error('Error canceling class:', error);
     res.status(500).json({ message: 'Server error while canceling class.' });
