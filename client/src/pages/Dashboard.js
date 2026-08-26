@@ -10,6 +10,10 @@ function Dashboard() {
   const [classes, setClasses] = useState([]);
   const [user, setUser] = useState({});
   const [earnings, setEarnings] = useState(null); 
+  
+  // ✨ NEW: Subscription State
+  const [subSummary, setSubSummary] = useState(null);
+  
   const navigate = useNavigate();
   
   // Modal State
@@ -18,7 +22,7 @@ function Dashboard() {
   const [notes, setNotes] = useState('');
   const [classroomChecked, setClassroomChecked] = useState(false);
   
-  // ✨ NEW: The "Double-Click" Prevention Lock
+  // The "Double-Click" Prevention Lock
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   useEffect(() => {
@@ -34,6 +38,9 @@ function Dashboard() {
 
     if (parsedUser?.role?.toLowerCase() === 'teacher') {
       fetchEarnings(token);
+    } else {
+      // ✨ NEW: Fetch Subscription Summary for Students/Parents
+      fetchSubSummary(token);
     }
   }, [navigate]);
 
@@ -64,6 +71,17 @@ function Dashboard() {
     }
   };
 
+  // ✨ NEW: The Subscription Fetcher
+  const fetchSubSummary = async (token) => {
+    try {
+      const config = { headers: { Authorization: `Bearer ${token}` } };
+      const res = await axios.get(`${API_URL}/api/subscriptions/my-summary`, config);
+      setSubSummary(res.data);
+    } catch (error) {
+      console.error("Failed to fetch subscription summary:", error);
+    }
+  };
+
   // 📡 SEND "I JOINED" SIGNAL TO SERVER
   const handleJoinClassClick = async (cls) => {
     try {
@@ -87,7 +105,6 @@ function Dashboard() {
       return alert("Please upload the homework and check the confirmation box first!");
     }
 
-    // ✨ Lock the button so they can't click it again!
     setIsSubmitting(true);
 
     try {
@@ -128,7 +145,6 @@ function Dashboard() {
       console.error('Error ending class:', error);
       alert('Failed to end class. Check console for details.');
     } finally {
-      // ✨ Unlock the button when the server responds
       setIsSubmitting(false);
     }
   };
@@ -177,6 +193,9 @@ function Dashboard() {
         <button onClick={handleLogout} className="logout-btn">Logout</button>
       </div>
 
+      {/* ========================================== */}
+      {/* 🟢 TEACHER EARNINGS DASHBOARD              */}
+      {/* ========================================== */}
       {user?.role?.toLowerCase() === 'teacher' && earnings && (
         <div style={{
           backgroundColor: '#d4edda', color: '#155724', padding: '20px',
@@ -196,7 +215,65 @@ function Dashboard() {
         </div>
       )}
 
-      <h2>📅 Your Schedule</h2>
+      {/* ========================================== */}
+      {/* ✨ 🔵 STUDENT SUBSCRIPTION & MAKEUP DASHBOARD */}
+      {/* ========================================== */}
+      {user?.role?.toLowerCase() !== 'teacher' && subSummary && (
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: '20px', marginBottom: '30px' }}>
+          
+          {/* Main Subscription Card */}
+          <div style={{
+            backgroundColor: '#f0f8ff', padding: '20px', borderRadius: '10px', 
+            borderLeft: '5px solid #007bff', boxShadow: '0 4px 6px rgba(0,0,0,0.05)'
+          }}>
+            <h3 style={{ margin: '0 0 15px 0', color: '#0056b3' }}>📅 Active Plan</h3>
+            {subSummary.subscription ? (
+              <>
+                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '10px' }}>
+                  <span style={{ color: '#555' }}>Remaining Classes:</span>
+                  <strong style={{ fontSize: '18px', color: '#333' }}>
+                    {subSummary.subscription.remainingClasses} of {subSummary.subscription.totalClasses}
+                  </strong>
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                  <span style={{ color: '#555' }}>Next Renewal Date:</span>
+                  <strong style={{ color: '#d35400' }}>
+                    {new Date(subSummary.subscription.endDate).toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' })}
+                  </strong>
+                </div>
+              </>
+            ) : (
+              <p style={{ margin: 0, color: '#777', fontStyle: 'italic' }}>No active subscription found. Please contact Admin.</p>
+            )}
+          </div>
+
+          {/* Makeup Bank Card */}
+          <div style={{
+            backgroundColor: '#fff9e6', padding: '20px', borderRadius: '10px', 
+            borderLeft: '5px solid #ffc107', boxShadow: '0 4px 6px rgba(0,0,0,0.05)'
+          }}>
+            <h3 style={{ margin: '0 0 15px 0', color: '#b28600' }}>✨ Available Makeups</h3>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
+              <span style={{ color: '#555' }}>Total Credits:</span>
+              <strong style={{ fontSize: '22px', color: '#28a745' }}>{subSummary.makeupCount}</strong>
+            </div>
+            {subSummary.makeupCount > 0 && (
+              <div style={{ marginTop: '15px', paddingTop: '15px', borderTop: '1px solid #ffeeba' }}>
+                <p style={{ margin: '0 0 10px 0', fontSize: '14px', fontWeight: 'bold', color: '#555' }}>Expiring Soon:</p>
+                <ul style={{ listStyleType: 'none', padding: 0, margin: 0, fontSize: '14px' }}>
+                  {subSummary.activeMakeups.slice(0, 2).map((makeup, i) => (
+                    <li key={i} style={{ marginBottom: '8px', color: '#e74c3c' }}>
+                      ⏳ Expires: {new Date(makeup.expirationDate).toLocaleDateString()}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      <h2>🗓️ Your Schedule</h2>
       
       <button 
         onClick={() => navigate('/progress')} 
@@ -338,7 +415,6 @@ function Dashboard() {
                 Cancel
               </button>
               
-              {/* ✨ The Button that physically disables itself! */}
               <button 
                 disabled={isSubmitting}
                 style={{ 

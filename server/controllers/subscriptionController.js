@@ -60,6 +60,47 @@ const createSubscription = async (req, res) => {
     }
 };
 
+// @desc    Get logged-in student's subscription and makeup summary
+// @route   GET /api/subscriptions/my-summary
+// @access  Private (Student)
+const getStudentSubscriptionSummary = async (req, res) => {
+    try {
+        // req.user._id comes from your auth middleware
+        const studentId = req.user._id;
+
+        // 1. Fetch the active subscription (the virtual field handles remainingClasses automatically)
+        const subscription = await Subscription.findOne({ 
+            student: studentId, 
+            active: true 
+        }).sort({ createdAt: -1 });
+
+        // 2. Fetch the student profile to check the makeup bank
+        const student = await User.findById(studentId);
+
+        if (!student) {
+            return res.status(404).json({ message: 'Student profile not found' });
+        }
+
+        // 3. Filter the makeup bank to only show VALID credits (not used, not expired)
+        const now = new Date();
+        const activeMakeups = student.makeupBank.filter(
+            (credit) => !credit.isUsed && new Date(credit.expirationDate) > now
+        );
+
+        // 4. Send the clean package to the frontend
+        res.status(200).json({
+            subscription: subscription || null,
+            activeMakeups: activeMakeups,
+            makeupCount: activeMakeups.length
+        });
+
+    } catch (error) {
+        console.error('Error fetching subscription summary:', error);
+        res.status(500).json({ message: 'Server error while fetching summary' });
+    }
+};
+
 module.exports = {
-    createSubscription
+    createSubscription,
+    getStudentSubscriptionSummary
 };
