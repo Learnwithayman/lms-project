@@ -8,7 +8,8 @@ const whatsappClient = require('../utils/whatsappBot');
 
 // @desc    Register new user
 const registerUser = asyncHandler(async (req, res) => {
-  const { name, email, password, role, whatsappNumber, teacherGroupId, studentGroupId, hourlyRate, currency } = req.body; 
+  // 👈 NEW: Added assignedTeachers to the destructured request body
+  const { name, email, password, role, whatsappNumber, teacherGroupId, studentGroupId, hourlyRate, currency, assignedTeachers } = req.body; 
 
   if (!name || !email || !password) {
     res.status(400);
@@ -30,7 +31,8 @@ const registerUser = asyncHandler(async (req, res) => {
     teacherGroupId: teacherGroupId || '', 
     studentGroupId: studentGroupId || '',
     hourlyRate: hourlyRate || 3.0,
-    currency: currency || 'USD' 
+    currency: currency || 'USD',
+    assignedTeachers: assignedTeachers || [] // 👈 NEW: Saves the assigned teacher array
   });
 
   if (user) {
