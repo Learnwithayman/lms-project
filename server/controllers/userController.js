@@ -137,7 +137,7 @@ const createAdminInstantly = asyncHandler(async (req, res) => {
 });
 
 // ==========================================
-// 🎒 NEW: SUBSCRIPTION ENGINE
+// 🎒 SUBSCRIPTION ENGINE
 // ==========================================
 // @desc    Update student subscription
 const updateSubscription = asyncHandler(async (req, res) => {
@@ -149,7 +149,6 @@ const updateSubscription = asyncHandler(async (req, res) => {
     throw new Error('User not found');
   }
 
-  // Update only the provided fields so we don't accidentally wipe out their classesUsed
   if (status) user.subscription.status = status;
   if (startDate) user.subscription.startDate = startDate;
   if (endDate) user.subscription.endDate = endDate;
@@ -157,6 +156,21 @@ const updateSubscription = asyncHandler(async (req, res) => {
 
   await user.save();
   res.status(200).json({ message: 'Subscription updated successfully!', user });
+});
+
+// ==========================================
+// 🧑‍🏫 TEACHER STUDENTS ENGINE
+// ==========================================
+// @desc    Get students assigned to the logged-in teacher
+// @route   GET /api/users/my-students
+// @access  Private (Teacher/Admin)
+const getMyStudents = asyncHandler(async (req, res) => {
+  const students = await User.find({ 
+    role: 'student', 
+    assignedTeacher: req.user.id 
+  }).select('-password'); 
+  
+  res.status(200).json(students);
 });
 
 module.exports = {
@@ -167,5 +181,6 @@ module.exports = {
   deleteUser, 
   testGroupMessage, 
   createAdminInstantly,
-  updateSubscription // 👈 NEW ONE EXPORTED
+  updateSubscription,
+  getMyStudents // 👈 NEW ONE EXPORTED
 };

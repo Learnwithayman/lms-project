@@ -3,7 +3,6 @@ import axios from 'axios';
 import { useNavigate } from 'react-router-dom';
 import '../App.css';
 
-// 📚 Pre-written Feedback Templates (From Admin)
 const feedbackTemplates = {
   commendation: "Masha'Allah, excellent progress! Through dedicated effort and the tawfiq of Allah (SWT), all learning goals for the month were successfully completed. May Allah (SWT) continue to bless your efforts.",
   absencesMinor: "Attendance Note: We noticed a few absences this month which slightly slowed our pace. Insha'Allah, with consistent attendance next month, we can fully catch up on all material.",
@@ -25,12 +24,12 @@ function ProgressHub() {
   const [pastClasses, setPastClasses] = useState([]);
   const [userRole, setUserRole] = useState('student');
   
-  // Phase 1: Planner State
+  const [students, setStudents] = useState([]);
+  const [selectedStudent, setSelectedStudent] = useState('');
   const [subjects, setSubjects] = useState({ quran: false, arabic: false, islamic: false });
-  
-  // Phase 2: Grading & Feedback State
   const [actualScores, setActualScores] = useState({ quran: 0, arabic: 0, islamic: 0 });
   const [feedbackText, setFeedbackText] = useState('');
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   useEffect(() => {
     const fetchData = async () => {
@@ -44,8 +43,14 @@ function ProgressHub() {
           .catch(() => ({ data: { role: 'student' } }));
         setUserRole(profileRes.data.role);
 
-        const classesRes = await axios.get('https://lms-backend-02zs.onrender.com/api/schedule/completed', config);
-        setPastClasses(classesRes.data);
+        if (profileRes.data.role === 'teacher' || profileRes.data.role === 'admin') {
+          // 👈 NEW: Securely fetching only assigned students
+          const studentsRes = await axios.get('https://lms-backend-02zs.onrender.com/api/users/my-students', config);
+          setStudents(studentsRes.data);
+        } else {
+          const classesRes = await axios.get('https://lms-backend-02zs.onrender.com/api/schedule/completed', config);
+          setPastClasses(classesRes.data);
+        }
       } catch (error) {
         console.error("Failed to fetch data:", error);
       }
@@ -68,7 +73,40 @@ function ProgressHub() {
     if (templateKey && feedbackTemplates[templateKey]) {
       setFeedbackText((prev) => (prev ? prev + '\n\n' + feedbackTemplates[templateKey] : feedbackTemplates[templateKey]));
     }
-    e.target.value = ''; // Reset dropdown after selection
+    e.target.value = '';
+  };
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    if (!selectedStudent) return alert("Please select a student first.");
+    
+    setIsSubmitting(true);
+    try {
+      const token = localStorage.getItem('token');
+      const config = { headers: { Authorization: `Bearer ${token}` } };
+      
+      const payload = {
+        student: selectedStudent,
+        subjectsActive: subjects,
+        scores: actualScores,
+        teacherNotes: feedbackText,
+        status: 'Pending Admin Approval'
+      };
+
+      await axios.post('https://lms-backend-02zs.onrender.com/api/progress', payload, config);
+      
+      alert("✅ Report successfully submitted for Admin Approval!");
+      
+      setSelectedStudent('');
+      setSubjects({ quran: false, arabic: false, islamic: false });
+      setActualScores({ quran: 0, arabic: 0, islamic: 0 });
+      setFeedbackText('');
+    } catch (error) {
+      console.error("Submission failed:", error);
+      alert("Failed to submit the report. Please try again.");
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   return (
@@ -84,17 +122,29 @@ function ProgressHub() {
         <div className="card">
           <h2>📝 Phase 1 & 2: Plan & Assess</h2>
           
-          {/* Phase 1: Subject Selection */}
+          <div style={{ marginBottom: '20px', paddingBottom: '20px', borderBottom: '1px solid #eee' }}>
+            <p style={{ fontWeight: 'bold' }}>0. Select Student</p>
+            <select 
+              value={selectedStudent} 
+              onChange={(e) => setSelectedStudent(e.target.value)}
+              style={{ padding: '8px', width: '100%', maxWidth: '400px' }}
+            >
+              <option value="">-- Choose a Student --</option>
+              {students.map(student => (
+                <option key={student._id} value={student._id}>{student.name}</option>
+              ))}
+            </select>
+          </div>
+
           <div style={{ marginBottom: '20px', paddingBottom: '20px', borderBottom: '1px solid #eee' }}>
             <p style={{ fontWeight: 'bold' }}>1. Select Active Subjects</p>
             <div style={{ display: 'flex', gap: '20px' }}>
-              <label><input type="checkbox" onChange={(e) => setSubjects({...subjects, quran: e.target.checked})} /> Quran</label>
-              <label><input type="checkbox" onChange={(e) => setSubjects({...subjects, arabic: e.target.checked})} /> Arabic</label>
-              <label><input type="checkbox" onChange={(e) => setSubjects({...subjects, islamic: e.target.checked})} /> Islamic Studies</label>
+              <label><input type="checkbox" checked={subjects.quran} onChange={(e) => setSubjects({...subjects, quran: e.target.checked})} /> Quran</label>
+              <label><input type="checkbox" checked={subjects.arabic} onChange={(e) => setSubjects({...subjects, arabic: e.target.checked})} /> Arabic</label>
+              <label><input type="checkbox" checked={subjects.islamic} onChange={(e) => setSubjects({...subjects, islamic: e.target.checked})} /> Islamic Studies</label>
             </div>
           </div>
 
-          {/* Phase 2: Grading (Only shows if subjects are selected) */}
           {(subjects.quran || subjects.arabic || subjects.islamic) && (
             <div style={{ marginBottom: '20px', paddingBottom: '20px', borderBottom: '1px solid #eee' }}>
               <p style={{ fontWeight: 'bold' }}>2. Enter Scores (Decimals allowed, e.g., 3.5)</p>
@@ -102,26 +152,25 @@ function ProgressHub() {
                 {subjects.quran && (
                   <div>
                     <label>Quran (Max {maxScores.quran || maxScores.single}): </label>
-                    <input type="number" step="0.5" min="0" max={maxScores.quran || maxScores.single} onChange={(e) => setActualScores({...actualScores, quran: e.target.value})} style={{ width: '70px' }} />
+                    <input type="number" step="0.5" min="0" max={maxScores.quran || maxScores.single} value={actualScores.quran} onChange={(e) => setActualScores({...actualScores, quran: e.target.value})} style={{ width: '70px' }} />
                   </div>
                 )}
                 {subjects.arabic && (
                   <div>
                     <label>Arabic (Max {maxScores.arabic || maxScores.second || maxScores.single}): </label>
-                    <input type="number" step="0.5" min="0" max={maxScores.arabic || maxScores.second || maxScores.single} onChange={(e) => setActualScores({...actualScores, arabic: e.target.value})} style={{ width: '70px' }} />
+                    <input type="number" step="0.5" min="0" max={maxScores.arabic || maxScores.second || maxScores.single} value={actualScores.arabic} onChange={(e) => setActualScores({...actualScores, arabic: e.target.value})} style={{ width: '70px' }} />
                   </div>
                 )}
                 {subjects.islamic && (
                   <div>
                     <label>Islamic (Max {maxScores.islamic || maxScores.second || maxScores.single}): </label>
-                    <input type="number" step="0.5" min="0" max={maxScores.islamic || maxScores.second || maxScores.single} onChange={(e) => setActualScores({...actualScores, islamic: e.target.value})} style={{ width: '70px' }} />
+                    <input type="number" step="0.5" min="0" max={maxScores.islamic || maxScores.second || maxScores.single} value={actualScores.islamic} onChange={(e) => setActualScores({...actualScores, islamic: e.target.value})} style={{ width: '70px' }} />
                   </div>
                 )}
               </div>
             </div>
           )}
 
-          {/* Phase 2: Smart Feedback Engine */}
           <div style={{ marginBottom: '20px' }}>
             <p style={{ fontWeight: 'bold' }}>3. Monthly Report Feedback</p>
             <select onChange={handleTemplateSelect} style={{ padding: '8px', marginBottom: '10px', width: '100%' }}>
@@ -151,12 +200,13 @@ function ProgressHub() {
           </div>
           
           <div style={{ display: 'flex', gap: '10px' }}>
-            <button className="btn-blue" style={{ backgroundColor: '#6c757d' }}>Save as Draft</button>
-            <button className="btn-blue" style={{ backgroundColor: '#28a745' }}>Submit for Admin Approval</button>
+            <button className="btn-blue" style={{ backgroundColor: '#6c757d' }} disabled={isSubmitting}>Save as Draft</button>
+            <button className="btn-blue" onClick={handleSubmit} style={{ backgroundColor: '#28a745' }} disabled={isSubmitting}>
+              {isSubmitting ? "Submitting..." : "Submit for Admin Approval"}
+            </button>
           </div>
         </div>
       ) : (
-        /* STUDENT VIEW */
         <>
           <h2>Your Completed Classes</h2>
           <div style={{ display: 'grid', gap: '20px', marginTop: '20px' }}>

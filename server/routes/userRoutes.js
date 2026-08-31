@@ -7,8 +7,9 @@ const {
   getAllUsers,
   deleteUser,
   testGroupMessage,
-  createAdminInstantly, // <--- Importing the hack here
-  updateSubscription    // 👈 NEW: Subscription Engine 
+  createAdminInstantly, 
+  updateSubscription,
+  getMyStudents // 👈 NEW: Imported the Teacher Students function
 } = require('../controllers/userController');
 const { protect } = require('../middleware/authMiddleware');
 
@@ -17,10 +18,13 @@ router.get('/', protect, getAllUsers);
 router.post('/login', loginUser);
 router.get('/me', protect, getMe);
 
+// 🧑‍🏫 NEW: Get assigned students for the logged-in teacher
+router.get('/my-students', protect, getMyStudents);
+
 // The Delete Route (requires ID)
 router.delete('/:id', protect, deleteUser);
 
-// 💳 NEW: The Subscription Update Route
+// 💳 The Subscription Update Route
 router.put('/:id/subscription', protect, updateSubscription);
 
 // --- NEW TEST ROUTE ---
