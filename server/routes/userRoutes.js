@@ -9,7 +9,8 @@ const {
   testGroupMessage,
   createAdminInstantly, 
   updateSubscription,
-  getMyStudents // 👈 NEW: Imported the Teacher Students function
+  getMyStudents,
+  assignTeachers // 👈 Imported
 } = require('../controllers/userController');
 const { protect } = require('../middleware/authMiddleware');
 
@@ -18,19 +19,20 @@ router.get('/', protect, getAllUsers);
 router.post('/login', loginUser);
 router.get('/me', protect, getMe);
 
-// 🧑‍🏫 NEW: Get assigned students for the logged-in teacher
+// 🧑‍🏫 Teacher Students Route
 router.get('/my-students', protect, getMyStudents);
 
-// The Delete Route (requires ID)
+// Delete User Route
 router.delete('/:id', protect, deleteUser);
 
-// 💳 The Subscription Update Route
+// 💳 Subscription Route
 router.put('/:id/subscription', protect, updateSubscription);
 
-// --- NEW TEST ROUTE ---
-router.post('/test-group', testGroupMessage); 
+// ✨ NEW: Assign Teachers Route
+router.put('/:id/assign', protect, assignTeachers);
 
-// --- EMERGENCY ADMIN ROUTE ---
+// --- TEST & ADMIN ROUTES ---
+router.post('/test-group', testGroupMessage); 
 router.get('/emergency-admin', createAdminInstantly);
 
 module.exports = router;

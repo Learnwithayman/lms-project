@@ -17,12 +17,18 @@ function UserList() {
   const [makeupReason, setMakeupReason] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  // ✨ NEW: Subscription Form States
+  // Subscription Form States
   const [subStatus, setSubStatus] = useState('none');
   const [subTotal, setSubTotal] = useState(0);
   const [subStart, setSubStart] = useState('');
   const [subEnd, setSubEnd] = useState('');
   const [isSubUpdating, setIsSubUpdating] = useState(false);
+
+  // ✨ NEW: Assign Teacher Modal States
+  const [isAssignModalOpen, setIsAssignModalOpen] = useState(false);
+  const [assignStudent, setAssignStudent] = useState(null);
+  const [selectedTeachers, setSelectedTeachers] = useState([]); 
+  const [isAssigning, setIsAssigning] = useState(false);
 
   useEffect(() => {
     fetchUsers();
@@ -43,13 +49,10 @@ function UserList() {
 
   const handleDelete = async (id) => {
     if (!window.confirm('Are you sure you want to delete this user?')) return;
-
     try {
       const token = localStorage.getItem('token');
       const config = { headers: { Authorization: `Bearer ${token}` } };
-      
       await axios.delete(`${API_URL}/api/users/${id}`, config);
-      
       setUsers(users.filter((user) => user._id !== id));
       alert('User Deleted Successfully');
     } catch (error) {
@@ -66,11 +69,9 @@ function UserList() {
   const handleGrantMakeup = async (e) => {
     e.preventDefault();
     setIsSubmitting(true);
-
     try {
       const token = localStorage.getItem('token');
       const config = { headers: { Authorization: `Bearer ${token}` } };
-      
       await axios.post(`${API_URL}/api/schedule/makeup`, {
         studentId: selectedStudent._id,
         originalDate: makeupDate,
@@ -90,15 +91,13 @@ function UserList() {
     }
   };
 
-  // 💳 NEW: Handle Updating the Subscription
+  // 💳 Handle Updating the Subscription
   const handleUpdateSubscription = async (e) => {
     e.preventDefault();
     setIsSubUpdating(true);
-
     try {
       const token = localStorage.getItem('token');
       const config = { headers: { Authorization: `Bearer ${token}` } };
-      
       await axios.put(`${API_URL}/api/users/${selectedStudent._id}/subscription`, {
         status: subStatus,
         totalClassesBought: subTotal,
@@ -117,18 +116,51 @@ function UserList() {
     }
   };
 
-  // Open Wallet Modal Helper & Pre-fill the data!
+  // ✨ NEW: Handle Saving Teacher Assignments
+  const handleSaveAssignments = async () => {
+    setIsAssigning(true);
+    try {
+      const token = localStorage.getItem('token');
+      const config = { headers: { Authorization: `Bearer ${token}` } };
+      await axios.put(`${API_URL}/api/users/${assignStudent._id}/assign`, {
+        assignedTeachers: selectedTeachers
+      }, config);
+      
+      alert(`✅ Teachers linked successfully to ${assignStudent.name}!`);
+      setIsAssignModalOpen(false);
+      fetchUsers();
+    } catch (error) {
+      console.error(error);
+      alert('❌ Failed to update assigned teachers.');
+    } finally {
+      setIsAssigning(false);
+    }
+  };
+
+  const toggleTeacher = (teacherId) => {
+    setSelectedTeachers((prev) => 
+      prev.includes(teacherId) 
+        ? prev.filter(id => id !== teacherId) 
+        : [...prev, teacherId]
+    );
+  };
+
   const openWallet = (student) => {
     setSelectedStudent(student);
-    
-    // Pre-fill subscription form with existing data if they have it
     setSubStatus(student.subscription?.status || 'none');
     setSubTotal(student.subscription?.totalClassesBought || 0);
     setSubStart(student.subscription?.startDate ? student.subscription.startDate.split('T')[0] : '');
     setSubEnd(student.subscription?.endDate ? student.subscription.endDate.split('T')[0] : '');
-    
     setIsWalletOpen(true);
   };
+
+  const openAssignModal = (student) => {
+    setAssignStudent(student);
+    setSelectedTeachers(student.assignedTeachers || []);
+    setIsAssignModalOpen(true);
+  };
+
+  const allTeachers = users.filter(u => u.role === 'teacher');
 
   return (
     <div className="dashboard-container">
@@ -166,18 +198,26 @@ function UserList() {
                  </span>
               </td>
               <td>{user.email}</td>
-              <td style={{ display: 'flex', gap: '10px' }}>
+              <td style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
                 <button onClick={() => copyToClipboard(user._id)} className="btn-grey" style={{ fontSize: '12px', padding: '5px 10px' }}>
                   Copy ID
                 </button>
                 
                 {user.role === 'student' && (
-                  <button 
-                    onClick={() => openWallet(user)} 
-                    style={{ fontSize: '12px', padding: '5px 10px', backgroundColor: '#f39c12', color: 'white', border: 'none', borderRadius: '5px', cursor: 'pointer' }}
-                  >
-                    💳 Wallet
-                  </button>
+                  <>
+                    <button 
+                      onClick={() => openAssignModal(user)} 
+                      style={{ fontSize: '12px', padding: '5px 10px', backgroundColor: '#9b59b6', color: 'white', border: 'none', borderRadius: '5px', cursor: 'pointer' }}
+                    >
+                      🧑‍🏫 Assign
+                    </button>
+                    <button 
+                      onClick={() => openWallet(user)} 
+                      style={{ fontSize: '12px', padding: '5px 10px', backgroundColor: '#f39c12', color: 'white', border: 'none', borderRadius: '5px', cursor: 'pointer' }}
+                    >
+                      💳 Wallet
+                    </button>
+                  </>
                 )}
 
                 <button 
@@ -194,7 +234,55 @@ function UserList() {
       </table>
 
       {/* ========================================== */}
-      {/* 🎒 STUDENT WALLET MODAL */}
+      {/* 🧑‍🏫 ASSIGN TEACHER MODAL (NEW) */}
+      {/* ========================================== */}
+      {isAssignModalOpen && assignStudent && (
+        <div style={{
+          position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
+          backgroundColor: 'rgba(0,0,0,0.6)', display: 'flex',
+          alignItems: 'center', justifyContent: 'center', zIndex: 1000,
+          padding: '20px'
+        }}>
+          <div style={{ backgroundColor: 'white', padding: '30px', borderRadius: '8px', width: '400px', color: 'black' }}>
+            
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '2px solid #eee', paddingBottom: '10px', marginBottom: '20px' }}>
+              <h2 style={{ margin: 0 }}>🧑‍🏫 Assign Teachers</h2>
+              <button onClick={() => setIsAssignModalOpen(false)} style={{ background: 'none', border: 'none', fontSize: '20px', cursor: 'pointer' }}>✖</button>
+            </div>
+            
+            <p style={{ color: '#555', marginBottom: '15px', fontSize: '14px' }}>
+              Select all teachers that teach <strong>{assignStudent.name}</strong>.
+            </p>
+
+            <div style={{ maxHeight: '300px', overflowY: 'auto', marginBottom: '20px', border: '1px solid #ccc', borderRadius: '5px', padding: '10px' }}>
+              {allTeachers.length === 0 ? <p>No teachers found.</p> : (
+                allTeachers.map(teacher => (
+                  <label key={teacher._id} style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '8px 0', borderBottom: '1px solid #f0f0f0', cursor: 'pointer' }}>
+                    <input 
+                      type="checkbox" 
+                      checked={selectedTeachers.includes(teacher._id)}
+                      onChange={() => toggleTeacher(teacher._id)}
+                      style={{ transform: 'scale(1.2)' }}
+                    />
+                    {teacher.name}
+                  </label>
+                ))
+              )}
+            </div>
+
+            <button 
+              onClick={handleSaveAssignments}
+              disabled={isAssigning} 
+              style={{ width: '100%', padding: '12px', backgroundColor: isAssigning ? '#95a5a6' : '#9b59b6', color: 'white', border: 'none', borderRadius: '5px', cursor: isAssigning ? 'not-allowed' : 'pointer', fontWeight: 'bold' }}>
+              {isAssigning ? 'Saving...' : 'Save Assignments'}
+            </button>
+
+          </div>
+        </div>
+      )}
+
+      {/* ========================================== */}
+      {/* 🎒 STUDENT WALLET MODAL (EXISITNG) */}
       {/* ========================================== */}
       {isWalletOpen && selectedStudent && (
         <div style={{
@@ -210,7 +298,7 @@ function UserList() {
               <button onClick={() => setIsWalletOpen(false)} style={{ background: 'none', border: 'none', fontSize: '20px', cursor: 'pointer' }}>✖</button>
             </div>
 
-            {/* SUBSCRIPTION OVERVIEW (READ-ONLY) */}
+            {/* SUBSCRIPTION OVERVIEW */}
             <div style={{ display: 'flex', gap: '15px', marginBottom: '25px' }}>
               <div style={{ flex: 1, backgroundColor: '#f8f9fa', padding: '15px', borderRadius: '8px', textAlign: 'center', border: '1px solid #ddd' }}>
                 <h4 style={{ margin: '0 0 10px 0', color: '#555' }}>Classes Used</h4>
@@ -231,7 +319,7 @@ function UserList() {
               </div>
             </div>
 
-            {/* ✨ NEW: MANAGE SUBSCRIPTION FORM */}
+            {/* MANAGE SUBSCRIPTION FORM */}
             <div style={{ backgroundColor: '#eef2f5', padding: '20px', borderRadius: '8px', marginBottom: '20px' }}>
               <h3 style={{ margin: '0 0 15px 0', color: '#2c3e50', borderBottom: '1px solid #ccc', paddingBottom: '10px' }}>⚙️ Manage Subscription</h3>
               <form onSubmit={handleUpdateSubscription} style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '15px' }}>
