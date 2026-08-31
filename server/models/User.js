@@ -23,7 +23,7 @@ const userSchema = mongoose.Schema(
     
     // --- TEACHER PAYROLL ---
     hourlyRate: { type: Number, default: 3.0 },
-    currency: { type: String, default: 'USD' }, // <--- NEW: Currency tracking
+    currency: { type: String, default: 'USD' }, 
     
     // The Adjustments Ledger for bonuses and deductions
     adjustments: [
@@ -33,6 +33,10 @@ const userSchema = mongoose.Schema(
         date: { type: Date, default: Date.now }
       }
     ],
+
+    // --- ASSIGNED TEACHERS (For Students) ---
+    assignedTeacher: { type: mongoose.Schema.Types.ObjectId, ref: 'User' }, // Legacy single teacher support
+    assignedTeachers: [{ type: mongoose.Schema.Types.ObjectId, ref: 'User' }], // NEW: Multi-teacher array
 
     // ==========================================
     // ✨ NEW: SUBSCRIPTION & MAKEUP ENGINE 
@@ -52,9 +56,9 @@ const userSchema = mongoose.Schema(
     makeupBank: [
       {
         originalClassDate: { type: Date, required: true },
-        expirationDate: { type: Date, required: true }, // Will automatically be set to +90 days
-        reason: { type: String }, // e.g., "Teacher Canceled", "Medical Emergency"
-        isUsed: { type: Boolean, default: false } // Flips to true when they take the makeup class
+        expirationDate: { type: Date, required: true }, 
+        reason: { type: String }, 
+        isUsed: { type: Boolean, default: false } 
       }
     ]
   },

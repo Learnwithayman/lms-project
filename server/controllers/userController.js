@@ -104,7 +104,6 @@ const deleteUser = asyncHandler(async (req, res) => {
 // --- TEST FUNCTION ---
 // @desc    Test sending a group message
 const testGroupMessage = asyncHandler(async (req, res) => {
-  // ✨ SMART FALLBACK ENGINE: Uses a name from the request, or defaults to "Test Group"
   const targetName = req.body.groupName || 'Test Group'; 
   const message = '🤖 Hello! This is an automated test message from the LMS backend!';
 
@@ -167,7 +166,11 @@ const updateSubscription = asyncHandler(async (req, res) => {
 const getMyStudents = asyncHandler(async (req, res) => {
   const students = await User.find({ 
     role: 'student', 
-    assignedTeacher: req.user.id 
+    // NEW: Checks if the logged-in teacher is anywhere in the student's assigned list
+    $or: [
+      { assignedTeacher: req.user.id }, 
+      { assignedTeachers: { $in: [req.user.id] } } 
+    ]
   }).select('-password'); 
   
   res.status(200).json(students);
@@ -182,5 +185,5 @@ module.exports = {
   testGroupMessage, 
   createAdminInstantly,
   updateSubscription,
-  getMyStudents // 👈 NEW ONE EXPORTED
+  getMyStudents 
 };
