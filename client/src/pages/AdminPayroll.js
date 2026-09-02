@@ -8,9 +8,14 @@ const API_URL = process.env.REACT_APP_API_URL || 'https://lms-backend-02zs.onren
 
 function AdminPayroll() {
   const [payrollData, setPayrollData] = useState([]);
-  const [isLoading, setIsLoading] = useState(true); // <-- Added Loading State
+  const [isLoading, setIsLoading] = useState(true); 
   const [user, setUser] = useState({});
   const navigate = useNavigate();
+
+  // ✨ NEW: Month and Year States (Defaults to Current Month/Year)
+  const currentDate = new Date();
+  const [selectedMonth, setSelectedMonth] = useState(currentDate.getMonth() + 1); // 1 = Jan, 8 = Aug, 9 = Sep
+  const [selectedYear, setSelectedYear] = useState(currentDate.getFullYear());
 
   // Modal State for Bonuses/Deductions
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -31,16 +36,20 @@ function AdminPayroll() {
     }
 
     setUser(parsedUser);
-    fetchPayroll(token);
-  }, [navigate]);
+    fetchPayroll(token, selectedMonth, selectedYear);
+  }, [navigate, selectedMonth, selectedYear]); // 👈 Re-fetches when month/year changes!
 
-  const fetchPayroll = async (token) => {
+  const fetchPayroll = async (token, month, year) => {
     setIsLoading(true);
     try {
-      const config = { headers: { Authorization: `Bearer ${token}` } };
+      // ✨ NEW: Passing the selected month and year to the backend
+      const config = { 
+        headers: { Authorization: `Bearer ${token}` },
+        params: { month, year } 
+      };
       const res = await axios.get(`${API_URL}/api/schedule/payroll-report`, config);
       
-      console.log("📊 Payroll Data from Server:", res.data); // <-- Debugging log
+      console.log(`📊 Payroll Data for ${month}/${year}:`, res.data);
       setPayrollData(res.data);
     } catch (error) {
       console.error("Failed to fetch payroll:", error);
@@ -63,13 +72,23 @@ function AdminPayroll() {
       setIsModalOpen(false);
       setAmount('');
       setReason('');
-      fetchPayroll(token);
+      fetchPayroll(token, selectedMonth, selectedYear);
 
     } catch (error) {
       console.error("Failed to add adjustment:", error);
       alert('Failed to add adjustment. Check console.');
     }
   };
+
+  // Array of months for the dropdown
+  const months = [
+    { name: 'January', value: 1 }, { name: 'February', value: 2 }, 
+    { name: 'March', value: 3 }, { name: 'April', value: 4 }, 
+    { name: 'May', value: 5 }, { name: 'June', value: 6 }, 
+    { name: 'July', value: 7 }, { name: 'August', value: 8 }, 
+    { name: 'September', value: 9 }, { name: 'October', value: 10 }, 
+    { name: 'November', value: 11 }, { name: 'December', value: 12 }
+  ];
 
   return (
     <div className="dashboard-container">
@@ -80,13 +99,38 @@ function AdminPayroll() {
         </button>
       </div>
 
-      <h2>Current Month Overview</h2>
+      {/* ✨ NEW: The Time Machine UI */}
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', backgroundColor: '#f8f9fa', padding: '15px', borderRadius: '8px', border: '1px solid #ddd', marginTop: '20px' }}>
+        <h2 style={{ margin: 0, color: '#2c3e50' }}>Payroll Overview</h2>
+        
+        <div style={{ display: 'flex', gap: '10px' }}>
+          <select 
+            value={selectedMonth} 
+            onChange={(e) => setSelectedMonth(Number(e.target.value))}
+            style={{ padding: '10px', borderRadius: '5px', border: '1px solid #ccc', fontWeight: 'bold' }}
+          >
+            {months.map(m => (
+              <option key={m.value} value={m.value}>{m.name}</option>
+            ))}
+          </select>
+
+          <select 
+            value={selectedYear} 
+            onChange={(e) => setSelectedYear(Number(e.target.value))}
+            style={{ padding: '10px', borderRadius: '5px', border: '1px solid #ccc', fontWeight: 'bold' }}
+          >
+            <option value={2026}>2026</option>
+            <option value={2025}>2025</option>
+            <option value={2024}>2024</option>
+          </select>
+        </div>
+      </div>
 
       <div style={{ display: 'grid', gap: '20px', marginTop: '20px' }}>
         {isLoading ? (
-          <p style={{ color: '#007bff', fontWeight: 'bold' }}>⏳ Calculating Payroll Data...</p>
+          <p style={{ color: '#007bff', fontWeight: 'bold' }}>⏳ Calculating Payroll Data for Selected Month...</p>
         ) : payrollData.length === 0 ? (
-          <p style={{ color: 'grey', fontStyle: 'italic' }}>No teachers with role 'teacher' found in the database.</p>
+          <p style={{ color: 'grey', fontStyle: 'italic' }}>No payroll data found for this specific month.</p>
         ) : (
           payrollData.map((teacher) => (
             <div key={teacher.teacherId} className="card" style={{ borderLeft: '5px solid #6f42c1', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>

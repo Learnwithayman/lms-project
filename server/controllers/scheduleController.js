@@ -381,11 +381,16 @@ const getTeacherEarnings = async (req, res) => {
   }
 };
 
+// ✨ NEW: Catching Month and Year from Query Params
 const getAdminPayrollReport = async (req, res) => {
   try {
-    const now = new Date();
-    const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
-    const endOfMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59);
+    const queryMonth = req.query.month ? Number(req.query.month) : new Date().getMonth() + 1;
+    const queryYear = req.query.year ? Number(req.query.year) : new Date().getFullYear();
+
+    // Start of selected month
+    const startOfMonth = new Date(queryYear, queryMonth - 1, 1);
+    // End of selected month (rolls over to the exact last millisecond of the month)
+    const endOfMonth = new Date(queryYear, queryMonth, 0, 23, 59, 59, 999);
 
     const teachers = await User.find({ role: { $regex: /teacher/i } });
 
