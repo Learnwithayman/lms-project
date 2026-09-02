@@ -55,7 +55,8 @@ app.use('/api/admin', require('./routes/adminRoutes'));
 app.use('/api/schedule', require('./routes/scheduleRoutes'));
 app.use('/api/leads', require('./routes/leadRoutes')); 
 app.use('/api/subscriptions', require('./routes/subscriptionRoutes')); // Subscription & Makeup Engine
-app.use('/api/progress', require('./routes/progressRoutes')); // 👈 NEW: Progress Hub Sprint Routes
+app.use('/api/progress', require('./routes/progressRoutes')); // Progress Hub Sprint Routes
+app.use('/api/student', require('./routes/studentRoutes')); // 👈 NEW: Day 4 Student API Endpoints
 
 // 🚀 FIXED: Added '0.0.0.0' to explicitly open the port for Render!
 app.listen(port, '0.0.0.0', () => console.log(`Server started on port ${port}`));
