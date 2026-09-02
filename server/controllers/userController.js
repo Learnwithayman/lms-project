@@ -8,7 +8,6 @@ const whatsappClient = require('../utils/whatsappBot');
 
 // @desc    Register new user
 const registerUser = asyncHandler(async (req, res) => {
-  // 👈 NEW: Added assignedTeachers to the destructured request body
   const { name, email, password, role, whatsappNumber, teacherGroupId, studentGroupId, hourlyRate, currency, assignedTeachers } = req.body; 
 
   if (!name || !email || !password) {
@@ -32,7 +31,7 @@ const registerUser = asyncHandler(async (req, res) => {
     studentGroupId: studentGroupId || '',
     hourlyRate: hourlyRate || 3.0,
     currency: currency || 'USD',
-    assignedTeachers: assignedTeachers || [] // 👈 NEW: Saves the assigned teacher array
+    assignedTeachers: assignedTeachers || [] 
   });
 
   if (user) {
@@ -163,12 +162,9 @@ const updateSubscription = asyncHandler(async (req, res) => {
 // 🧑‍🏫 TEACHER STUDENTS ENGINE
 // ==========================================
 // @desc    Get students assigned to the logged-in teacher
-// @route   GET /api/users/my-students
-// @access  Private (Teacher/Admin)
 const getMyStudents = asyncHandler(async (req, res) => {
   const students = await User.find({ 
     role: 'student', 
-    // NEW: Checks if the logged-in teacher is anywhere in the student's assigned list
     $or: [
       { assignedTeacher: req.user.id }, 
       { assignedTeachers: { $in: [req.user.id] } } 
@@ -176,6 +172,22 @@ const getMyStudents = asyncHandler(async (req, res) => {
   }).select('-password'); 
   
   res.status(200).json(students);
+});
+
+// ✨ NEW: Assign Teachers directly to a student profile
+const assignTeachers = asyncHandler(async (req, res) => {
+  const { assignedTeachers } = req.body;
+  const user = await User.findById(req.params.id);
+
+  if (!user) {
+    res.status(404);
+    throw new Error('User not found');
+  }
+
+  user.assignedTeachers = assignedTeachers;
+  await user.save();
+
+  res.status(200).json({ message: 'Teachers updated successfully!', user });
 });
 
 module.exports = {
@@ -187,5 +199,6 @@ module.exports = {
   testGroupMessage, 
   createAdminInstantly,
   updateSubscription,
-  getMyStudents 
+  getMyStudents,
+  assignTeachers // 👈 Now properly exported!
 };
