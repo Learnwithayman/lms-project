@@ -30,25 +30,21 @@ function Dashboard() {
     const parsedUser = JSON.parse(userData);
     setUser(parsedUser);
     
-    fetchClasses(token, parsedUser);
+    // ✨ FIXED: Removed parsedUser argument to match updated fetch function
+    fetchClasses(token);
 
     if (parsedUser?.role?.toLowerCase() === 'teacher') {
       fetchEarnings(token);
     } else {
-      // 👈 NEW: Now securely pointing to the Day 4 Student Endpoint!
       fetchSubSummary(token);
     }
   }, [navigate]);
 
-  const fetchClasses = async (token, parsedUser) => {
+  // ✨ FIXED: Both roles now use the universal Google Calendar endpoint
+  const fetchClasses = async (token) => {
     try {
       const config = { headers: { Authorization: `Bearer ${token}` } };
-      let res;
-      if (parsedUser?.role?.toLowerCase() === 'teacher') {
-        res = await axios.get(`${API_URL}/api/schedule/google-calendar`, config);
-      } else {
-        res = await axios.get(`${API_URL}/api/schedule/my-classes`, config);
-      }
+      const res = await axios.get(`${API_URL}/api/schedule/google-calendar`, config);
       setClasses(res.data);
     } catch (error) {
       console.error("Error fetching classes:", error);
@@ -123,7 +119,7 @@ function Dashboard() {
       setNotes('');
       setClassroomChecked(false);
       
-      fetchClasses(token, user);
+      fetchClasses(token);
       fetchEarnings(token);
       alert('✅ Class ended successfully and hours logged!');
     } catch (error) {
@@ -170,7 +166,6 @@ function Dashboard() {
 
   const selectedClass = classes.find(c => (c.id === currentClassId || c._id === currentClassId));
 
-  // Calculates progress bar percentage safely
   const calculateProgress = () => {
     if (!subSummary?.subscription || subSummary.subscription.totalClassesBought === 0) return 0;
     const { classesUsed, totalClassesBought } = subSummary.subscription;
@@ -341,7 +336,7 @@ function Dashboard() {
         )}
       </div>
 
-      {/* END CLASS MODAL (Unchanged functionality, slightly refined CSS) */}
+      {/* END CLASS MODAL */}
       {isModalOpen && (
         <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.6)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 }}>
           <div style={{ backgroundColor: 'white', padding: '30px', borderRadius: '15px', width: '450px', color: '#2d3436' }}>
