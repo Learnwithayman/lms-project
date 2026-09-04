@@ -10,7 +10,8 @@ const {
   createAdminInstantly, 
   updateSubscription,
   getMyStudents,
-  assignTeachers // 👈 Imported
+  assignTeachers,
+  updateUserProfile // 👈 Imported new function
 } = require('../controllers/userController');
 const { protect } = require('../middleware/authMiddleware');
 
@@ -21,6 +22,9 @@ router.get('/me', protect, getMe);
 
 // 🧑‍🏫 Teacher Students Route
 router.get('/my-students', protect, getMyStudents);
+
+// ✏️ NEW: Edit Profile Route
+router.put('/:id', protect, updateUserProfile);
 
 // Delete User Route
 router.delete('/:id', protect, deleteUser);

@@ -190,6 +190,24 @@ const assignTeachers = asyncHandler(async (req, res) => {
   res.status(200).json({ message: 'Teachers updated successfully!', user });
 });
 
+// ✨ NEW: Update user profile details
+const updateUserProfile = asyncHandler(async (req, res) => {
+  const user = await User.findById(req.params.id);
+  
+  if (!user) {
+    res.status(404);
+    throw new Error('User not found');
+  }
+
+  const updatedUser = await User.findByIdAndUpdate(
+    req.params.id,
+    req.body,
+    { new: true }
+  ).select('-password');
+
+  res.status(200).json(updatedUser);
+});
+
 module.exports = {
   registerUser,
   loginUser,
@@ -200,5 +218,6 @@ module.exports = {
   createAdminInstantly,
   updateSubscription,
   getMyStudents,
-  assignTeachers // 👈 Now properly exported!
+  assignTeachers,
+  updateUserProfile // 👈 Exported here
 };

@@ -24,11 +24,16 @@ function UserList() {
   const [subEnd, setSubEnd] = useState('');
   const [isSubUpdating, setIsSubUpdating] = useState(false);
 
-  // ✨ NEW: Assign Teacher Modal States
+  // ✨ Assign Teacher Modal States
   const [isAssignModalOpen, setIsAssignModalOpen] = useState(false);
   const [assignStudent, setAssignStudent] = useState(null);
   const [selectedTeachers, setSelectedTeachers] = useState([]); 
   const [isAssigning, setIsAssigning] = useState(false);
+
+  // ✏️ NEW: Edit Profile States
+  const [isEditModalOpen, setIsEditModalOpen] = useState(false);
+  const [editForm, setEditForm] = useState({});
+  const [isEditing, setIsEditing] = useState(false);
 
   useEffect(() => {
     fetchUsers();
@@ -116,7 +121,7 @@ function UserList() {
     }
   };
 
-  // ✨ NEW: Handle Saving Teacher Assignments
+  // ✨ Handle Saving Teacher Assignments
   const handleSaveAssignments = async () => {
     setIsAssigning(true);
     try {
@@ -134,6 +139,26 @@ function UserList() {
       alert('❌ Failed to update assigned teachers.');
     } finally {
       setIsAssigning(false);
+    }
+  };
+
+  // ✏️ NEW: Handle Editing User Profile
+  const handleEditSubmit = async (e) => {
+    e.preventDefault();
+    setIsEditing(true);
+    try {
+      const token = localStorage.getItem('token');
+      const config = { headers: { Authorization: `Bearer ${token}` } };
+      await axios.put(`${API_URL}/api/users/${editForm._id}`, editForm, config);
+      
+      alert(`✅ Profile updated successfully!`);
+      setIsEditModalOpen(false);
+      fetchUsers();
+    } catch (error) {
+      console.error(error);
+      alert('❌ Failed to update profile.');
+    } finally {
+      setIsEditing(false);
     }
   };
 
@@ -158,6 +183,20 @@ function UserList() {
     setAssignStudent(student);
     setSelectedTeachers(student.assignedTeachers || []);
     setIsAssignModalOpen(true);
+  };
+
+  // ✏️ NEW: Open Edit Modal & Populate Data
+  const openEditModal = (user) => {
+    setEditForm({
+      _id: user._id,
+      name: user.name || '',
+      email: user.email || '',
+      role: user.role || 'student',
+      studentGroupId: user.studentGroupId || '',
+      teacherGroupId: user.teacherGroupId || '',
+      hourlyRate: user.hourlyRate || 3.0
+    });
+    setIsEditModalOpen(true);
   };
 
   const allTeachers = users.filter(u => u.role === 'teacher');
@@ -203,6 +242,14 @@ function UserList() {
                   Copy ID
                 </button>
                 
+                {/* ✏️ NEW: Edit Button */}
+                <button 
+                  onClick={() => openEditModal(user)} 
+                  style={{ fontSize: '12px', padding: '5px 10px', backgroundColor: '#3498db', color: 'white', border: 'none', borderRadius: '5px', cursor: 'pointer' }}
+                >
+                  ✏️ Edit
+                </button>
+                
                 {user.role === 'student' && (
                   <>
                     <button 
@@ -234,7 +281,64 @@ function UserList() {
       </table>
 
       {/* ========================================== */}
-      {/* 🧑‍🏫 ASSIGN TEACHER MODAL (NEW) */}
+      {/* ✏️ EDIT PROFILE MODAL (NEW) */}
+      {/* ========================================== */}
+      {isEditModalOpen && (
+        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.6)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, padding: '20px' }}>
+          <div style={{ backgroundColor: 'white', padding: '30px', borderRadius: '8px', width: '450px', color: 'black', maxHeight: '90vh', overflowY: 'auto' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '2px solid #eee', paddingBottom: '10px', marginBottom: '20px' }}>
+              <h2 style={{ margin: 0 }}>✏️ Edit Profile</h2>
+              <button onClick={() => setIsEditModalOpen(false)} style={{ background: 'none', border: 'none', fontSize: '20px', cursor: 'pointer' }}>✖</button>
+            </div>
+            
+            <form onSubmit={handleEditSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '15px' }}>
+              <div>
+                <label style={{ fontWeight: 'bold', fontSize: '14px' }}>Full Name:</label>
+                <input type="text" required value={editForm.name} onChange={(e) => setEditForm({...editForm, name: e.target.value})} style={{ width: '100%', padding: '10px', borderRadius: '5px', border: '1px solid #ccc', boxSizing: 'border-box' }} />
+              </div>
+              
+              <div>
+                <label style={{ fontWeight: 'bold', fontSize: '14px' }}>Email Address:</label>
+                <input type="email" required value={editForm.email} onChange={(e) => setEditForm({...editForm, email: e.target.value})} style={{ width: '100%', padding: '10px', borderRadius: '5px', border: '1px solid #ccc', boxSizing: 'border-box' }} />
+              </div>
+
+              <div>
+                <label style={{ fontWeight: 'bold', fontSize: '14px' }}>System Role:</label>
+                <select value={editForm.role} onChange={(e) => setEditForm({...editForm, role: e.target.value})} style={{ width: '100%', padding: '10px', borderRadius: '5px', border: '1px solid #ccc', boxSizing: 'border-box' }}>
+                  <option value="student">Student</option>
+                  <option value="teacher">Teacher</option>
+                  <option value="admin">Admin</option>
+                </select>
+              </div>
+
+              <div>
+                <label style={{ fontWeight: 'bold', fontSize: '14px' }}>WhatsApp / Student Group ID:</label>
+                <input type="text" placeholder="e.g. 120363305478886477@g.us" value={editForm.studentGroupId} onChange={(e) => setEditForm({...editForm, studentGroupId: e.target.value})} style={{ width: '100%', padding: '10px', borderRadius: '5px', border: '1px solid #ccc', boxSizing: 'border-box' }} />
+              </div>
+
+              {editForm.role === 'teacher' && (
+                <>
+                  <div>
+                    <label style={{ fontWeight: 'bold', fontSize: '14px' }}>Teacher Group ID:</label>
+                    <input type="text" placeholder="e.g. 120363305478886477@g.us" value={editForm.teacherGroupId} onChange={(e) => setEditForm({...editForm, teacherGroupId: e.target.value})} style={{ width: '100%', padding: '10px', borderRadius: '5px', border: '1px solid #ccc', boxSizing: 'border-box' }} />
+                  </div>
+                  <div>
+                    <label style={{ fontWeight: 'bold', fontSize: '14px' }}>Hourly Pay Rate ($):</label>
+                    <input type="number" step="0.5" value={editForm.hourlyRate} onChange={(e) => setEditForm({...editForm, hourlyRate: e.target.value})} style={{ width: '100%', padding: '10px', borderRadius: '5px', border: '1px solid #ccc', boxSizing: 'border-box' }} />
+                  </div>
+                </>
+              )}
+
+              <button type="submit" disabled={isEditing} style={{ width: '100%', padding: '12px', backgroundColor: isEditing ? '#95a5a6' : '#3498db', color: 'white', border: 'none', borderRadius: '5px', cursor: isEditing ? 'not-allowed' : 'pointer', fontWeight: 'bold', marginTop: '10px' }}>
+                {isEditing ? 'Saving...' : 'Save Profile Changes'}
+              </button>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* ========================================== */}
+      {/* 🧑‍🏫 ASSIGN TEACHER MODAL (EXISITNG) */}
       {/* ========================================== */}
       {isAssignModalOpen && assignStudent && (
         <div style={{
