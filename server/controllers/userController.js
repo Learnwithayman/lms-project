@@ -141,7 +141,7 @@ const createAdminInstantly = asyncHandler(async (req, res) => {
 // ==========================================
 // @desc    Update student subscription
 const updateSubscription = asyncHandler(async (req, res) => {
-  const { status, startDate, endDate, totalClassesBought } = req.body;
+  const { status, startDate, endDate, totalClassesBought, classesUsed } = req.body;
   const user = await User.findById(req.params.id);
 
   if (!user) {
@@ -153,6 +153,9 @@ const updateSubscription = asyncHandler(async (req, res) => {
   if (startDate) user.subscription.startDate = startDate;
   if (endDate) user.subscription.endDate = endDate;
   if (totalClassesBought !== undefined) user.subscription.totalClassesBought = Number(totalClassesBought);
+  
+  // ✨ NEW: Allow manual updating of completed classes
+  if (classesUsed !== undefined) user.subscription.classesUsed = Number(classesUsed);
 
   await user.save();
   res.status(200).json({ message: 'Subscription updated successfully!', user });
@@ -219,5 +222,5 @@ module.exports = {
   updateSubscription,
   getMyStudents,
   assignTeachers,
-  updateUserProfile // 👈 Exported here
+  updateUserProfile
 };
