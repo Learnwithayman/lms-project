@@ -3,7 +3,6 @@ import axios from 'axios';
 import { useNavigate } from 'react-router-dom';
 import '../App.css';
 
-// 🌐 LIVE PRODUCTION URL CONFIGURATION 
 const API_URL = process.env.REACT_APP_API_URL || 'https://lms-backend-02zs.onrender.com';
 
 function Dashboard() {
@@ -14,12 +13,19 @@ function Dashboard() {
   
   const navigate = useNavigate();
   
-  // Modal State
+  // End Class Modal State
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [currentClassId, setCurrentClassId] = useState(null);
   const [notes, setNotes] = useState('');
   const [classroomChecked, setClassroomChecked] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
+
+  // ✨ NEW: Day 6 Makeup Request Modal State
+  const [isMakeupModalOpen, setIsMakeupModalOpen] = useState(false);
+  const [selectedOriginalDate, setSelectedOriginalDate] = useState('');
+  const [preferredMakeupDate, setPreferredMakeupDate] = useState('');
+  const [makeupRequestNotes, setMakeupRequestNotes] = useState('');
+  const [isRequestingMakeup, setIsRequestingMakeup] = useState(false);
 
   useEffect(() => {
     const token = localStorage.getItem('token');
@@ -30,7 +36,6 @@ function Dashboard() {
     const parsedUser = JSON.parse(userData);
     setUser(parsedUser);
     
-    // ✨ FIXED: Removed parsedUser argument to match updated fetch function
     fetchClasses(token);
 
     if (parsedUser?.role?.toLowerCase() === 'teacher') {
@@ -40,7 +45,6 @@ function Dashboard() {
     }
   }, [navigate]);
 
-  // ✨ FIXED: Both roles now use the universal Google Calendar endpoint
   const fetchClasses = async (token) => {
     try {
       const config = { headers: { Authorization: `Bearer ${token}` } };
@@ -150,6 +154,33 @@ function Dashboard() {
     }
   };
 
+  // ✨ NEW: Day 6 Makeup Request Handler
+  const handleRequestMakeup = async (e) => {
+    e.preventDefault();
+    setIsRequestingMakeup(true);
+    try {
+      const token = localStorage.getItem('token');
+      const config = { headers: { Authorization: `Bearer ${token}` } };
+      
+      await axios.post(`${API_URL}/api/student/request-makeup`, {
+        originalDate: selectedOriginalDate,
+        preferredDate: preferredMakeupDate,
+        reason: makeupRequestNotes
+      }, config);
+      
+      alert('✅ Makeup request submitted successfully! Admin will contact you shortly.');
+      setIsMakeupModalOpen(false);
+      setSelectedOriginalDate('');
+      setPreferredMakeupDate('');
+      setMakeupRequestNotes('');
+    } catch (error) {
+      console.error('Error requesting makeup:', error);
+      alert('❌ Failed to submit makeup request.');
+    } finally {
+      setIsRequestingMakeup(false);
+    }
+  };
+
   const handleLogout = () => {
     localStorage.removeItem('token');
     localStorage.removeItem('user');
@@ -197,9 +228,7 @@ function Dashboard() {
         </div>
       )}
 
-      {/* ========================================== */}
-      {/* 🟢 TEACHER EARNINGS DASHBOARD              */}
-      {/* ========================================== */}
+      {/* 🟢 TEACHER EARNINGS DASHBOARD */}
       {user?.role?.toLowerCase() === 'teacher' && earnings && (
         <div style={{ backgroundColor: '#d4edda', color: '#155724', padding: '20px', borderRadius: '8px', marginBottom: '20px', border: '1px solid #c3e6cb', display: 'flex', justifyContent: 'space-between', alignItems: 'center', boxShadow: '0 2px 5px rgba(0,0,0,0.1)' }}>
           <div>
@@ -210,13 +239,10 @@ function Dashboard() {
         </div>
       )}
 
-      {/* ========================================== */}
-      {/* ✨ 🔵 LUXURY STUDENT SUBSCRIPTION DASHBOARD */}
-      {/* ========================================== */}
+      {/* 🔵 LUXURY STUDENT SUBSCRIPTION DASHBOARD */}
       {user?.role?.toLowerCase() !== 'teacher' && subSummary && (
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: '25px', marginBottom: '40px' }}>
           
-          {/* 🎓 Main Subscription Progress Card */}
           <div style={{ backgroundColor: '#fff', padding: '30px', borderRadius: '15px', borderTop: '5px solid #0984e3', boxShadow: '0 10px 25px rgba(0,0,0,0.04)' }}>
             <h3 style={{ margin: '0 0 20px 0', color: '#2d3436', fontSize: '20px', display: 'flex', justifyContent: 'space-between' }}>
               <span>📅 Current Plan</span>
@@ -234,7 +260,6 @@ function Dashboard() {
                   <span>{subSummary.subscription.totalClassesBought} Total</span>
                 </div>
                 
-                {/* Visual Progress Bar */}
                 <div style={{ width: '100%', height: '12px', backgroundColor: '#dfe6e9', borderRadius: '10px', overflow: 'hidden', marginBottom: '20px' }}>
                   <div style={{ width: `${calculateProgress()}%`, height: '100%', backgroundColor: '#0984e3', transition: 'width 0.5s ease-in-out' }}></div>
                 </div>
@@ -254,10 +279,9 @@ function Dashboard() {
             )}
           </div>
 
-          {/* ✨ Makeup Bank Card */}
           <div style={{ backgroundColor: '#fff', padding: '30px', borderRadius: '15px', borderTop: '5px solid #fdcb6e', boxShadow: '0 10px 25px rgba(0,0,0,0.04)', display: 'flex', flexDirection: 'column' }}>
             <h3 style={{ margin: '0 0 20px 0', color: '#2d3436', fontSize: '20px' }}>✨ Makeup Credits</h3>
-            <div style={{ flex: 1, display: 'flex', alignItems: 'center', gap: '20px', marginBottom: '20px' }}>
+            <div style={{ flex: 1, display: 'flex', alignItems: 'center', gap: '20px', marginBottom: '15px' }}>
               <div style={{ width: '80px', height: '80px', borderRadius: '15px', backgroundColor: '#fff3cd', color: '#d35400', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '36px', fontWeight: 'bold' }}>
                 {subSummary.makeupCount}
               </div>
@@ -268,17 +292,25 @@ function Dashboard() {
             </div>
             
             {subSummary.makeupCount > 0 && (
-              <div style={{ borderTop: '1px solid #f1f2f6', paddingTop: '15px' }}>
-                <p style={{ margin: '0 0 10px 0', fontSize: '13px', fontWeight: 'bold', color: '#636e72', textTransform: 'uppercase' }}>Expiring Soon:</p>
-                <ul style={{ listStyleType: 'none', padding: 0, margin: 0, fontSize: '14px' }}>
-                  {subSummary.activeMakeups.slice(0, 2).map((makeup, i) => (
-                    <li key={i} style={{ marginBottom: '8px', color: '#d63031', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                      <span style={{ width: '8px', height: '8px', borderRadius: '50%', backgroundColor: '#d63031', display: 'inline-block' }}></span>
-                      Expires {new Date(makeup.expirationDate).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })}
-                    </li>
-                  ))}
-                </ul>
-              </div>
+              <>
+                <div style={{ borderTop: '1px solid #f1f2f6', paddingTop: '15px', marginBottom: '15px' }}>
+                  <p style={{ margin: '0 0 10px 0', fontSize: '13px', fontWeight: 'bold', color: '#636e72', textTransform: 'uppercase' }}>Expiring Soon:</p>
+                  <ul style={{ listStyleType: 'none', padding: 0, margin: 0, fontSize: '14px' }}>
+                    {subSummary.activeMakeups.slice(0, 2).map((makeup, i) => (
+                      <li key={i} style={{ marginBottom: '8px', color: '#d63031', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        <span style={{ width: '8px', height: '8px', borderRadius: '50%', backgroundColor: '#d63031', display: 'inline-block' }}></span>
+                        Expires {new Date(makeup.expirationDate).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+                {/* ✨ NEW: Schedule Makeup Button */}
+                <button 
+                  onClick={() => setIsMakeupModalOpen(true)}
+                  style={{ width: '100%', padding: '12px', backgroundColor: '#d35400', color: 'white', border: 'none', borderRadius: '8px', cursor: 'pointer', fontWeight: 'bold', transition: 'all 0.2s' }}>
+                  📅 Schedule Makeup
+                </button>
+              </>
             )}
           </div>
         </div>
@@ -365,6 +397,49 @@ function Dashboard() {
           </div>
         </div>
       )}
+
+      {/* ✨ NEW: REQUEST MAKEUP MODAL */}
+      {isMakeupModalOpen && subSummary && (
+        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.6)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 }}>
+          <div style={{ backgroundColor: 'white', padding: '30px', borderRadius: '15px', width: '450px', color: '#2d3436' }}>
+            <h2 style={{ margin: '0 0 20px 0' }}>📅 Request Makeup Class</h2>
+            
+            <form onSubmit={handleRequestMakeup} style={{ display: 'flex', flexDirection: 'column', gap: '15px' }}>
+              
+              <div>
+                <label style={{ fontWeight: 'bold', fontSize: '14px' }}>Which missed class are you replacing?</label>
+                <select required value={selectedOriginalDate} onChange={(e) => setSelectedOriginalDate(e.target.value)} style={{ width: '100%', padding: '10px', borderRadius: '5px', border: '1px solid #dfe6e9', marginTop: '5px', boxSizing: 'border-box' }}>
+                  <option value="">-- Select Missed Class --</option>
+                  {subSummary.activeMakeups.map((makeup, i) => (
+                    <option key={i} value={makeup.originalClassDate}>
+                      Missed on {new Date(makeup.originalClassDate).toLocaleDateString()}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label style={{ fontWeight: 'bold', fontSize: '14px' }}>Preferred Makeup Date & Time:</label>
+                <input type="datetime-local" required value={preferredMakeupDate} onChange={(e) => setPreferredMakeupDate(e.target.value)} style={{ width: '100%', padding: '10px', borderRadius: '5px', border: '1px solid #dfe6e9', marginTop: '5px', boxSizing: 'border-box' }} />
+              </div>
+
+              <div>
+                <label style={{ fontWeight: 'bold', fontSize: '14px' }}>Additional Notes (Optional):</label>
+                <input type="text" placeholder="e.g., Only available after 5 PM" value={makeupRequestNotes} onChange={(e) => setMakeupRequestNotes(e.target.value)} style={{ width: '100%', padding: '10px', borderRadius: '5px', border: '1px solid #dfe6e9', marginTop: '5px', boxSizing: 'border-box' }} />
+              </div>
+
+              <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '15px' }}>
+                <button type="button" onClick={() => setIsMakeupModalOpen(false)} disabled={isRequestingMakeup} style={{ padding: '10px 15px', cursor: isRequestingMakeup ? 'not-allowed' : 'pointer', border: '1px solid #b2bec3', borderRadius: '6px', backgroundColor: 'transparent', fontWeight: 'bold', color: '#636e72' }}>Cancel</button>
+                <button type="submit" disabled={isRequestingMakeup} style={{ padding: '10px 15px', cursor: isRequestingMakeup ? 'not-allowed' : 'pointer', backgroundColor: isRequestingMakeup ? '#b2bec3' : '#d35400', color: 'white', border: 'none', borderRadius: '6px', fontWeight: 'bold' }}>
+                  {isRequestingMakeup ? 'Submitting...' : 'Submit Request'}
+                </button>
+              </div>
+            </form>
+
+          </div>
+        </div>
+      )}
+
     </div>
   );
 }
