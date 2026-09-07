@@ -42,9 +42,8 @@ const requestMakeup = asyncHandler(async (req, res) => {
   const adminMessage = `🔔 *New Makeup Request*\n\n*Student:* ${user.name}\n*Original Missed Date:* ${new Date(originalDate).toLocaleDateString()}\n*Preferred Makeup Date:* ${new Date(preferredDate).toLocaleDateString()}\n*Reason:* ${reason || 'Not provided'}\n\nPlease check the admin dashboard to process this request.`;
   
   try {
-    // Sends the alert to your main Admin WhatsApp group/number
-    // Replace 'AdminTarget' with your actual Admin WhatsApp ID or Phone Number
-    await whatsappClient.sendMessage('AdminTarget', adminMessage); 
+    // Sends the alert using the exact invite link code
+    await whatsappClient.sendMessage('BYFE1IPRs2KGJNhGaxvpJd', adminMessage); 
   } catch (error) {
     console.error('⚠️ Failed to send admin WhatsApp alert:', error.message);
   }
