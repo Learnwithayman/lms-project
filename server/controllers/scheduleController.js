@@ -405,7 +405,7 @@ const addTeacherAdjustment = async (req, res) => {
   }
 };
 
-// ✨ THE FIX: This function now securely powers BOTH Teachers and Students!
+// ✨ THE FIX 1: Scanner now perfectly reads BOTH old @g.us IDs and new MacroDroid Invite Links!
 const getTeacherSchedule = async (req, res) => {
   try {
     const targetUserId = req.user?.id || req.user?._id;
@@ -415,7 +415,7 @@ const getTeacherSchedule = async (req, res) => {
 
     const isTeacher = databaseUser.role === 'teacher';
     
-    // ✨ Dynamically picks the correct ID depending on who is logged in!
+    // Dynamically picks the correct ID depending on who is logged in!
     const searchId = isTeacher 
         ? (databaseUser.whatsappGroupId || databaseUser.teacherGroupId || databaseUser.groupId || databaseUser.whatsappGroup)
         : (databaseUser.studentGroupId || databaseUser.whatsappGroupId || databaseUser.groupId || databaseUser.whatsappGroup);
@@ -443,11 +443,19 @@ const getTeacherSchedule = async (req, res) => {
       const end = event.end?.dateTime || event.end?.date; 
       const description = event.description || "";
       
-      const teacherMatch = description.match(/TeacherGroupID[\s*:-]*([0-9]+@g\.us)/i) || description.match(/(?:teachergroup|teacher id|group id|id)[\s*:-]*([0-9]+@g\.us)/i) || description.match(/TeacherGroup[^\d]*([0-9]+@g\.us)/i);
-      const extractedTeacherId = teacherMatch ? teacherMatch[1] : null;
+      // 🚀 UPGRADED: Extracts Teacher Invite Link OR old @g.us ID
+      let extractedTeacherId = null;
+      const teacherRegexLink = description.match(/TeacherGroupLink[\s*:-]*(?:https?:\/\/)?chat\.whatsapp\.com\/([a-zA-Z0-9_-]+)/i);
+      const teacherRegexGroup = description.match(/TeacherGroupID[\s*:-]*([0-9]+@g\.us)/i) || description.match(/(?:teachergroup|teacher id|group id|id)[\s*:-]*([0-9]+@g\.us)/i) || description.match(/TeacherGroup[^\d]*([0-9]+@g\.us)/i);
+      if (teacherRegexLink && teacherRegexLink[1] !== 'null') extractedTeacherId = teacherRegexLink[1].trim();
+      else if (teacherRegexGroup) extractedTeacherId = teacherRegexGroup[1].trim();
 
-      const studentMatch = description.match(/StudentGroupID[\s*:-]*([0-9]+@g\.us)/i) || description.match(/(?:studentgroup|student id|id)[\s*:-]*([0-9]+@g\.us)/i) || description.match(/StudentGroup[^\d]*([0-9]+@g\.us)/i);
-      const studentGroupId = studentMatch ? studentMatch[1] : null;
+      // 🚀 UPGRADED: Extracts Student Invite Link OR old @g.us ID
+      let studentGroupId = null;
+      const studentRegexLink = description.match(/StudentGroupLink[\s*:-]*(?:https?:\/\/)?chat\.whatsapp\.com\/([a-zA-Z0-9_-]+)/i);
+      const studentRegexGroup = description.match(/StudentGroupID[\s*:-]*([0-9]+@g\.us)/i) || description.match(/(?:studentgroup|student id|id)[\s*:-]*([0-9]+@g\.us)/i) || description.match(/StudentGroup[^\d]*([0-9]+@g\.us)/i);
+      if (studentRegexLink && studentRegexLink[1] !== 'null') studentGroupId = studentRegexLink[1].trim();
+      else if (studentRegexGroup) studentGroupId = studentRegexGroup[1].trim();
 
       const studentNameMatch = description.match(/StudentGroupName[\s*:-]*([^\n<]+)/i);
       const studentGroupName = studentNameMatch ? studentNameMatch[1].trim() : null;
@@ -476,14 +484,12 @@ const getTeacherSchedule = async (req, res) => {
       if (isTeacher) {
         return cls.teacherGroupId === searchId;
       } else {
-        // Look for the student ID, or fallback to their Name if that's what is saved in Calendar
         return cls.studentGroupId === searchId || (cls.studentGroupName && cls.studentGroupName === searchId);
       }
     });
 
     const twelveHoursAgo = new Date(now.getTime() - (12 * 60 * 60 * 1000));
     
-    // Ensure we only filter out classes completed by THIS specific user
     const query = {
       status: 'completed',
       startTime: { $gte: twelveHoursAgo } 
@@ -751,15 +757,32 @@ const getMessageLogs = async (req, res) => {
   }
 };
 
+// ✨ THE FIX 2: Admin "Mark as Done" Auto-Create
 const adminForceEndClass = async (req, res) => {
   try {
-    const { classId } = req.body;
-    const session = await ClassSession.findById(classId);
+    const { classId, title, teacherGroupId, studentGroupName, startTime } = req.body;
+    let session;
     
-    if (!session) {
-      return res.status(404).json({ message: 'Class session not found.' });
+    // First, try to find the class if it exists (meaning the teacher DID click Join)
+    if (mongoose.Types.ObjectId.isValid(classId)) {
+      session = await ClassSession.findById(classId);
     }
 
+    // If it doesn't exist, we AUTO-CREATE IT and immediately complete it
+    if (!session) {
+      session = await ClassSession.create({
+        subject: title || 'Google Calendar Lesson',
+        teacherGroupName: teacherGroupId || '',
+        studentGroupName: studentGroupName || '',
+        startTime: startTime || new Date(),
+        status: 'completed',
+        notes: 'System Note: Class forcefully ended/created by Admin.',
+        durationMinutes: 60
+      });
+      return res.status(200).json({ message: 'Class auto-created and forcefully ended by Admin.', session });
+    }
+
+    // If it DOES exist, we just mark it as completed
     session.status = 'completed';
     session.notes = 'System Note: Class forcefully ended by Admin to clear dashboard.';
     
