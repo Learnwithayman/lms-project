@@ -23,8 +23,51 @@ const auth = new google.auth.GoogleAuth({
 const calendar = google.calendar({ version: 'v3', auth });
 
 // ==========================================
-// ✨ MACRODROID LINK EXTRACTOR HELPER 
+// 🛡️ ROCK-SOLID ID EXTRACTOR
 // ==========================================
+const extractIdsFromDescription = (description) => {
+  const desc = description || "";
+  const cleanDesc = desc.replace(/<[^>]*>?/gm, ' ').replace(/&nbsp;/g, ' ');
+
+  let teacher = null;
+  let student = null;
+
+  // 1. Teacher Extraction (Strict -> Loose)
+  const tLink = cleanDesc.match(/TeacherGroupLink[\s\S]*?chat\.whatsapp\.com\/([a-zA-Z0-9_-]+)/i);
+  const tExactGus = desc.match(/TeacherGroup(?:ID)?[\s*:-]*([0-9-]+@g\.us)/i) || desc.match(/TeacherGroup[^\d]*([0-9-]+@g\.us)/i);
+  const tExactAlpha = cleanDesc.match(/TeacherGroup(?:ID)?[\s*:-]*([a-zA-Z0-9_-]{10,})/i);
+  const tLooseGus = desc.match(/(?:\bteacher id\b|\bgroup id\b|\bid\b)[\s*:-]*([0-9-]+@g\.us)/i);
+
+  if (tLink && tLink[1] !== 'null') teacher = tLink[1].trim();
+  else if (tExactGus && tExactGus[1] !== 'null') teacher = tExactGus[1].trim();
+  else if (tExactAlpha && tExactAlpha[1] !== 'null') teacher = tExactAlpha[1].trim();
+  else if (tLooseGus && tLooseGus[1] !== 'null') teacher = tLooseGus[1].trim();
+
+  // 2. Student Extraction (Strict -> Loose)
+  const sLink = cleanDesc.match(/StudentGroupLink[\s\S]*?chat\.whatsapp\.com\/([a-zA-Z0-9_-]+)/i);
+  const sExactGus = desc.match(/StudentGroup(?:ID)?[\s*:-]*([0-9-]+@g\.us)/i) || desc.match(/StudentGroup[^\d]*([0-9-]+@g\.us)/i);
+  const sExactAlpha = cleanDesc.match(/StudentGroup(?:ID)?[\s*:-]*([a-zA-Z0-9_-]{10,})/i);
+  const sLooseGus = desc.match(/(?:\bstudent id\b|\bgroup id\b|\bid\b)[\s*:-]*([0-9-]+@g\.us)/i);
+
+  if (sLink && sLink[1] !== 'null') student = sLink[1].trim();
+  else if (sExactGus && sExactGus[1] !== 'null') student = sExactGus[1].trim();
+  else if (sExactAlpha && sExactAlpha[1] !== 'null') student = sExactAlpha[1].trim();
+  else if (sLooseGus && sLooseGus[1] !== 'null' && sLooseGus[1] !== teacher) student = sLooseGus[1].trim();
+
+  // 3. Names and Links
+  const studentNameMatch = cleanDesc.match(/StudentGroupName[\s*:-]*([^\n<]+)/i);
+  const zoomMatch = cleanDesc.match(/(https:\/\/[^\s<"]*zoom\.us[^\s<"]*)/i);
+  const classroomMatch = cleanDesc.match(/(?:classroom|link|classwork)[\s*:-]*(https?:\/\/[^\s<"]+)/i) || cleanDesc.match(/(https:\/\/classroom\.google\.com[^\s<"]*)/i);
+
+  return {
+    teacherId: teacher,
+    studentId: student,
+    studentName: studentNameMatch ? studentNameMatch[1].trim() : null,
+    zoomLink: zoomMatch ? zoomMatch[1] : null,
+    classroomLink: classroomMatch ? (classroomMatch[1] || classroomMatch[2]) : null
+  };
+};
+
 const extractGroupCodes = async (classTitle) => {
   let codes = { teacher: null, student: null };
   if (!classTitle || classTitle === 'Google Calendar Lesson') return codes;
@@ -45,28 +88,9 @@ const extractGroupCodes = async (classTitle) => {
     const events = response.data.items || [];
     for (const event of events) {
       if (event.description) {
-        const cleanDesc = event.description.replace(/<[^>]*>?/gm, ' ').replace(/&nbsp;/g, ' ');
-
-        const tLink = cleanDesc.match(/TeacherGroupLink[\s\S]*?chat\.whatsapp\.com\/([a-zA-Z0-9_-]+)/i);
-        const tOldGus = cleanDesc.match(/TeacherGroupID[\s*:-]*([0-9]+@g\.us)/i) 
-                     || cleanDesc.match(/(?:teachergroup|teacher id|group id|id)[\s*:-]*([0-9]+@g\.us)/i) 
-                     || cleanDesc.match(/TeacherGroup[^\d]*([0-9]+@g\.us)/i);
-        const tAlpha = cleanDesc.match(/(?:TeacherGroupID|TeacherGroup|Teacher ID|Group ID)[\s*:-]*([a-zA-Z0-9_-]{10,})/i);
-
-        if (tLink && tLink[1] !== 'null') codes.teacher = tLink[1].trim();
-        else if (tOldGus && tOldGus[1] !== 'null') codes.teacher = tOldGus[1].trim();
-        else if (tAlpha && tAlpha[1] !== 'null') codes.teacher = tAlpha[1].trim();
-
-        const sLink = cleanDesc.match(/StudentGroupLink[\s\S]*?chat\.whatsapp\.com\/([a-zA-Z0-9_-]+)/i);
-        const sOldGus = cleanDesc.match(/StudentGroupID[\s*:-]*([0-9]+@g\.us)/i) 
-                     || cleanDesc.match(/(?:studentgroup|student id|id)[\s*:-]*([0-9]+@g\.us)/i) 
-                     || cleanDesc.match(/StudentGroup[^\d]*([0-9]+@g\.us)/i);
-        const sAlpha = cleanDesc.match(/(?:StudentGroupID|StudentGroup|Student ID)[\s*:-]*([a-zA-Z0-9_-]{10,})/i);
-
-        if (sLink && sLink[1] !== 'null') codes.student = sLink[1].trim();
-        else if (sOldGus && sOldGus[1] !== 'null') codes.student = sOldGus[1].trim();
-        else if (sAlpha && sAlpha[1] !== 'null') codes.student = sAlpha[1].trim();
-        
+        const extracted = extractIdsFromDescription(event.description);
+        codes.teacher = extracted.teacherId;
+        codes.student = extracted.studentId;
         if (codes.teacher || codes.student) break;
       }
     }
@@ -430,11 +454,11 @@ const getTeacherSchedule = async (req, res) => {
 
     const isTeacher = databaseUser.role === 'teacher';
     
-    // Dynamically picks the correct ID depending on who is logged in!
-    const searchId = isTeacher 
+    let searchId = isTeacher 
         ? (databaseUser.whatsappGroupId || databaseUser.teacherGroupId || databaseUser.groupId || databaseUser.whatsappGroup)
         : (databaseUser.studentGroupId || databaseUser.whatsappGroupId || databaseUser.groupId || databaseUser.whatsappGroup);
 
+    if (searchId) searchId = searchId.trim();
     if (!searchId) return res.status(200).json([]); 
 
     const myCalendarId = 'admin@learnwithayman.com'; 
@@ -457,50 +481,19 @@ const getTeacherSchedule = async (req, res) => {
       const start = event.start.dateTime || event.start.date;
       const end = event.end?.dateTime || event.end?.date; 
       
-      const cleanDesc = (event.description || "").replace(/<[^>]*>?/gm, ' ').replace(/&nbsp;/g, ' ');
-      
-      // 🚀 RESTORED & UPGRADED: Checks old @g.us FIRST, then checks links/codes!
-      let extractedTeacherId = null;
-      const tLink = cleanDesc.match(/TeacherGroupLink[\s\S]*?chat\.whatsapp\.com\/([a-zA-Z0-9_-]+)/i);
-      const tOldGus = cleanDesc.match(/TeacherGroupID[\s*:-]*([0-9]+@g\.us)/i) 
-                   || cleanDesc.match(/(?:teachergroup|teacher id|group id|id)[\s*:-]*([0-9]+@g\.us)/i) 
-                   || cleanDesc.match(/TeacherGroup[^\d]*([0-9]+@g\.us)/i);
-      const tAlpha = cleanDesc.match(/(?:TeacherGroupID|TeacherGroup|Teacher ID|Group ID)[\s*:-]*([a-zA-Z0-9_-]{10,})/i);
-      
-      if (tLink && tLink[1] !== 'null') extractedTeacherId = tLink[1].trim();
-      else if (tOldGus && tOldGus[1] !== 'null') extractedTeacherId = tOldGus[1].trim();
-      else if (tAlpha && tAlpha[1] !== 'null') extractedTeacherId = tAlpha[1].trim();
-
-      let studentGroupId = null;
-      const sLink = cleanDesc.match(/StudentGroupLink[\s\S]*?chat\.whatsapp\.com\/([a-zA-Z0-9_-]+)/i);
-      const sOldGus = cleanDesc.match(/StudentGroupID[\s*:-]*([0-9]+@g\.us)/i) 
-                   || cleanDesc.match(/(?:studentgroup|student id|id)[\s*:-]*([0-9]+@g\.us)/i) 
-                   || cleanDesc.match(/StudentGroup[^\d]*([0-9]+@g\.us)/i);
-      const sAlpha = cleanDesc.match(/(?:StudentGroupID|StudentGroup|Student ID)[\s*:-]*([a-zA-Z0-9_-]{10,})/i);
-      
-      if (sLink && sLink[1] !== 'null') studentGroupId = sLink[1].trim();
-      else if (sOldGus && sOldGus[1] !== 'null') studentGroupId = sOldGus[1].trim();
-      else if (sAlpha && sAlpha[1] !== 'null') studentGroupId = sAlpha[1].trim();
-
-      const studentNameMatch = cleanDesc.match(/StudentGroupName[\s*:-]*([^\n<]+)/i);
-      const studentGroupName = studentNameMatch ? studentNameMatch[1].trim() : null;
-
-      const zoomMatch = cleanDesc.match(/(https:\/\/[^\s<"]*zoom\.us[^\s<"]*)/i);
-      const zoomLink = zoomMatch ? zoomMatch[1] : null;
-
-      const classroomMatch = cleanDesc.match(/(?:classroom|link|classwork)[\s*:-]*(https?:\/\/[^\s<"]+)/i) || cleanDesc.match(/(https:\/\/classroom\.google\.com[^\s<"]*)/i);
-      const classroomLink = classroomMatch ? (classroomMatch[1] || classroomMatch[2]) : null;
+      // We pass the raw description through the new rock-solid extractor
+      const extracted = extractIdsFromDescription(event.description);
 
       return {
         id: event.id,
         title: event.summary,
         startTime: new Date(start),
         endTime: new Date(end), 
-        teacherGroupId: extractedTeacherId,
-        studentGroupId: studentGroupId,
-        studentGroupName: studentGroupName, 
-        zoomLink: zoomLink,
-        classroomLink: classroomLink 
+        teacherGroupId: extracted.teacherId,
+        studentGroupId: extracted.studentId,
+        studentGroupName: extracted.studentName, 
+        zoomLink: extracted.zoomLink,
+        classroomLink: extracted.classroomLink 
       };
     });
 
@@ -561,29 +554,15 @@ const getAdminLiveMonitor = async (req, res) => {
     const events = response.data.items || [];
     const processedClasses = events.map(event => {
       
-      const cleanDesc = (event.description || "").replace(/<[^>]*>?/gm, ' ').replace(/&nbsp;/g, ' ');
-      
-      let extractedTeacherId = null;
-      const tLink = cleanDesc.match(/TeacherGroupLink[\s\S]*?chat\.whatsapp\.com\/([a-zA-Z0-9_-]+)/i);
-      const tOldGus = cleanDesc.match(/TeacherGroupID[\s*:-]*([0-9]+@g\.us)/i) 
-                   || cleanDesc.match(/(?:teachergroup|teacher id|group id|id)[\s*:-]*([0-9]+@g\.us)/i) 
-                   || cleanDesc.match(/TeacherGroup[^\d]*([0-9]+@g\.us)/i);
-      const tAlpha = cleanDesc.match(/(?:TeacherGroupID|TeacherGroup|Teacher ID|Group ID)[\s*:-]*([a-zA-Z0-9_-]{10,})/i);
-      
-      if (tLink && tLink[1] !== 'null') extractedTeacherId = tLink[1].trim();
-      else if (tOldGus && tOldGus[1] !== 'null') extractedTeacherId = tOldGus[1].trim();
-      else if (tAlpha && tAlpha[1] !== 'null') extractedTeacherId = tAlpha[1].trim();
-
-      const studentNameMatch = cleanDesc.match(/StudentGroupName[\s*:-]*([^\n<]+)/i);
-      const zoomMatch = cleanDesc.match(/(https:\/\/[^\s<"]*zoom\.us[^\s<"]*)/i);
+      const extracted = extractIdsFromDescription(event.description);
       
       return {
         id: event.id,
         title: event.summary,
         startTime: new Date(event.start.dateTime || event.start.date),
-        teacherGroupId: extractedTeacherId,
-        studentGroupName: studentNameMatch ? studentNameMatch[1].trim() : null,
-        zoomLink: zoomMatch ? zoomMatch[1] : null,
+        teacherGroupId: extracted.teacherId,
+        studentGroupName: extracted.studentName,
+        zoomLink: extracted.zoomLink,
       };
     });
 
