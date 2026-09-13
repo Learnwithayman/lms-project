@@ -45,15 +45,16 @@ const extractGroupCodes = async (classTitle) => {
     const events = response.data.items || [];
     for (const event of events) {
       if (event.description) {
-        // Bulletproof Teacher Extraction
-        const tLink = event.description.match(/TeacherGroupLink[\s\S]*?chat\.whatsapp\.com\/([a-zA-Z0-9_-]+)/i);
-        const tGroup = event.description.match(/(?:TeacherGroupID|TeacherGroup|Teacher ID|Group ID)[\s*:-]*([a-zA-Z0-9_-]+(?:@g\.us)?)/i);
+        // 🧹 Scrubber: Removes all hidden HTML tags (<b>, <a>, <br>) and converts to plain text
+        const cleanDesc = event.description.replace(/<[^>]*>?/gm, ' ').replace(/&nbsp;/g, ' ');
+
+        const tLink = cleanDesc.match(/TeacherGroupLink[\s\S]*?chat\.whatsapp\.com\/([a-zA-Z0-9_-]+)/i);
+        const tGroup = cleanDesc.match(/(?:TeacherGroupID|TeacherGroup|Teacher ID|Group ID)[\s*:-]*([a-zA-Z0-9_-]+(?:@g\.us)?)/i);
         if (tLink && tLink[1] !== 'null') codes.teacher = tLink[1].trim();
         else if (tGroup && tGroup[1] !== 'null') codes.teacher = tGroup[1].trim();
         
-        // Bulletproof Student Extraction
-        const sLink = event.description.match(/StudentGroupLink[\s\S]*?chat\.whatsapp\.com\/([a-zA-Z0-9_-]+)/i);
-        const sGroup = event.description.match(/(?:StudentGroupID|StudentGroup|Student ID)[\s*:-]*([a-zA-Z0-9_-]+(?:@g\.us)?)/i);
+        const sLink = cleanDesc.match(/StudentGroupLink[\s\S]*?chat\.whatsapp\.com\/([a-zA-Z0-9_-]+)/i);
+        const sGroup = cleanDesc.match(/(?:StudentGroupID|StudentGroup|Student ID)[\s*:-]*([a-zA-Z0-9_-]+(?:@g\.us)?)/i);
         if (sLink && sLink[1] !== 'null') codes.student = sLink[1].trim();
         else if (sGroup && sGroup[1] !== 'null') codes.student = sGroup[1].trim();
         
@@ -411,7 +412,7 @@ const addTeacherAdjustment = async (req, res) => {
   }
 };
 
-// ✨ THE FIX 1: Scanner perfectly reads ANY format (letters, links, numbers)
+// ✨ THE FIX: HTML Scrubber added to ensure alphanumeric IDs are NEVER blocked by invisible tags!
 const getTeacherSchedule = async (req, res) => {
   try {
     const targetUserId = req.user?.id || req.user?._id;
@@ -447,31 +448,33 @@ const getTeacherSchedule = async (req, res) => {
     let processedClasses = events.map(event => {
       const start = event.start.dateTime || event.start.date;
       const end = event.end?.dateTime || event.end?.date; 
-      const description = event.description || "";
+      
+      // 🧹 Scrubber: Removes all hidden HTML tags (<b>, <a>, <br>) and converts to plain text
+      const cleanDesc = (event.description || "").replace(/<[^>]*>?/gm, ' ').replace(/&nbsp;/g, ' ');
       
       // 🚀 BULLETPROOF TEACHER ID EXTRACTION
       let extractedTeacherId = null;
-      const teacherRegexLink = description.match(/TeacherGroupLink[\s*:-]*(?:https?:\/\/)?chat\.whatsapp\.com\/([a-zA-Z0-9_-]+)/i);
-      const teacherRegexGroup = description.match(/(?:TeacherGroupID|TeacherGroup|Teacher ID|Group ID)[\s*:-]*([a-zA-Z0-9_-]+(?:@g\.us)?)/i);
+      const teacherRegexLink = cleanDesc.match(/TeacherGroupLink[\s\S]*?chat\.whatsapp\.com\/([a-zA-Z0-9_-]+)/i);
+      const teacherRegexGroup = cleanDesc.match(/(?:TeacherGroupID|TeacherGroup|Teacher ID|Group ID)[\s*:-]*([a-zA-Z0-9_-]+(?:@g\.us)?)/i);
       
       if (teacherRegexLink && teacherRegexLink[1] !== 'null') extractedTeacherId = teacherRegexLink[1].trim();
       else if (teacherRegexGroup && teacherRegexGroup[1] !== 'null') extractedTeacherId = teacherRegexGroup[1].trim();
 
       // 🚀 BULLETPROOF STUDENT ID EXTRACTION
       let studentGroupId = null;
-      const studentRegexLink = description.match(/StudentGroupLink[\s*:-]*(?:https?:\/\/)?chat\.whatsapp\.com\/([a-zA-Z0-9_-]+)/i);
-      const studentRegexGroup = description.match(/(?:StudentGroupID|StudentGroup|Student ID)[\s*:-]*([a-zA-Z0-9_-]+(?:@g\.us)?)/i);
+      const studentRegexLink = cleanDesc.match(/StudentGroupLink[\s\S]*?chat\.whatsapp\.com\/([a-zA-Z0-9_-]+)/i);
+      const studentRegexGroup = cleanDesc.match(/(?:StudentGroupID|StudentGroup|Student ID)[\s*:-]*([a-zA-Z0-9_-]+(?:@g\.us)?)/i);
       
       if (studentRegexLink && studentRegexLink[1] !== 'null') studentGroupId = studentRegexLink[1].trim();
       else if (studentRegexGroup && studentRegexGroup[1] !== 'null') studentGroupId = studentRegexGroup[1].trim();
 
-      const studentNameMatch = description.match(/StudentGroupName[\s*:-]*([^\n<]+)/i);
+      const studentNameMatch = cleanDesc.match(/StudentGroupName[\s*:-]*([^\n<]+)/i);
       const studentGroupName = studentNameMatch ? studentNameMatch[1].trim() : null;
 
-      const zoomMatch = description.match(/(https:\/\/[^\s<"]*zoom\.us[^\s<"]*)/i);
+      const zoomMatch = cleanDesc.match(/(https:\/\/[^\s<"]*zoom\.us[^\s<"]*)/i);
       const zoomLink = zoomMatch ? zoomMatch[1] : null;
 
-      const classroomMatch = description.match(/(?:classroom|link|classwork)[\s*:-]*(https?:\/\/[^\s<"]+)/i) || description.match(/(https:\/\/classroom\.google\.com[^\s<"]*)/i);
+      const classroomMatch = cleanDesc.match(/(?:classroom|link|classwork)[\s*:-]*(https?:\/\/[^\s<"]+)/i) || cleanDesc.match(/(https:\/\/classroom\.google\.com[^\s<"]*)/i);
       const classroomLink = classroomMatch ? (classroomMatch[1] || classroomMatch[2]) : null;
 
       return {
@@ -544,18 +547,19 @@ const getAdminLiveMonitor = async (req, res) => {
     
     const events = response.data.items || [];
     const processedClasses = events.map(event => {
-      const description = event.description || "";
       
-      // 🚀 BULLETPROOF TEACHER ID EXTRACTION FOR LIVE MONITOR TOO
+      // 🧹 HTML Scrubber for Live Monitor
+      const cleanDesc = (event.description || "").replace(/<[^>]*>?/gm, ' ').replace(/&nbsp;/g, ' ');
+      
       let extractedTeacherId = null;
-      const teacherRegexLink = description.match(/TeacherGroupLink[\s*:-]*(?:https?:\/\/)?chat\.whatsapp\.com\/([a-zA-Z0-9_-]+)/i);
-      const teacherRegexGroup = description.match(/(?:TeacherGroupID|TeacherGroup|Teacher ID|Group ID)[\s*:-]*([a-zA-Z0-9_-]+(?:@g\.us)?)/i);
+      const teacherRegexLink = cleanDesc.match(/TeacherGroupLink[\s\S]*?chat\.whatsapp\.com\/([a-zA-Z0-9_-]+)/i);
+      const teacherRegexGroup = cleanDesc.match(/(?:TeacherGroupID|TeacherGroup|Teacher ID|Group ID)[\s*:-]*([a-zA-Z0-9_-]+(?:@g\.us)?)/i);
       
       if (teacherRegexLink && teacherRegexLink[1] !== 'null') extractedTeacherId = teacherRegexLink[1].trim();
       else if (teacherRegexGroup && teacherRegexGroup[1] !== 'null') extractedTeacherId = teacherRegexGroup[1].trim();
 
-      const studentNameMatch = description.match(/StudentGroupName[\s*:-]*([^\n<]+)/i);
-      const zoomMatch = description.match(/(https:\/\/[^\s<"]*zoom\.us[^\s<"]*)/i);
+      const studentNameMatch = cleanDesc.match(/StudentGroupName[\s*:-]*([^\n<]+)/i);
+      const zoomMatch = cleanDesc.match(/(https:\/\/[^\s<"]*zoom\.us[^\s<"]*)/i);
       
       return {
         id: event.id,
@@ -773,18 +777,15 @@ const getMessageLogs = async (req, res) => {
   }
 };
 
-// ✨ THE FIX 2: Admin "Mark as Done" Auto-Create
 const adminForceEndClass = async (req, res) => {
   try {
     const { classId, title, teacherGroupId, studentGroupName, startTime } = req.body;
     let session;
     
-    // First, try to find the class if it exists (meaning the teacher DID click Join)
     if (mongoose.Types.ObjectId.isValid(classId)) {
       session = await ClassSession.findById(classId);
     }
 
-    // If it doesn't exist, we AUTO-CREATE IT and immediately complete it
     if (!session) {
       session = await ClassSession.create({
         subject: title || 'Google Calendar Lesson',
@@ -798,7 +799,6 @@ const adminForceEndClass = async (req, res) => {
       return res.status(200).json({ message: 'Class auto-created and forcefully ended by Admin.', session });
     }
 
-    // If it DOES exist, we just mark it as completed
     session.status = 'completed';
     session.notes = 'System Note: Class forcefully ended by Admin to clear dashboard.';
     
