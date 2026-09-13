@@ -44,12 +44,18 @@ const extractGroupCodes = async (classTitle) => {
     
     const events = response.data.items || [];
     for (const event of events) {
-      if (event.description && event.description.includes('GroupLink')) {
-        const tMatch = event.description.match(/TeacherGroupLink[\s\S]*?chat\.whatsapp\.com\/([a-zA-Z0-9_-]+)/i);
-        if (tMatch && tMatch[1] !== 'null') codes.teacher = tMatch[1].trim();
+      if (event.description) {
+        // Bulletproof Teacher Extraction
+        const tLink = event.description.match(/TeacherGroupLink[\s\S]*?chat\.whatsapp\.com\/([a-zA-Z0-9_-]+)/i);
+        const tGroup = event.description.match(/(?:TeacherGroupID|TeacherGroup|Teacher ID|Group ID)[\s*:-]*([a-zA-Z0-9_-]+(?:@g\.us)?)/i);
+        if (tLink && tLink[1] !== 'null') codes.teacher = tLink[1].trim();
+        else if (tGroup && tGroup[1] !== 'null') codes.teacher = tGroup[1].trim();
         
-        const sMatch = event.description.match(/StudentGroupLink[\s\S]*?chat\.whatsapp\.com\/([a-zA-Z0-9_-]+)/i);
-        if (sMatch && sMatch[1] !== 'null') codes.student = sMatch[1].trim();
+        // Bulletproof Student Extraction
+        const sLink = event.description.match(/StudentGroupLink[\s\S]*?chat\.whatsapp\.com\/([a-zA-Z0-9_-]+)/i);
+        const sGroup = event.description.match(/(?:StudentGroupID|StudentGroup|Student ID)[\s*:-]*([a-zA-Z0-9_-]+(?:@g\.us)?)/i);
+        if (sLink && sLink[1] !== 'null') codes.student = sLink[1].trim();
+        else if (sGroup && sGroup[1] !== 'null') codes.student = sGroup[1].trim();
         
         if (codes.teacher || codes.student) break;
       }
@@ -405,7 +411,7 @@ const addTeacherAdjustment = async (req, res) => {
   }
 };
 
-// ✨ THE FIX 1: Scanner now perfectly reads BOTH old @g.us IDs and new MacroDroid Invite Links!
+// ✨ THE FIX 1: Scanner perfectly reads ANY format (letters, links, numbers)
 const getTeacherSchedule = async (req, res) => {
   try {
     const targetUserId = req.user?.id || req.user?._id;
@@ -443,19 +449,21 @@ const getTeacherSchedule = async (req, res) => {
       const end = event.end?.dateTime || event.end?.date; 
       const description = event.description || "";
       
-      // 🚀 UPGRADED: Extracts Teacher Invite Link OR old @g.us ID
+      // 🚀 BULLETPROOF TEACHER ID EXTRACTION
       let extractedTeacherId = null;
       const teacherRegexLink = description.match(/TeacherGroupLink[\s*:-]*(?:https?:\/\/)?chat\.whatsapp\.com\/([a-zA-Z0-9_-]+)/i);
-      const teacherRegexGroup = description.match(/TeacherGroupID[\s*:-]*([0-9]+@g\.us)/i) || description.match(/(?:teachergroup|teacher id|group id|id)[\s*:-]*([0-9]+@g\.us)/i) || description.match(/TeacherGroup[^\d]*([0-9]+@g\.us)/i);
+      const teacherRegexGroup = description.match(/(?:TeacherGroupID|TeacherGroup|Teacher ID|Group ID)[\s*:-]*([a-zA-Z0-9_-]+(?:@g\.us)?)/i);
+      
       if (teacherRegexLink && teacherRegexLink[1] !== 'null') extractedTeacherId = teacherRegexLink[1].trim();
-      else if (teacherRegexGroup) extractedTeacherId = teacherRegexGroup[1].trim();
+      else if (teacherRegexGroup && teacherRegexGroup[1] !== 'null') extractedTeacherId = teacherRegexGroup[1].trim();
 
-      // 🚀 UPGRADED: Extracts Student Invite Link OR old @g.us ID
+      // 🚀 BULLETPROOF STUDENT ID EXTRACTION
       let studentGroupId = null;
       const studentRegexLink = description.match(/StudentGroupLink[\s*:-]*(?:https?:\/\/)?chat\.whatsapp\.com\/([a-zA-Z0-9_-]+)/i);
-      const studentRegexGroup = description.match(/StudentGroupID[\s*:-]*([0-9]+@g\.us)/i) || description.match(/(?:studentgroup|student id|id)[\s*:-]*([0-9]+@g\.us)/i) || description.match(/StudentGroup[^\d]*([0-9]+@g\.us)/i);
+      const studentRegexGroup = description.match(/(?:StudentGroupID|StudentGroup|Student ID)[\s*:-]*([a-zA-Z0-9_-]+(?:@g\.us)?)/i);
+      
       if (studentRegexLink && studentRegexLink[1] !== 'null') studentGroupId = studentRegexLink[1].trim();
-      else if (studentRegexGroup) studentGroupId = studentRegexGroup[1].trim();
+      else if (studentRegexGroup && studentRegexGroup[1] !== 'null') studentGroupId = studentRegexGroup[1].trim();
 
       const studentNameMatch = description.match(/StudentGroupName[\s*:-]*([^\n<]+)/i);
       const studentGroupName = studentNameMatch ? studentNameMatch[1].trim() : null;
@@ -537,7 +545,15 @@ const getAdminLiveMonitor = async (req, res) => {
     const events = response.data.items || [];
     const processedClasses = events.map(event => {
       const description = event.description || "";
-      const teacherMatch = description.match(/TeacherGroupID[\s*:-]*([0-9]+@g\.us)/i) || description.match(/(?:teachergroup|teacher id|group id|id)[\s*:-]*([0-9]+@g\.us)/i) || description.match(/TeacherGroup[^\d]*([0-9]+@g\.us)/i);
+      
+      // 🚀 BULLETPROOF TEACHER ID EXTRACTION FOR LIVE MONITOR TOO
+      let extractedTeacherId = null;
+      const teacherRegexLink = description.match(/TeacherGroupLink[\s*:-]*(?:https?:\/\/)?chat\.whatsapp\.com\/([a-zA-Z0-9_-]+)/i);
+      const teacherRegexGroup = description.match(/(?:TeacherGroupID|TeacherGroup|Teacher ID|Group ID)[\s*:-]*([a-zA-Z0-9_-]+(?:@g\.us)?)/i);
+      
+      if (teacherRegexLink && teacherRegexLink[1] !== 'null') extractedTeacherId = teacherRegexLink[1].trim();
+      else if (teacherRegexGroup && teacherRegexGroup[1] !== 'null') extractedTeacherId = teacherRegexGroup[1].trim();
+
       const studentNameMatch = description.match(/StudentGroupName[\s*:-]*([^\n<]+)/i);
       const zoomMatch = description.match(/(https:\/\/[^\s<"]*zoom\.us[^\s<"]*)/i);
       
@@ -545,7 +561,7 @@ const getAdminLiveMonitor = async (req, res) => {
         id: event.id,
         title: event.summary,
         startTime: new Date(event.start.dateTime || event.start.date),
-        teacherGroupId: teacherMatch ? teacherMatch[1] : null,
+        teacherGroupId: extractedTeacherId,
         studentGroupName: studentNameMatch ? studentNameMatch[1].trim() : null,
         zoomLink: zoomMatch ? zoomMatch[1] : null,
       };
