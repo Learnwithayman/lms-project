@@ -45,18 +45,27 @@ const extractGroupCodes = async (classTitle) => {
     const events = response.data.items || [];
     for (const event of events) {
       if (event.description) {
-        // 🧹 Scrubber: Removes all hidden HTML tags (<b>, <a>, <br>) and converts to plain text
         const cleanDesc = event.description.replace(/<[^>]*>?/gm, ' ').replace(/&nbsp;/g, ' ');
 
         const tLink = cleanDesc.match(/TeacherGroupLink[\s\S]*?chat\.whatsapp\.com\/([a-zA-Z0-9_-]+)/i);
-        const tGroup = cleanDesc.match(/(?:TeacherGroupID|TeacherGroup|Teacher ID|Group ID)[\s*:-]*([a-zA-Z0-9_-]+(?:@g\.us)?)/i);
+        const tOldGus = cleanDesc.match(/TeacherGroupID[\s*:-]*([0-9]+@g\.us)/i) 
+                     || cleanDesc.match(/(?:teachergroup|teacher id|group id|id)[\s*:-]*([0-9]+@g\.us)/i) 
+                     || cleanDesc.match(/TeacherGroup[^\d]*([0-9]+@g\.us)/i);
+        const tAlpha = cleanDesc.match(/(?:TeacherGroupID|TeacherGroup|Teacher ID|Group ID)[\s*:-]*([a-zA-Z0-9_-]{10,})/i);
+
         if (tLink && tLink[1] !== 'null') codes.teacher = tLink[1].trim();
-        else if (tGroup && tGroup[1] !== 'null') codes.teacher = tGroup[1].trim();
-        
+        else if (tOldGus && tOldGus[1] !== 'null') codes.teacher = tOldGus[1].trim();
+        else if (tAlpha && tAlpha[1] !== 'null') codes.teacher = tAlpha[1].trim();
+
         const sLink = cleanDesc.match(/StudentGroupLink[\s\S]*?chat\.whatsapp\.com\/([a-zA-Z0-9_-]+)/i);
-        const sGroup = cleanDesc.match(/(?:StudentGroupID|StudentGroup|Student ID)[\s*:-]*([a-zA-Z0-9_-]+(?:@g\.us)?)/i);
+        const sOldGus = cleanDesc.match(/StudentGroupID[\s*:-]*([0-9]+@g\.us)/i) 
+                     || cleanDesc.match(/(?:studentgroup|student id|id)[\s*:-]*([0-9]+@g\.us)/i) 
+                     || cleanDesc.match(/StudentGroup[^\d]*([0-9]+@g\.us)/i);
+        const sAlpha = cleanDesc.match(/(?:StudentGroupID|StudentGroup|Student ID)[\s*:-]*([a-zA-Z0-9_-]{10,})/i);
+
         if (sLink && sLink[1] !== 'null') codes.student = sLink[1].trim();
-        else if (sGroup && sGroup[1] !== 'null') codes.student = sGroup[1].trim();
+        else if (sOldGus && sOldGus[1] !== 'null') codes.student = sOldGus[1].trim();
+        else if (sAlpha && sAlpha[1] !== 'null') codes.student = sAlpha[1].trim();
         
         if (codes.teacher || codes.student) break;
       }
@@ -412,7 +421,6 @@ const addTeacherAdjustment = async (req, res) => {
   }
 };
 
-// ✨ THE FIX: HTML Scrubber added to ensure alphanumeric IDs are NEVER blocked by invisible tags!
 const getTeacherSchedule = async (req, res) => {
   try {
     const targetUserId = req.user?.id || req.user?._id;
@@ -449,24 +457,30 @@ const getTeacherSchedule = async (req, res) => {
       const start = event.start.dateTime || event.start.date;
       const end = event.end?.dateTime || event.end?.date; 
       
-      // 🧹 Scrubber: Removes all hidden HTML tags (<b>, <a>, <br>) and converts to plain text
       const cleanDesc = (event.description || "").replace(/<[^>]*>?/gm, ' ').replace(/&nbsp;/g, ' ');
       
-      // 🚀 BULLETPROOF TEACHER ID EXTRACTION
+      // 🚀 RESTORED & UPGRADED: Checks old @g.us FIRST, then checks links/codes!
       let extractedTeacherId = null;
-      const teacherRegexLink = cleanDesc.match(/TeacherGroupLink[\s\S]*?chat\.whatsapp\.com\/([a-zA-Z0-9_-]+)/i);
-      const teacherRegexGroup = cleanDesc.match(/(?:TeacherGroupID|TeacherGroup|Teacher ID|Group ID)[\s*:-]*([a-zA-Z0-9_-]+(?:@g\.us)?)/i);
+      const tLink = cleanDesc.match(/TeacherGroupLink[\s\S]*?chat\.whatsapp\.com\/([a-zA-Z0-9_-]+)/i);
+      const tOldGus = cleanDesc.match(/TeacherGroupID[\s*:-]*([0-9]+@g\.us)/i) 
+                   || cleanDesc.match(/(?:teachergroup|teacher id|group id|id)[\s*:-]*([0-9]+@g\.us)/i) 
+                   || cleanDesc.match(/TeacherGroup[^\d]*([0-9]+@g\.us)/i);
+      const tAlpha = cleanDesc.match(/(?:TeacherGroupID|TeacherGroup|Teacher ID|Group ID)[\s*:-]*([a-zA-Z0-9_-]{10,})/i);
       
-      if (teacherRegexLink && teacherRegexLink[1] !== 'null') extractedTeacherId = teacherRegexLink[1].trim();
-      else if (teacherRegexGroup && teacherRegexGroup[1] !== 'null') extractedTeacherId = teacherRegexGroup[1].trim();
+      if (tLink && tLink[1] !== 'null') extractedTeacherId = tLink[1].trim();
+      else if (tOldGus && tOldGus[1] !== 'null') extractedTeacherId = tOldGus[1].trim();
+      else if (tAlpha && tAlpha[1] !== 'null') extractedTeacherId = tAlpha[1].trim();
 
-      // 🚀 BULLETPROOF STUDENT ID EXTRACTION
       let studentGroupId = null;
-      const studentRegexLink = cleanDesc.match(/StudentGroupLink[\s\S]*?chat\.whatsapp\.com\/([a-zA-Z0-9_-]+)/i);
-      const studentRegexGroup = cleanDesc.match(/(?:StudentGroupID|StudentGroup|Student ID)[\s*:-]*([a-zA-Z0-9_-]+(?:@g\.us)?)/i);
+      const sLink = cleanDesc.match(/StudentGroupLink[\s\S]*?chat\.whatsapp\.com\/([a-zA-Z0-9_-]+)/i);
+      const sOldGus = cleanDesc.match(/StudentGroupID[\s*:-]*([0-9]+@g\.us)/i) 
+                   || cleanDesc.match(/(?:studentgroup|student id|id)[\s*:-]*([0-9]+@g\.us)/i) 
+                   || cleanDesc.match(/StudentGroup[^\d]*([0-9]+@g\.us)/i);
+      const sAlpha = cleanDesc.match(/(?:StudentGroupID|StudentGroup|Student ID)[\s*:-]*([a-zA-Z0-9_-]{10,})/i);
       
-      if (studentRegexLink && studentRegexLink[1] !== 'null') studentGroupId = studentRegexLink[1].trim();
-      else if (studentRegexGroup && studentRegexGroup[1] !== 'null') studentGroupId = studentRegexGroup[1].trim();
+      if (sLink && sLink[1] !== 'null') studentGroupId = sLink[1].trim();
+      else if (sOldGus && sOldGus[1] !== 'null') studentGroupId = sOldGus[1].trim();
+      else if (sAlpha && sAlpha[1] !== 'null') studentGroupId = sAlpha[1].trim();
 
       const studentNameMatch = cleanDesc.match(/StudentGroupName[\s*:-]*([^\n<]+)/i);
       const studentGroupName = studentNameMatch ? studentNameMatch[1].trim() : null;
@@ -490,7 +504,6 @@ const getTeacherSchedule = async (req, res) => {
       };
     });
 
-    // ✨ Filter based on the role
     const userSpecificClasses = processedClasses.filter((cls) => {
       if (isTeacher) {
         return cls.teacherGroupId === searchId;
@@ -548,15 +561,18 @@ const getAdminLiveMonitor = async (req, res) => {
     const events = response.data.items || [];
     const processedClasses = events.map(event => {
       
-      // 🧹 HTML Scrubber for Live Monitor
       const cleanDesc = (event.description || "").replace(/<[^>]*>?/gm, ' ').replace(/&nbsp;/g, ' ');
       
       let extractedTeacherId = null;
-      const teacherRegexLink = cleanDesc.match(/TeacherGroupLink[\s\S]*?chat\.whatsapp\.com\/([a-zA-Z0-9_-]+)/i);
-      const teacherRegexGroup = cleanDesc.match(/(?:TeacherGroupID|TeacherGroup|Teacher ID|Group ID)[\s*:-]*([a-zA-Z0-9_-]+(?:@g\.us)?)/i);
+      const tLink = cleanDesc.match(/TeacherGroupLink[\s\S]*?chat\.whatsapp\.com\/([a-zA-Z0-9_-]+)/i);
+      const tOldGus = cleanDesc.match(/TeacherGroupID[\s*:-]*([0-9]+@g\.us)/i) 
+                   || cleanDesc.match(/(?:teachergroup|teacher id|group id|id)[\s*:-]*([0-9]+@g\.us)/i) 
+                   || cleanDesc.match(/TeacherGroup[^\d]*([0-9]+@g\.us)/i);
+      const tAlpha = cleanDesc.match(/(?:TeacherGroupID|TeacherGroup|Teacher ID|Group ID)[\s*:-]*([a-zA-Z0-9_-]{10,})/i);
       
-      if (teacherRegexLink && teacherRegexLink[1] !== 'null') extractedTeacherId = teacherRegexLink[1].trim();
-      else if (teacherRegexGroup && teacherRegexGroup[1] !== 'null') extractedTeacherId = teacherRegexGroup[1].trim();
+      if (tLink && tLink[1] !== 'null') extractedTeacherId = tLink[1].trim();
+      else if (tOldGus && tOldGus[1] !== 'null') extractedTeacherId = tOldGus[1].trim();
+      else if (tAlpha && tAlpha[1] !== 'null') extractedTeacherId = tAlpha[1].trim();
 
       const studentNameMatch = cleanDesc.match(/StudentGroupName[\s*:-]*([^\n<]+)/i);
       const zoomMatch = cleanDesc.match(/(https:\/\/[^\s<"]*zoom\.us[^\s<"]*)/i);
