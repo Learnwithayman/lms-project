@@ -1,5 +1,6 @@
 const asyncHandler = require('express-async-handler');
 const User = require('../models/User');
+const MakeupRequest = require('../models/MakeupRequest'); // ✨ NEW: Import the model
 const whatsappClient = require('../utils/whatsappBot');
 
 // @desc    Get student subscription & makeup summary
@@ -13,12 +14,10 @@ const getSubscriptionSummary = asyncHandler(async (req, res) => {
     throw new Error('User not found');
   }
 
-  // Filter for valid, unused makeup credits that haven't expired
   const activeMakeups = user.makeupBank 
     ? user.makeupBank.filter(m => !m.isUsed && new Date(m.expirationDate) > new Date()) 
     : [];
 
-  // Returns clean JSON for the frontend Parent Portal
   res.status(200).json({
     subscription: user.subscription,
     makeupCount: activeMakeups.length,
@@ -38,11 +37,17 @@ const requestMakeup = asyncHandler(async (req, res) => {
     throw new Error('User not found');
   }
 
-  // Build the alert message for the Admin
+  // ✨ NEW: Save the request to the database so it shows up in the Admin Inbox
+  await MakeupRequest.create({
+    student: user._id,
+    originalDate,
+    preferredDate,
+    reason
+  });
+
   const adminMessage = `🔔 *New Makeup Request*\n\n*Student:* ${user.name}\n*Original Missed Date:* ${new Date(originalDate).toLocaleDateString()}\n*Preferred Makeup Date:* ${new Date(preferredDate).toLocaleDateString()}\n*Reason:* ${reason || 'Not provided'}\n\nPlease check the admin dashboard to process this request.`;
   
   try {
-    // Sends the alert using the exact invite link code
     await whatsappClient.sendMessage('BYFE1IPRs2KGJNhGaxvpJd', adminMessage); 
   } catch (error) {
     console.error('⚠️ Failed to send admin WhatsApp alert:', error.message);
