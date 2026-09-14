@@ -2,7 +2,7 @@ const asyncHandler = require('express-async-handler');
 const ClassSession = require('../models/ClassSession');
 const User = require('../models/User');
 const MessageLog = require('../models/MessageLog'); 
-const MakeupRequest = require('../models/MakeupRequest'); // ✨ NEW: Import MakeupRequest
+const MakeupRequest = require('../models/MakeupRequest'); 
 const whatsappClient = require('../utils/whatsappBot');
 const { google } = require('googleapis');
 const mongoose = require('mongoose');
@@ -47,7 +47,6 @@ const extractGroupCodes = async (classTitle) => {
     for (const event of events) {
       const description = event.description || "";
       
-      // 1. EXACT ORIGINAL CODE
       const tMatch = description.match(/TeacherGroupLink[\s\S]*?chat\.whatsapp\.com\/([a-zA-Z0-9_-]+)/i);
       const tOld = description.match(/TeacherGroupID[\s*:-]*([0-9]+@g\.us)/i) || description.match(/(?:teachergroup|teacher id|group id|id)[\s*:-]*([0-9]+@g\.us)/i) || description.match(/TeacherGroup[^\d]*([0-9]+@g\.us)/i);
       
@@ -60,7 +59,6 @@ const extractGroupCodes = async (classTitle) => {
       if (sMatch && sMatch[1] !== 'null') codes.student = sMatch[1].trim();
       else if (sOld && sOld[1] !== 'null') codes.student = sOld[1].trim();
 
-      // 2. TEACHER ISLAM FALLBACK 
       if (!codes.teacher || !codes.student) {
         const cleanDesc = description.replace(/<[^>]*>?/gm, ' ').replace(/&nbsp;/g, ' ');
         if (!codes.teacher) {
@@ -198,21 +196,27 @@ const endClass = async (req, res) => {
 
       if (targetPhone && targetPhone !== 'Student') {
         await whatsappClient.sendMessage(targetPhone, messageText);
-        console.log(`✅ Post-class notes sent to code/name: ${targetPhone}`);
       }
-    } catch (waError) {
-      console.error('⚠️ WhatsApp failed to send (Connection Closed), but saving class anyway:', waError.message);
-    }
+    } catch (waError) {}
 
     const finalDuration = durationMinutes ? Number(durationMinutes) : 60; 
+    const finalStudentGroup = studentGroupName || studentName || title || 'Student';
 
     if (session) {
       session.status = 'completed';
       session.notes = notes;
       session.durationMinutes = finalDuration;
+      if (!session.studentGroupName || session.studentGroupName.trim() === '') {
+          session.studentGroupName = finalStudentGroup;
+      }
       await session.save();
     } else {
-      const studentUser = await User.findOne({ whatsappGroupId: studentGroupId || whatsappGroupId });
+      const studentUser = await User.findOne({ 
+         $or: [
+             { whatsappGroupId: studentGroupId || whatsappGroupId },
+             { name: finalStudentGroup }
+         ]
+      });
       session = await ClassSession.create({
         teacher: req.user._id,
         student: studentUser ? studentUser._id : null, 
@@ -222,7 +226,7 @@ const endClass = async (req, res) => {
         status: 'completed',
         notes: notes,
         teacherGroupName: teacherGroupName || '', 
-        studentGroupName: studentGroupName || ''  
+        studentGroupName: finalStudentGroup  
       });
     }
 
@@ -232,7 +236,6 @@ const endClass = async (req, res) => {
         studentDoc.subscription.classesUsed = (studentDoc.subscription.classesUsed || 0) + 1;
         if (studentDoc.subscription.classesUsed >= studentDoc.subscription.totalClassesBought && studentDoc.subscription.totalClassesBought > 0) {
           studentDoc.subscription.status = 'expired';
-          console.log(`⚠️ ALERT: Student ${studentDoc.name}'s subscription has just expired!`);
         }
         await studentDoc.save();
       }
@@ -289,7 +292,6 @@ const markAttendance = async (req, res) => {
         studentDoc.subscription.classesUsed = (studentDoc.subscription.classesUsed || 0) + 1;
         if (studentDoc.subscription.classesUsed >= studentDoc.subscription.totalClassesBought && studentDoc.subscription.totalClassesBought > 0) {
           studentDoc.subscription.status = 'expired';
-          console.log(`⚠️ ALERT: Student ${studentDoc.name}'s subscription has just expired due to absence!`);
         }
         await studentDoc.save();
       }
@@ -325,12 +327,31 @@ const markAttendance = async (req, res) => {
 
 const getCompletedClasses = async (req, res) => {
   try {
+    const user = await User.findById(req.user._id);
+    if (!user) return res.status(404).json({ message: 'User not found' });
+
+    const userIdentifiers = [
+      user.whatsappGroupId,
+      user.studentGroupId,
+      user.teacherGroupId,
+      user.groupId,
+      user.whatsappGroup,
+      user.name
+    ].filter(Boolean); 
+
     const completedClasses = await ClassSession.find({
-      $or: [{ teacher: req.user._id }, { student: req.user._id }],
-      status: 'completed'
+      $or: [
+        { teacher: req.user._id }, 
+        { student: req.user._id },
+        { teacherGroupName: { $in: userIdentifiers } },
+        { studentGroupName: { $in: userIdentifiers } }
+      ],
+      status: { $in: ['completed', 'cancelled'] } 
     }).sort({ startTime: -1 }); 
+    
     res.status(200).json(completedClasses);
   } catch (error) {
+    console.error("Error in getCompletedClasses:", error);
     res.status(500).json({ message: 'Server error fetching progress.' });
   }
 };
@@ -463,14 +484,12 @@ const getTeacherSchedule = async (req, res) => {
       const end = event.end?.dateTime || event.end?.date; 
       const description = event.description || "";
       
-      // 1. EXACT ORIGINAL CODE THAT WORKED FOR M. RABEA
       const teacherMatch = description.match(/TeacherGroupID[\s*:-]*([0-9]+@g\.us)/i) || description.match(/(?:teachergroup|teacher id|group id|id)[\s*:-]*([0-9]+@g\.us)/i) || description.match(/TeacherGroup[^\d]*([0-9]+@g\.us)/i);
       let extractedTeacherId = teacherMatch ? teacherMatch[1].trim() : null;
 
       const studentMatch = description.match(/StudentGroupID[\s*:-]*([0-9]+@g\.us)/i) || description.match(/(?:studentgroup|student id|id)[\s*:-]*([0-9]+@g\.us)/i) || description.match(/StudentGroup[^\d]*([0-9]+@g\.us)/i);
       let studentGroupId = studentMatch ? studentMatch[1].trim() : null;
 
-      // 2. TEACHER ISLAM FALLBACK (Only runs if the original code found nothing!)
       if (!extractedTeacherId || !studentGroupId) {
           const cleanDesc = description.replace(/<[^>]*>?/gm, ' ').replace(/&nbsp;/g, ' ');
           
@@ -519,20 +538,31 @@ const getTeacherSchedule = async (req, res) => {
       }
     });
 
+    const userIdentifiers = [
+      databaseUser.whatsappGroupId,
+      databaseUser.studentGroupId,
+      databaseUser.teacherGroupId,
+      databaseUser.groupId,
+      databaseUser.whatsappGroup,
+      databaseUser.name
+    ].filter(Boolean);
+
     const twelveHoursAgo = new Date(now.getTime() - (12 * 60 * 60 * 1000));
     
     const query = {
-      status: 'completed',
-      startTime: { $gte: twelveHoursAgo } 
+      status: { $in: ['completed', 'cancelled'] },
+      startTime: { $gte: twelveHoursAgo },
+      $or: [
+        { teacher: databaseUser._id },
+        { student: databaseUser._id },
+        { teacherGroupName: { $in: userIdentifiers } },
+        { studentGroupName: { $in: userIdentifiers } }
+      ]
     };
-    if (isTeacher) query.teacher = databaseUser._id;
-    else query.student = databaseUser._id;
 
     const recentlyCompletedDB = await ClassSession.find(query);
 
     const finalSchedule = userSpecificClasses.filter(gcalClass => {
-      if (gcalClass.startTime > now) return true;
-
       const alreadyDone = recentlyCompletedDB.some(dbClass => {
         return (
           (dbClass.studentGroupName && gcalClass.studentGroupName && dbClass.studentGroupName === gcalClass.studentGroupName) || 
@@ -540,7 +570,13 @@ const getTeacherSchedule = async (req, res) => {
         );
       });
 
-      return !alreadyDone; 
+      // ✨ FIX: If it is marked as done, remove it immediately (even if it's in the future!)
+      if (alreadyDone) return false; 
+      
+      // If it hasn't happened yet, show it
+      if (gcalClass.startTime > now) return true;
+
+      return false; 
     });
 
     res.status(200).json(finalSchedule);
@@ -569,11 +605,9 @@ const getAdminLiveMonitor = async (req, res) => {
     const processedClasses = events.map(event => {
       const description = event.description || "";
       
-      // 1. EXACT ORIGINAL CODE
       const tOld = description.match(/TeacherGroupID[\s*:-]*([0-9]+@g\.us)/i) || description.match(/(?:teachergroup|teacher id|group id|id)[\s*:-]*([0-9]+@g\.us)/i) || description.match(/TeacherGroup[^\d]*([0-9]+@g\.us)/i);
       let extractedTeacherId = tOld ? tOld[1].trim() : null;
 
-      // 2. TEACHER ISLAM FALLBACK
       if (!extractedTeacherId) {
         const cleanDesc = description.replace(/<[^>]*>?/gm, ' ').replace(/&nbsp;/g, ' ');
         const tLink = cleanDesc.match(/TeacherGroupLink[\s\S]*?chat\.whatsapp\.com\/([a-zA-Z0-9_-]+)/i);
