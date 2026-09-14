@@ -197,7 +197,9 @@ const endClass = async (req, res) => {
       if (targetPhone && targetPhone !== 'Student') {
         await whatsappClient.sendMessage(targetPhone, messageText);
       }
-    } catch (waError) {}
+    } catch (waError) {
+      console.error('WhatsApp skipped:', waError.message);
+    }
 
     const finalDuration = durationMinutes ? Number(durationMinutes) : 60; 
     const finalStudentGroup = studentGroupName || studentName || title || 'Student';
