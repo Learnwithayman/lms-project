@@ -11,6 +11,10 @@ function Dashboard() {
   const [earnings, setEarnings] = useState(null); 
   const [subSummary, setSubSummary] = useState(null);
   
+  // ✨ NEW: Day 7 Class History State
+  const [history, setHistory] = useState([]);
+  const [loadingHistory, setLoadingHistory] = useState(true);
+
   const navigate = useNavigate();
   
   // End Class Modal State
@@ -20,7 +24,7 @@ function Dashboard() {
   const [classroomChecked, setClassroomChecked] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  // ✨ NEW: Day 6 Makeup Request Modal State
+  // Makeup Request Modal State
   const [isMakeupModalOpen, setIsMakeupModalOpen] = useState(false);
   const [selectedOriginalDate, setSelectedOriginalDate] = useState('');
   const [preferredMakeupDate, setPreferredMakeupDate] = useState('');
@@ -37,6 +41,7 @@ function Dashboard() {
     setUser(parsedUser);
     
     fetchClasses(token);
+    fetchHistory(token); // 👈 Fetch class history on load
 
     if (parsedUser?.role?.toLowerCase() === 'teacher') {
       fetchEarnings(token);
@@ -52,6 +57,19 @@ function Dashboard() {
       setClasses(res.data);
     } catch (error) {
       console.error("Error fetching classes:", error);
+    }
+  };
+
+  // ✨ NEW: Fetch Completed & Cancelled History
+  const fetchHistory = async (token) => {
+    try {
+      const config = { headers: { Authorization: `Bearer ${token}` } };
+      const res = await axios.get(`${API_URL}/api/schedule/completed`, config);
+      setHistory(res.data);
+    } catch (error) {
+      console.error("Error fetching class history:", error);
+    } finally {
+      setLoadingHistory(false);
     }
   };
 
@@ -125,6 +143,7 @@ function Dashboard() {
       
       fetchClasses(token);
       fetchEarnings(token);
+      fetchHistory(token); // Refresh history
       alert('✅ Class ended successfully and hours logged!');
     } catch (error) {
       console.error('Error ending class:', error);
@@ -148,13 +167,13 @@ function Dashboard() {
         zoomLink: cls.zoomLink || cls.meetingLink
       }, config);
       alert(`✅ Student marked as ${status}. WhatsApp message sent!`);
+      fetchHistory(token); // Refresh history
     } catch (error) {
       console.error('Error marking attendance:', error);
       alert('Failed to mark attendance.');
     }
   };
 
-  // ✨ NEW: Day 6 Makeup Request Handler
   const handleRequestMakeup = async (e) => {
     e.preventDefault();
     setIsRequestingMakeup(true);
@@ -304,7 +323,6 @@ function Dashboard() {
                     ))}
                   </ul>
                 </div>
-                {/* ✨ NEW: Schedule Makeup Button */}
                 <button 
                   onClick={() => setIsMakeupModalOpen(true)}
                   style={{ width: '100%', padding: '12px', backgroundColor: '#d35400', color: 'white', border: 'none', borderRadius: '8px', cursor: 'pointer', fontWeight: 'bold', transition: 'all 0.2s' }}>
@@ -316,13 +334,15 @@ function Dashboard() {
         </div>
       )}
 
-      <h2>🗓️ Your Schedule</h2>
+      {/* 🗓️ UPCOMING CLASSES SECTION */}
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
+        <h2 style={{ margin: 0 }}>🗓️ Your Schedule</h2>
+        <button onClick={() => navigate('/progress')} style={{ backgroundColor: '#0984e3', color: 'white', padding: '10px 20px', border: 'none', borderRadius: '8px', cursor: 'pointer', fontWeight: 'bold', boxShadow: '0 4px 10px rgba(9, 132, 227, 0.2)' }}>
+          📈 View Progress
+        </button>
+      </div>
       
-      <button onClick={() => navigate('/progress')} style={{ marginBottom: '20px', backgroundColor: '#0984e3', color: 'white', padding: '12px 25px', border: 'none', borderRadius: '8px', cursor: 'pointer', fontWeight: 'bold', boxShadow: '0 4px 10px rgba(9, 132, 227, 0.2)' }}>
-        📈 View Progress Reports
-      </button>
-
-      <div style={{ display: 'grid', gap: '20px' }}>
+      <div style={{ display: 'grid', gap: '20px', marginBottom: '40px' }}>
         {classes.length === 0 ? (
            <p style={{ fontStyle: 'italic', color: 'gray' }}>No upcoming classes found on your calendar.</p>
         ) : (
@@ -368,6 +388,44 @@ function Dashboard() {
         )}
       </div>
 
+      {/* ✨ NEW: CLASS HISTORY SECTION */}
+      <h2 style={{ margin: '0 0 20px 0', borderBottom: '2px solid #f1f2f6', paddingBottom: '10px' }}>🕰️ Class History</h2>
+      
+      <div style={{ backgroundColor: 'white', borderRadius: '12px', boxShadow: '0 5px 15px rgba(0,0,0,0.03)', padding: '20px', overflowX: 'auto', marginBottom: '40px' }}>
+        {loadingHistory ? (
+          <p style={{ color: '#636e72' }}>Loading history...</p>
+        ) : history.length === 0 ? (
+          <p style={{ fontStyle: 'italic', color: 'gray' }}>No past classes recorded yet.</p>
+        ) : (
+          <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
+            <thead>
+              <tr style={{ borderBottom: '2px solid #dfe6e9', color: '#2d3436' }}>
+                <th style={{ padding: '12px', fontSize: '14px' }}>Subject</th>
+                <th style={{ padding: '12px', fontSize: '14px' }}>Date</th>
+                <th style={{ padding: '12px', fontSize: '14px' }}>Status</th>
+              </tr>
+            </thead>
+            <tbody>
+              {history.map((cls, index) => (
+                <tr key={index} style={{ borderBottom: '1px solid #f1f2f6' }}>
+                  <td style={{ padding: '12px', fontWeight: 'bold', color: '#2d3436' }}>{cls.subject || 'Class Session'}</td>
+                  <td style={{ padding: '12px', color: '#636e72' }}>{new Date(cls.startTime).toLocaleDateString()}</td>
+                  <td style={{ padding: '12px' }}>
+                    {cls.status === 'completed' ? (
+                      <span style={{ backgroundColor: '#e8f8f5', color: '#27ae60', padding: '4px 10px', borderRadius: '12px', fontSize: '12px', fontWeight: 'bold' }}>✅ Completed</span>
+                    ) : cls.status === 'cancelled' ? (
+                      <span style={{ backgroundColor: '#e8f4fd', color: '#0984e3', padding: '4px 10px', borderRadius: '12px', fontSize: '12px', fontWeight: 'bold' }}>🔄 Makeup Issued</span>
+                    ) : (
+                      <span style={{ backgroundColor: '#f1f2f6', color: '#636e72', padding: '4px 10px', borderRadius: '12px', fontSize: '12px', fontWeight: 'bold' }}>{cls.status}</span>
+                    )}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+      </div>
+
       {/* END CLASS MODAL */}
       {isModalOpen && (
         <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.6)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 }}>
@@ -398,7 +456,7 @@ function Dashboard() {
         </div>
       )}
 
-      {/* ✨ NEW: REQUEST MAKEUP MODAL */}
+      {/* REQUEST MAKEUP MODAL */}
       {isMakeupModalOpen && subSummary && (
         <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.6)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 }}>
           <div style={{ backgroundColor: 'white', padding: '30px', borderRadius: '15px', width: '450px', color: '#2d3436' }}>

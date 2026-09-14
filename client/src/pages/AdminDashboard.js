@@ -8,9 +8,13 @@ function AdminDashboard() {
   const [liveClasses, setLiveClasses] = useState([]);
   const [loading, setLoading] = useState(true);
   
-  // ✨ NEW: Message Log States
+  // Message Log States
   const [messageLogs, setMessageLogs] = useState([]);
   const [loadingLogs, setLoadingLogs] = useState(true);
+
+  // ✨ NEW: Pending Makeups States
+  const [pendingMakeups, setPendingMakeups] = useState([]);
+  const [loadingMakeups, setLoadingMakeups] = useState(true);
 
   // State to handle the View Notes Modal
   const [viewNotesModal, setViewNotesModal] = useState({ isOpen: false, text: '', student: '' });
@@ -32,9 +36,49 @@ function AdminDashboard() {
       navigate('/dashboard');
     } else {
       fetchLiveClasses(token);
-      fetchMessageLogs(token); // 👈 Fetch logs on load
+      fetchMessageLogs(token);
+      fetchPendingMakeups(token); // 👈 Fetch pending makeups on load
     }
   }, [navigate]);
+
+  // ✨ FETCH PENDING MAKEUPS
+  const fetchPendingMakeups = async (token) => {
+    try {
+      const response = await fetch(`${process.env.REACT_APP_API_URL || 'https://lms-backend-02zs.onrender.com'}/api/schedule/admin/makeups`, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      if (response.ok) {
+        const data = await response.json();
+        setPendingMakeups(data);
+      }
+    } catch (error) {
+      console.error('Error fetching makeups:', error);
+    } finally {
+      setLoadingMakeups(false);
+    }
+  };
+
+  // ✨ RESOLVE MAKEUP HANDLER
+  const handleResolveMakeup = async (id) => {
+    if (!window.confirm('Are you sure you want to mark this request as scheduled? This will clear it from your inbox.')) return;
+    
+    try {
+      const token = localStorage.getItem('token');
+      const response = await fetch(`${process.env.REACT_APP_API_URL || 'https://lms-backend-02zs.onrender.com'}/api/schedule/admin/makeups/${id}/resolve`, {
+        method: 'PUT',
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      
+      if (response.ok) {
+        alert('✅ Request marked as scheduled!');
+        fetchPendingMakeups(token); // Refresh the inbox
+      } else {
+        alert('❌ Failed to resolve request.');
+      }
+    } catch (error) {
+      console.error(error);
+    }
+  };
 
   // 📡 FETCH LIVE MONITOR DATA
   const fetchLiveClasses = async (token) => {
@@ -244,6 +288,49 @@ function AdminDashboard() {
             Create User
           </button>
         </div>
+      </div>
+
+      {/* ========================================== */}
+      {/* 📥 PENDING MAKEUP REQUESTS INBOX */}
+      {/* ========================================== */}
+      <div style={{ marginTop: '40px', backgroundColor: '#fff3cd', padding: '20px', borderRadius: '8px', border: '1px solid #ffeeba', color: '#856404' }}>
+        <h2 style={{ margin: 0, display: 'flex', alignItems: 'center', gap: '10px' }}>
+          📥 Pending Makeup Requests
+          {pendingMakeups.length > 0 && (
+            <span style={{ backgroundColor: '#e74c3c', color: 'white', fontSize: '16px', padding: '4px 10px', borderRadius: '12px' }}>
+              {pendingMakeups.length} New
+            </span>
+          )}
+        </h2>
+        <p style={{ marginTop: '5px', marginBottom: '20px' }}>Students who have requested a makeup class. Once you book the new class on Google Calendar, click "Mark as Scheduled" to clear the request.</p>
+
+        {loadingMakeups ? (
+          <p>Loading inbox...</p>
+        ) : pendingMakeups.length === 0 ? (
+          <div style={{ padding: '15px', backgroundColor: '#d4edda', color: '#155724', borderRadius: '5px', border: '1px solid #c3e6cb' }}>
+            🎉 <strong>Inbox Zero!</strong> There are no pending makeup requests.
+          </div>
+        ) : (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '15px' }}>
+            {pendingMakeups.map((req) => (
+              <div key={req._id} style={{ backgroundColor: '#fff', padding: '15px', borderRadius: '8px', borderLeft: '5px solid #ffc107', boxShadow: '0 2px 4px rgba(0,0,0,0.05)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '10px' }}>
+                <div>
+                  <h4 style={{ margin: '0 0 8px 0', color: '#333', fontSize: '1.2em' }}>👤 {req.student?.name || 'Unknown Student'}</h4>
+                  <p style={{ margin: 0, fontSize: '14px', color: '#555', lineHeight: '1.5' }}>
+                    <strong>Original Missed Class:</strong> {new Date(req.originalDate).toLocaleDateString()}<br/>
+                    <strong>Preferred Makeup Date:</strong> <span style={{ color: '#e67e22', fontWeight: 'bold' }}>{new Date(req.preferredDate).toLocaleDateString()}</span><br/>
+                    <strong>Reason Provided:</strong> {req.reason || 'None provided'}
+                  </p>
+                </div>
+                <button 
+                  onClick={() => handleResolveMakeup(req._id)}
+                  style={{ padding: '10px 20px', backgroundColor: '#2ecc71', color: 'white', border: 'none', borderRadius: '5px', cursor: 'pointer', fontWeight: 'bold', fontSize: '14px', alignSelf: 'flex-start' }}>
+                  ✅ Mark as Scheduled
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
       </div>
 
       <div className="live-monitor-section" style={{ marginTop: '40px', backgroundColor: '#f9f9f9', padding: '20px', borderRadius: '8px', border: '1px solid #ddd' }}>
