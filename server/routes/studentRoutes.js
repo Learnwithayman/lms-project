@@ -7,4 +7,4 @@ const { protect } = require('../middleware/authMiddleware');
 router.get('/subscription-summary', protect, getSubscriptionSummary);
 router.post('/request-makeup', protect, requestMakeup);
 
-module.exports = router;lpokokpkok...express
+module.exports = router;
