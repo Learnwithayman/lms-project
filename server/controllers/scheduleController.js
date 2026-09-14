@@ -2,6 +2,7 @@ const asyncHandler = require('express-async-handler');
 const ClassSession = require('../models/ClassSession');
 const User = require('../models/User');
 const MessageLog = require('../models/MessageLog'); 
+const MakeupRequest = require('../models/MakeupRequest'); // ✨ NEW: Import MakeupRequest
 const whatsappClient = require('../utils/whatsappBot');
 const { google } = require('googleapis');
 const mongoose = require('mongoose');
@@ -838,10 +839,38 @@ const adminForceEndClass = async (req, res) => {
   }
 };
 
+const getPendingMakeups = async (req, res) => {
+  try {
+    const requests = await MakeupRequest.find({ status: 'pending' })
+      .populate('student', 'name whatsappGroupId')
+      .sort({ createdAt: -1 });
+    res.status(200).json(requests);
+  } catch (error) {
+    console.error('Error fetching makeups:', error);
+    res.status(500).json({ message: 'Server error fetching makeup requests.' });
+  }
+};
+
+const resolveMakeupRequest = async (req, res) => {
+  try {
+    const request = await MakeupRequest.findById(req.params.id);
+    if (!request) return res.status(404).json({ message: 'Request not found' });
+    
+    request.status = 'resolved';
+    await request.save();
+    
+    res.status(200).json({ message: 'Request successfully marked as scheduled!' });
+  } catch (error) {
+    console.error('Error resolving makeup:', error);
+    res.status(500).json({ message: 'Server error resolving makeup request.' });
+  }
+};
+
 module.exports = {
   scheduleClass, getMyClasses, deleteClass, getAllClasses, updateClass,
   endClass, markAttendance, getCompletedClasses, getTeacherEarnings,
   getAdminPayrollReport, addTeacherAdjustment, getTeacherSchedule,
   getAdminLiveMonitor, resendReminder, resendNotes, joinClass,
-  grantMakeupCredit, cancelUpcomingClass, getMessageLogs, adminForceEndClass
+  grantMakeupCredit, cancelUpcomingClass, getMessageLogs, adminForceEndClass,
+  getPendingMakeups, resolveMakeupRequest
 };

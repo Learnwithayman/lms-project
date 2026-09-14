@@ -20,7 +20,10 @@ const {
     grantMakeupCredit,  
     cancelUpcomingClass, 
     getMessageLogs,      
-    adminForceEndClass   
+    adminForceEndClass,
+    // ✨ NEW: Admin Inbox Imports
+    getPendingMakeups,
+    resolveMakeupRequest 
 } = require('../controllers/scheduleController');
 
 // Import your authentication middleware
@@ -56,6 +59,10 @@ router.get('/message-logs', protect, getMessageLogs);
 
 // ✨ THE FIX: Specific PUT route MUST go before the wildcard!
 router.put('/admin-force-end', protect, adminForceEndClass); 
+
+// ✨ NEW: Admin Makeup Inbox Routes
+router.get('/admin/makeups', protect, getPendingMakeups);
+router.put('/admin/makeups/:id/resolve', protect, resolveMakeupRequest);
 
 // ⚠️ WILDCARD ROUTES (Must ALWAYS be at the bottom)
 router.put('/:id', protect, updateClass);
