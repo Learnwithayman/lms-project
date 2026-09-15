@@ -1,3 +1,4 @@
+
 const asyncHandler = require('express-async-handler');
 const ClassSession = require('../models/ClassSession');
 const User = require('../models/User');
@@ -572,13 +573,11 @@ const getTeacherSchedule = async (req, res) => {
         );
       });
 
-      // ✨ FIX: If it is marked as done, remove it immediately (even if it's in the future!)
+      // Hide if the teacher already marked it done/cancelled
       if (alreadyDone) return false; 
       
-      // If it hasn't happened yet, show it
-      if (gcalClass.startTime > now) return true;
-
-      return false; 
+      // ✨ PROPER FIX: Always show the class if it hasn't been completed yet!
+      return true; 
     });
 
     res.status(200).json(finalSchedule);
