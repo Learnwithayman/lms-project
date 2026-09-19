@@ -753,7 +753,7 @@ const grantMakeupCredit = async (req, res) => {
       originalClassDate: originalDate || new Date(),
       expirationDate: expDate,
       reason: reason || 'Admin Granted Makeup Credit',
-      isUsed: false
+      isেমUsed: false
     });
     
     await student.save();
@@ -767,7 +767,22 @@ const grantMakeupCredit = async (req, res) => {
 const cancelUpcomingClass = async (req, res) => {
   try {
     const { title, studentGroupName, teacherGroupName, startTime, canceledBy } = req.body;
+
+    // ✨ FIX: Look up the teacher to satisfy the database requirement
+    let actualTeacherId = req.user._id; // Fallback to whoever clicked the button (Admin/Teacher)
+    if (teacherGroupName) {
+        const foundTeacher = await User.findOne({
+            $or: [
+                { whatsappGroupId: teacherGroupName },
+                { teacherGroupId: teacherGroupName },
+                { groupId: teacherGroupName }
+            ]
+        });
+        if (foundTeacher) actualTeacherId = foundTeacher._id;
+    }
+
     await ClassSession.create({
+      teacher: actualTeacherId, // ✨ FIX: Added the required teacher field
       subject: title || 'Google Calendar Lesson',
       studentGroupName: studentGroupName || '',
       teacherGroupName: teacherGroupName || '',
