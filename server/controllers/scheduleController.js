@@ -1,4 +1,3 @@
-
 const asyncHandler = require('express-async-handler');
 const ClassSession = require('../models/ClassSession');
 const User = require('../models/User');
@@ -400,7 +399,7 @@ const getAdminPayrollReport = async (req, res) => {
       const completedClasses = await ClassSession.find({
         teacher: teacher._id,
         status: 'completed',
-        startTime: { $gte: startOfMonth, $lte: endOfMonth }
+        startTime: { $gte: startOfMonth,$lte: endOfMonth }
       });
 
       const totalMinutes = completedClasses.reduce((sum, cls) => sum + (cls.durationMinutes || 0), 0);
@@ -554,8 +553,7 @@ const getTeacherSchedule = async (req, res) => {
     
     const query = {
       status: { $in: ['completed', 'cancelled'] },
-      startTime: { $gte: twelveHoursAgo },
-      $or: [
+      startTime: { $gte: twelveHoursAgo },$or: [
         { teacher: databaseUser._id },
         { student: databaseUser._id },
         { teacherGroupName: { $in: userIdentifiers } },
@@ -800,22 +798,26 @@ const cancelUpcomingClass = async (req, res) => {
       }
     }
 
-    const codes = await extractGroupCodes(title);
+    try {
+      const codes = await extractGroupCodes(title);
 
-    let teacherSearchTerm = codes.teacher || (teacherGroupName ? teacherGroupName.trim() : null);
-    if (teacherSearchTerm && teacherSearchTerm.includes('@g.us')) teacherSearchTerm = null;
-    
-    if (teacherSearchTerm) {
-      const teacherMessage = `⚠️ *Class Canceled Alert*\n\nالسلام عليكم / Assalamu Alaikum,\n\nYour upcoming class *${title}* has been canceled by the Admin.\n\nPlease check your dashboard for updates. \n*Learn With Ayman Admin Team*`;
-      await whatsappClient.sendMessage(teacherSearchTerm, teacherMessage);
-    }
+      let teacherSearchTerm = codes.teacher || (teacherGroupName ? teacherGroupName.trim() : null);
+      if (teacherSearchTerm && teacherSearchTerm.includes('@g.us')) teacherSearchTerm = null;
+      
+      if (teacherSearchTerm) {
+        const teacherMessage = `⚠️ *Class Canceled Alert*\n\nالسلام عليكم / Assalamu Alaikum,\n\nYour upcoming class *${title}* has been canceled by the Admin.\n\nPlease check your dashboard for updates. \n*Learn With Ayman Admin Team*`;
+        await whatsappClient.sendMessage(teacherSearchTerm, teacherMessage);
+      }
 
-    let studentSearchTerm = codes.student || (studentGroupName ? studentGroupName.trim() : null);
-    if (studentSearchTerm && studentSearchTerm.includes('@g.us')) studentSearchTerm = null;
-    
-    if (studentSearchTerm) {
-      const studentMessage = `⚠️ *Class Canceled Alert*\n\nالسلام عليكم / Assalamu Alaikum,\n\nYour upcoming class *${title}* has been canceled. A makeup credit has been applied to your account if applicable.\n\n*Learn With Ayman Admin Team*`;
-      await whatsappClient.sendMessage(studentSearchTerm, studentMessage);
+      let studentSearchTerm = codes.student || (studentGroupName ? studentGroupName.trim() : null);
+      if (studentSearchTerm && studentSearchTerm.includes('@g.us')) studentSearchTerm = null;
+      
+      if (studentSearchTerm) {
+        const studentMessage = `⚠️ *Class Canceled Alert*\n\nالسلام عليكم / Assalamu Alaikum,\n\nYour upcoming class *${title}* has been canceled. A makeup credit has been applied to your account if applicable.\n\n*Learn With Ayman Admin Team*`;
+        await whatsappClient.sendMessage(studentSearchTerm, studentMessage);
+      }
+    } catch (waError) {
+      console.error('⚠️ WhatsApp skipped during cancellation:', waError.message);
     }
 
     res.status(200).json({ message: 'Class officially canceled, notifications sent, and makeup logic applied!' });
