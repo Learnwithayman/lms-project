@@ -9,8 +9,44 @@ const mongoose = require('mongoose');
 const path = require('path');
 const fs = require('fs');
 
-// --- DELAY HELPER FOR RESENDING ---
+// --- DELAY HELPER ---
 const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
+
+// ==========================================
+// ✨ SAFE WHATSAPP BACKGROUND QUEUE 
+// ==========================================
+// This ensures MacroDroid never receives two messages at the same time.
+// All messages get in line and are sent exactly 15 seconds apart.
+const messageQueue = [];
+let isProcessingQueue = false;
+
+const safeWhatsAppSend = async (phone, message) => {
+  if (!phone || phone === 'Student' || phone === 'Teacher') return;
+  
+  // Add message to the back of the line
+  messageQueue.push({ phone, message });
+  
+  // If the line is moving, do nothing. If it's stopped, start it!
+  if (!isProcessingQueue) {
+    isProcessingQueue = true;
+    
+    while (messageQueue.length > 0) {
+      const nextMessage = messageQueue.shift();
+      try {
+        await whatsappClient.sendMessage(nextMessage.phone, nextMessage.message);
+      } catch (err) {
+        console.error('⚠️ WhatsApp Queue Error:', err.message);
+      }
+      
+      // If there is still someone in line, wait 15 seconds before moving forward
+      if (messageQueue.length > 0) {
+        await delay(15000);
+      }
+    }
+    
+    isProcessingQueue = false;
+  }
+};
 
 // --- SMART PATH ROUTING FOR GOOGLE AUTH ---
 let CREDENTIALS_PATH = path.join(__dirname, '..', 'credentials.json'); 
@@ -108,7 +144,7 @@ const scheduleClass = asyncHandler(async (req, res) => {
     const codes = await extractGroupCodes(subject);
     let targetPhone = codes.teacher || teacherGroupName || teacher.name;
     if (targetPhone && targetPhone.includes('@g.us')) targetPhone = teacher.name;
-    await whatsappClient.sendMessage(targetPhone, message);
+    safeWhatsAppSend(targetPhone, message);
   }
   res.status(201).json(session);
 });
@@ -136,7 +172,7 @@ const deleteClass = asyncHandler(async (req, res) => {
     const codes = await extractGroupCodes(session.subject);
     let targetPhone = codes.teacher || session.teacherGroupName || session.teacher.name;
     if (targetPhone && targetPhone.includes('@g.us')) targetPhone = session.teacher.name;
-    await whatsappClient.sendMessage(targetPhone, message);
+    safeWhatsAppSend(targetPhone, message);
   }
   await session.deleteOne();
   res.status(200).json({ id: req.params.id });
@@ -168,7 +204,7 @@ const updateClass = asyncHandler(async (req, res) => {
     const codes = await extractGroupCodes(session.subject);
     let targetPhone = codes.teacher || session.teacherGroupName || session.teacher.name;
     if (targetPhone && targetPhone.includes('@g.us')) targetPhone = session.teacher.name;
-    await whatsappClient.sendMessage(targetPhone, message);
+    safeWhatsAppSend(targetPhone, message);
   }
   res.status(200).json(session);
 });
@@ -190,15 +226,11 @@ const endClass = async (req, res) => {
 
     let messageText = `🎓 *Class Completed!*\n*Teacher:* ${teacher.name}\n*Student:* ${studentName || 'Student'}\n\n📝 *Class Notes:*\n${notes || 'No notes provided.'}\n\n📚 *Homework:*\nHomework has been assigned! Please check Google Classroom to view the requirements and upload the completed assignment:\n🔗 ${classroomLink || 'https://classroom.google.com'}`;
 
-    try {
-      let targetPhone = codes.student || studentGroupName || studentName || 'Student';
-      if (targetPhone && targetPhone.includes('@g.us')) targetPhone = studentName || 'Student'; 
+    let targetPhone = codes.student || studentGroupName || studentName || 'Student';
+    if (targetPhone && targetPhone.includes('@g.us')) targetPhone = studentName || 'Student'; 
 
-      if (targetPhone && targetPhone !== 'Student') {
-        await whatsappClient.sendMessage(targetPhone, messageText);
-      }
-    } catch (waError) {
-      console.error('WhatsApp skipped:', waError.message);
+    if (targetPhone && targetPhone !== 'Student') {
+      safeWhatsAppSend(targetPhone, messageText);
     }
 
     const finalDuration = durationMinutes ? Number(durationMinutes) : 60; 
@@ -285,7 +317,7 @@ const markAttendance = async (req, res) => {
       } else if (attendanceStatus === 'Absent') {
         message = `السلام عليكم / Assalamu Alaikum *${session.student.name}*,\n\nWe hope everything is proceeding smoothly on your end and that you are safe and well. 🌿\n\nWe noticed that you haven't joined the meeting today. Since the 15-minute waiting period has passed, the teacher has now closed the meeting room. \n\n⚠️ *Please note: As per our attendance policy, this session is marked as absent and is not eligible for a makeup class.*\n\nWe look forward to seeing you at your next scheduled time, Insha'Allah! \n\nWarm regards,\n*Learn With Ayman Support Team*`;
       }
-      await whatsappClient.sendMessage(targetGroup, message);
+      safeWhatsAppSend(targetGroup, message);
     }
 
     if (attendanceStatus === 'Absent' && session.student && session.student._id) {
@@ -679,15 +711,14 @@ const resendReminder = async (req, res) => {
 
     if (teacherSearchTerm) {
       const teacherMessage = `🔔 *Manual Reminder*\n\nالسلام عليكم / Assalamu Alaikum,\n\nYour class *${classData.title}* is coming up!\n\n🕒 *Time:* ${timeString}\n\n🔗 *Teacher Dashboard:*\nhttps://lms.learnwithayman.com\n\n*Learn With Ayman Admin Team*`;
-      await whatsappClient.sendMessage(teacherSearchTerm, teacherMessage);
-      await delay(15000); 
+      safeWhatsAppSend(teacherSearchTerm, teacherMessage);
     }
 
     if (studentSearchTerm) {
       const studentMessage = `🔔 *Manual Reminder*\n\nالسلام عليكم / Assalamu Alaikum,\n\nGet ready! Your class *${classData.title}* is coming up!\n\n🔗 *Join Here:*\n${classData.zoomLink || 'No link provided'}\n\n*Learn With Ayman Admin Team*`;
-      await whatsappClient.sendMessage(studentSearchTerm, studentMessage);
+      safeWhatsAppSend(studentSearchTerm, studentMessage);
     }
-    res.status(200).json({ message: 'Reminders resent successfully!' });
+    res.status(200).json({ message: 'Reminders queued successfully!' });
   } catch (error) {
     console.error('Error resending reminder:', error);
     res.status(500).json({ message: 'Failed to resend reminder' });
@@ -709,13 +740,9 @@ const resendNotes = async (req, res) => {
     let messageText = `🎓 *Class Completed! (Resent)*\n*Teacher:* ${session.teacher?.name || 'Teacher'}\n*Student:* ${displayStudentName}\n\n📝 *Class Notes:*\n${session.notes || 'No notes provided.'}\n\n📚 *Homework:*\nHomework has been assigned! Please check Google Classroom to view the requirements and upload the completed assignment:\n🔗 https://classroom.google.com`;
 
     if (targetPhone && targetPhone !== 'Student') {
-      console.log(`📡 Triggering MacroDroid to resend notes to code/name: ${targetPhone}`);
-      await whatsappClient.sendMessage(targetPhone, messageText);
-    } else {
-      console.log(`⚠️ Skipped resending notes: Could not find a valid student link for this class.`);
-    }
-
-    res.status(200).json({ message: 'Notes resent successfully!' });
+      safeWhatsAppSend(targetPhone, messageText);
+    } 
+    res.status(200).json({ message: 'Notes queued successfully!' });
   } catch (error) {
     console.error('Error resending notes:', error);
     res.status(500).json({ message: 'Failed to resend notes' });
@@ -753,7 +780,7 @@ const grantMakeupCredit = async (req, res) => {
       originalClassDate: originalDate || new Date(),
       expirationDate: expDate,
       reason: reason || 'Admin Granted Makeup Credit',
-      isেমUsed: false
+      isUsed: false
     });
     
     await student.save();
@@ -767,22 +794,31 @@ const grantMakeupCredit = async (req, res) => {
 const cancelUpcomingClass = async (req, res) => {
   try {
     const { title, studentGroupName, teacherGroupName, startTime, canceledBy } = req.body;
+    
+    // ✨ BULLETPROOF FIX: Check both ID formats from your auth middleware
+    let actualTeacherId = req.user?._id || req.user?.id; 
 
-    // ✨ FIX: Look up the teacher to satisfy the database requirement
-    let actualTeacherId = req.user._id; // Fallback to whoever clicked the button (Admin/Teacher)
     if (teacherGroupName) {
-        const foundTeacher = await User.findOne({
-            $or: [
-                { whatsappGroupId: teacherGroupName },
-                { teacherGroupId: teacherGroupName },
-                { groupId: teacherGroupName }
-            ]
-        });
-        if (foundTeacher) actualTeacherId = foundTeacher._id;
+      const foundTeacher = await User.findOne({
+        $or: [
+          { whatsappGroupId: teacherGroupName },
+          { teacherGroupId: teacherGroupName },
+          { groupId: teacherGroupName },
+          { name: teacherGroupName }
+        ]
+      });
+      if (foundTeacher) {
+        actualTeacherId = foundTeacher._id || foundTeacher.id;
+      }
+    }
+
+    if (!actualTeacherId) {
+      const fallbackUser = await User.findOne({});
+      actualTeacherId = fallbackUser._id;
     }
 
     await ClassSession.create({
-      teacher: actualTeacherId, // ✨ FIX: Added the required teacher field
+      teacher: actualTeacherId, 
       subject: title || 'Google Calendar Lesson',
       studentGroupName: studentGroupName || '',
       teacherGroupName: teacherGroupName || '',
@@ -809,33 +845,28 @@ const cancelUpcomingClass = async (req, res) => {
           isUsed: false
         });
         await student.save();
-        console.log(`✅ 90-Day Makeup Credit automatically issued to ${student.name}`);
       }
     }
 
-    try {
-      const codes = await extractGroupCodes(title);
+    const codes = await extractGroupCodes(title);
 
-      let teacherSearchTerm = codes.teacher || (teacherGroupName ? teacherGroupName.trim() : null);
-      if (teacherSearchTerm && teacherSearchTerm.includes('@g.us')) teacherSearchTerm = null;
-      
-      if (teacherSearchTerm) {
-        const teacherMessage = `⚠️ *Class Canceled Alert*\n\nالسلام عليكم / Assalamu Alaikum,\n\nYour upcoming class *${title}* has been canceled by the Admin.\n\nPlease check your dashboard for updates. \n*Learn With Ayman Admin Team*`;
-        await whatsappClient.sendMessage(teacherSearchTerm, teacherMessage);
-      }
-
-      let studentSearchTerm = codes.student || (studentGroupName ? studentGroupName.trim() : null);
-      if (studentSearchTerm && studentSearchTerm.includes('@g.us')) studentSearchTerm = null;
-      
-      if (studentSearchTerm) {
-        const studentMessage = `⚠️ *Class Canceled Alert*\n\nالسلام عليكم / Assalamu Alaikum,\n\nYour upcoming class *${title}* has been canceled. A makeup credit has been applied to your account if applicable.\n\n*Learn With Ayman Admin Team*`;
-        await whatsappClient.sendMessage(studentSearchTerm, studentMessage);
-      }
-    } catch (waError) {
-      console.error('⚠️ WhatsApp skipped during cancellation:', waError.message);
+    let teacherSearchTerm = codes.teacher || (teacherGroupName ? teacherGroupName.trim() : null);
+    if (teacherSearchTerm && teacherSearchTerm.includes('@g.us')) teacherSearchTerm = null;
+    
+    if (teacherSearchTerm) {
+      const teacherMessage = `⚠️ *Class Canceled Alert*\n\nالسلام عليكم / Assalamu Alaikum,\n\nYour upcoming class *${title}* has been canceled by the Admin.\n\nPlease check your dashboard for updates. \n*Learn With Ayman Admin Team*`;
+      safeWhatsAppSend(teacherSearchTerm, teacherMessage);
     }
 
-    res.status(200).json({ message: 'Class officially canceled, notifications sent, and makeup logic applied!' });
+    let studentSearchTerm = codes.student || (studentGroupName ? studentGroupName.trim() : null);
+    if (studentSearchTerm && studentSearchTerm.includes('@g.us')) studentSearchTerm = null;
+    
+    if (studentSearchTerm) {
+      const studentMessage = `⚠️ *Class Canceled Alert*\n\nالسلام عليكم / Assalamu Alaikum,\n\nYour upcoming class *${title}* has been canceled. A makeup credit has been applied to your account if applicable.\n\n*Learn With Ayman Admin Team*`;
+      safeWhatsAppSend(studentSearchTerm, studentMessage);
+    }
+
+    res.status(200).json({ message: 'Class officially canceled, notifications queued, and makeup logic applied!' });
   } catch (error) {
     console.error('Error canceling class:', error);
     res.status(500).json({ message: 'Server error while canceling class.' });
