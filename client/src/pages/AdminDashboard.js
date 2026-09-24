@@ -12,9 +12,19 @@ function AdminDashboard() {
   const [messageLogs, setMessageLogs] = useState([]);
   const [loadingLogs, setLoadingLogs] = useState(true);
 
-  // ✨ NEW: Pending Makeups States
+  // Pending Makeups States
   const [pendingMakeups, setPendingMakeups] = useState([]);
   const [loadingMakeups, setLoadingMakeups] = useState(true);
+
+  // ✨ NEW: Pending Reports States (Approval Gate)
+  const [pendingReports, setPendingReports] = useState([]);
+  const [loadingReports, setLoadingReports] = useState(true);
+  
+  // ✨ NEW: Rejection Modal State
+  const [isRejectModalOpen, setIsRejectModalOpen] = useState(false);
+  const [selectedReport, setSelectedReport] = useState(null);
+  const [adminNotes, setAdminNotes] = useState('');
+  const [isSubmittingReport, setIsSubmittingReport] = useState(false);
 
   // State to handle the View Notes Modal
   const [viewNotesModal, setViewNotesModal] = useState({ isOpen: false, text: '', student: '' });
@@ -37,11 +47,85 @@ function AdminDashboard() {
     } else {
       fetchLiveClasses(token);
       fetchMessageLogs(token);
-      fetchPendingMakeups(token); // 👈 Fetch pending makeups on load
+      fetchPendingMakeups(token); 
+      fetchPendingReports(token); // 👈 Fetch pending reports on load
     }
   }, [navigate]);
 
-  // ✨ FETCH PENDING MAKEUPS
+  // ✨ FETCH PENDING REPORTS (Phase 1 & Phase 2)
+  const fetchPendingReports = async (token) => {
+    try {
+      const response = await fetch(`${process.env.REACT_APP_API_URL || 'https://lms-backend-02zs.onrender.com'}/api/admin/pending-reports`, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      if (response.ok) {
+        const data = await response.json();
+        setPendingReports(data);
+      }
+    } catch (error) {
+      console.error("Error fetching pending reports:", error);
+    } finally {
+      setLoadingReports(false);
+    }
+  };
+
+  // ✨ APPROVE REPORT HANDLER
+  const handleApproveReport = async (studentId, monthYear) => {
+    if (!window.confirm('Approve this report and publish it to the student dashboard?')) return;
+    try {
+      const token = localStorage.getItem('token');
+      const response = await fetch(`${process.env.REACT_APP_API_URL || 'https://lms-backend-02zs.onrender.com'}/api/admin/approve-report`, {
+        method: 'PUT',
+        headers: { 
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}` 
+        },
+        body: JSON.stringify({ studentId, monthYear })
+      });
+      if (response.ok) {
+        alert('✅ Report Approved! It is now live on the Student Portal.');
+        fetchPendingReports(token);
+      } else {
+        alert('❌ Failed to approve report.');
+      }
+    } catch (error) {
+      console.error('Error approving report:', error);
+    }
+  };
+
+  // ✨ REJECT REPORT HANDLER
+  const handleRejectSubmit = async (e) => {
+    e.preventDefault();
+    setIsSubmittingReport(true);
+    try {
+      const token = localStorage.getItem('token');
+      const response = await fetch(`${process.env.REACT_APP_API_URL || 'https://lms-backend-02zs.onrender.com'}/api/admin/reject-report`, {
+        method: 'PUT',
+        headers: { 
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}` 
+        },
+        body: JSON.stringify({
+          studentId: selectedReport.studentId,
+          monthYear: selectedReport.monthYear,
+          adminNotes: adminNotes
+        })
+      });
+      if (response.ok) {
+        alert('🛑 Report Rejected. Sent back to the teacher with your notes.');
+        setIsRejectModalOpen(false);
+        setAdminNotes('');
+        fetchPendingReports(token);
+      } else {
+        alert('❌ Failed to reject report.');
+      }
+    } catch (error) {
+      console.error('Error rejecting report:', error);
+    } finally {
+      setIsSubmittingReport(false);
+    }
+  };
+
   const fetchPendingMakeups = async (token) => {
     try {
       const response = await fetch(`${process.env.REACT_APP_API_URL || 'https://lms-backend-02zs.onrender.com'}/api/schedule/admin/makeups`, {
@@ -58,7 +142,6 @@ function AdminDashboard() {
     }
   };
 
-  // ✨ RESOLVE MAKEUP HANDLER
   const handleResolveMakeup = async (id) => {
     if (!window.confirm('Are you sure you want to mark this request as scheduled? This will clear it from your inbox.')) return;
     
@@ -71,7 +154,7 @@ function AdminDashboard() {
       
       if (response.ok) {
         alert('✅ Request marked as scheduled!');
-        fetchPendingMakeups(token); // Refresh the inbox
+        fetchPendingMakeups(token); 
       } else {
         alert('❌ Failed to resolve request.');
       }
@@ -80,7 +163,6 @@ function AdminDashboard() {
     }
   };
 
-  // 📡 FETCH LIVE MONITOR DATA
   const fetchLiveClasses = async (token) => {
     try {
       const response = await fetch(`${process.env.REACT_APP_API_URL || 'https://lms-backend-02zs.onrender.com'}/api/schedule/admin-live-monitor`, {
@@ -97,7 +179,6 @@ function AdminDashboard() {
     }
   };
 
-  // 📜 FETCH MESSAGE LOGS
   const fetchMessageLogs = async (token) => {
     try {
       const response = await fetch(`${process.env.REACT_APP_API_URL || 'https://lms-backend-02zs.onrender.com'}/api/schedule/message-logs`, {
@@ -114,7 +195,6 @@ function AdminDashboard() {
     }
   };
 
-  // 🔄 RESEND REMINDER HANDLER
   const handleResendReminder = async (classData) => {
     if (!window.confirm(`Resend reminder for ${classData.title}?`)) return;
     
@@ -131,14 +211,13 @@ function AdminDashboard() {
       
       if (response.ok) {
         alert('✅ Reminder resent successfully!');
-        fetchMessageLogs(token); // Refresh logs
+        fetchMessageLogs(token); 
       } else alert('❌ Failed to resend reminder.');
     } catch (error) {
       console.error(error);
     }
   };
 
-  // 🚫 CANCEL UPCOMING CLASS HANDLER
   const handleCancelClass = async (classData) => {
     if (!window.confirm(`Are you sure you want to cancel "${classData.title}"?\n\nThis will send a WhatsApp notification to both the teacher and the student.`)) return;
 
@@ -161,7 +240,7 @@ function AdminDashboard() {
       if (response.ok) {
         alert('🚫 Class canceled successfully! Notifications have been sent.');
         fetchLiveClasses(token);
-        fetchMessageLogs(token); // Refresh logs
+        fetchMessageLogs(token); 
       } else {
         alert('❌ Failed to cancel class.');
       }
@@ -171,7 +250,6 @@ function AdminDashboard() {
     }
   };
 
-  // 🎓 RESEND NOTES HANDLER
   const handleResendNotes = async (classData) => {
     if (!window.confirm(`Resend completed notes for ${classData.title || classData.subject}?`)) return;
 
@@ -188,14 +266,13 @@ function AdminDashboard() {
       
       if (response.ok) {
         alert('✅ Notes resent successfully!');
-        fetchMessageLogs(token); // Refresh logs
+        fetchMessageLogs(token); 
       } else alert('❌ Failed to resend notes.');
     } catch (error) {
       console.error(error);
     }
   };
 
-  // 🛑 FORCE END CLASS HANDLER
   const handleForceEnd = async (classId, title) => {
     if (!window.confirm(`Are you sure you want to FORCE END "${title}"? This will mark it as completed and stop all 50-minute reminders.`)) return;
 
@@ -212,7 +289,7 @@ function AdminDashboard() {
       
       if (response.ok) {
         alert('🛑 Class forcefully ended!');
-        fetchLiveClasses(token); // Refresh the monitor to remove it from the green box
+        fetchLiveClasses(token); 
       } else {
         alert('❌ Failed to force end class.');
       }
@@ -222,7 +299,6 @@ function AdminDashboard() {
     }
   };
 
-  // 📋 COPY TO CLIPBOARD HELPER
   const copyToClipboard = (text) => {
     navigator.clipboard.writeText(text);
     alert('📋 Text copied to clipboard!');
@@ -280,14 +356,68 @@ function AdminDashboard() {
         </button>
       </div>
 
-      <div className="admin-grid">
-        <div className="action-card" style={{ borderTopColor: '#3498db' }}>
-          <h3>👤 Create New User</h3>
-          <p>Register new teachers, students, or admins into the system.</p>
-          <button onClick={() => navigate('/create-user')} className="action-btn btn-blue">
-            Create User
+      {/* ========================================== */}
+      {/* ✨ NEW: PENDING STUDY PLANS & REPORTS INBOX */}
+      {/* ========================================== */}
+      <div style={{ marginTop: '40px', backgroundColor: '#e8f4fd', padding: '20px', borderRadius: '8px', border: '1px solid #b6d4fe', color: '#004085' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
+          <h2 style={{ margin: 0, display: 'flex', alignItems: 'center', gap: '10px' }}>
+            📑 Study Plans Approval Gate
+            {pendingReports.length > 0 && (
+              <span style={{ backgroundColor: '#e74c3c', color: 'white', fontSize: '16px', padding: '4px 10px', borderRadius: '12px' }}>
+                {pendingReports.length} Pending
+              </span>
+            )}
+          </h2>
+          <button onClick={() => fetchPendingReports(localStorage.getItem('token'))} style={{ padding: '8px 15px', backgroundColor: '#3498db', color: 'white', border: 'none', borderRadius: '5px', cursor: 'pointer', fontWeight: 'bold' }}>
+            🔄 Refresh Inbox
           </button>
         </div>
+
+        {loadingReports ? (
+          <p>Loading pending reports...</p>
+        ) : pendingReports.length === 0 ? (
+          <div style={{ padding: '15px', backgroundColor: '#d4edda', color: '#155724', borderRadius: '5px', border: '1px solid #c3e6cb' }}>
+            🎉 <strong>All caught up!</strong> There are no study plans or reports waiting for your approval.
+          </div>
+        ) : (
+          <div style={{ display: 'grid', gap: '15px' }}>
+            {pendingReports.map((report, idx) => (
+              <div key={idx} style={{ backgroundColor: 'white', padding: '20px', borderRadius: '8px', borderLeft: report.isFinalized ? '5px solid #d63031' : '5px solid #0984e3', boxShadow: '0 2px 4px rgba(0,0,0,0.05)' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '15px' }}>
+                  <div>
+                    <h3 style={{ margin: '0 0 5px 0', color: '#2d3436' }}>👤 {report.studentName}</h3>
+                    <p style={{ margin: 0, color: '#636e72', fontWeight: 'bold' }}>{report.monthYear} - {report.isFinalized ? 'Phase 2: Final Graded Report' : 'Phase 1: Draft Monthly Plan'}</p>
+                  </div>
+                  <div style={{ display: 'flex', gap: '10px' }}>
+                    <button 
+                      onClick={() => { setSelectedReport(report); setIsRejectModalOpen(true); }}
+                      style={{ backgroundColor: 'transparent', color: '#d63031', border: '1px solid #d63031', padding: '8px 15px', borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold' }}>
+                      Reject & Request Edit
+                    </button>
+                    <button 
+                      onClick={() => handleApproveReport(report.studentId, report.monthYear)}
+                      style={{ backgroundColor: '#2ecc71', color: 'white', border: 'none', padding: '8px 15px', borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold' }}>
+                      ✅ Approve & Publish
+                    </button>
+                  </div>
+                </div>
+
+                <div style={{ backgroundColor: '#f8f9fa', padding: '15px', borderRadius: '8px', fontSize: '14px', color: '#333' }}>
+                  {report.quran?.enrolled && <p style={{ margin: '5px 0' }}><strong>Quran:</strong> {report.quran.plan} {report.isFinalized && <span style={{color: '#0984e3', fontWeight: 'bold'}}>{`(${report.quran.score}/${report.quran.maxPossible})`}</span>}</p>}
+                  {report.arabic?.enrolled && <p style={{ margin: '5px 0' }}><strong>Arabic:</strong> {report.arabic.plan} {report.isFinalized && <span style={{color: '#0984e3', fontWeight: 'bold'}}>{`(${report.arabic.score}/${report.arabic.maxPossible})`}</span>}</p>}
+                  {report.islamicStudies?.enrolled && <p style={{ margin: '5px 0' }}><strong>Islamic Studies:</strong> {report.islamicStudies.plan} {report.isFinalized && <span style={{color: '#0984e3', fontWeight: 'bold'}}>{`(${report.islamicStudies.score}/${report.islamicStudies.maxPossible})`}</span>}</p>}
+                  {report.isFinalized && (
+                    <div style={{ marginTop: '10px', paddingTop: '10px', borderTop: '1px solid #dfe6e9' }}>
+                      <p style={{ margin: '0 0 5px 0', fontSize: '16px' }}><strong>Total Score: <span style={{color: '#0984e3'}}>{report.totalScore}/10</span></strong></p>
+                      <p style={{ margin: 0, whiteSpace: 'pre-wrap' }}><strong>Teacher Note:</strong><br/>{report.teacherNote}</p>
+                    </div>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
       </div>
 
       {/* ========================================== */}
@@ -355,7 +485,6 @@ function AdminDashboard() {
                 👨‍🏫 Teacher: {teacherGroup.teacherName}
               </h3>
 
-              {/* ✨ 🟢 THE NEW TEACHER JOINED TRACKER WITH FORCE END BUTTON */}
               {teacherGroup.live && teacherGroup.live.length > 0 && (
                 <div style={{ marginTop: '15px', padding: '15px', backgroundColor: '#e8f8f5', borderRadius: '5px', borderLeft: '5px solid #2ecc71', boxShadow: '0 2px 5px rgba(0,0,0,0.1)' }}>
                   <h4 style={{ color: '#27ae60', fontWeight: 'bold', margin: '0 0 10px 0', display: 'flex', alignItems: 'center', gap: '8px' }}>
@@ -369,7 +498,6 @@ function AdminDashboard() {
                           <small style={{ color: '#16a085', fontWeight: 'bold' }}>🕒 Button Clicked at: {new Date(cls.createdAt || cls.startTime).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</small>
                         </span>
                         
-                        {/* 🛑 NEW: FORCE END BUTTON */}
                         <button 
                           onClick={() => handleForceEnd(cls._id, cls.subject || cls.title)}
                           style={{ padding: '6px 12px', backgroundColor: '#e74c3c', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer', fontSize: '0.85em', fontWeight: 'bold' }}>
@@ -381,7 +509,6 @@ function AdminDashboard() {
                 </div>
               )}
               
-              {/* UPCOMING CLASSES */}
               <div style={{ marginTop: '15px' }}>
                 <h4 style={{ color: '#e67e22' }}>⏳ Upcoming Classes</h4>
                 {teacherGroup.upcoming.length === 0 ? <p style={{ fontSize: '0.9em', color: '#7f8c8d' }}>No upcoming classes.</p> : (
@@ -411,7 +538,6 @@ function AdminDashboard() {
                 )}
               </div>
 
-              {/* COMPLETED CLASSES */}
               <div style={{ marginTop: '20px' }}>
                 <h4 style={{ color: '#2ecc71' }}>✅ Completed Classes</h4>
                 {teacherGroup.completed.length === 0 ? <p style={{ fontSize: '0.9em', color: '#7f8c8d' }}>No completed classes yet.</p> : (
@@ -440,15 +566,11 @@ function AdminDashboard() {
                   </ul>
                 )}
               </div>
-
             </div>
           ))
         )}
       </div>
 
-      {/* ========================================== */}
-      {/* 📜 SYSTEM MESSAGE LOG SECTION */}
-      {/* ========================================== */}
       <div style={{ marginTop: '40px', backgroundColor: '#2c3e50', padding: '20px', borderRadius: '8px', color: 'white' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '15px' }}>
           <h2 style={{ margin: 0, color: '#ecf0f1' }}>🤖 Bot Message Log (Last 24h)</h2>
@@ -517,6 +639,33 @@ function AdminDashboard() {
                 Close
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* ✨ NEW: REJECTION MODAL */}
+      {isRejectModalOpen && (
+        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.6)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 }}>
+          <div style={{ backgroundColor: 'white', padding: '30px', borderRadius: '15px', width: '450px', color: '#2d3436' }}>
+            <h2 style={{ margin: '0 0 10px 0', color: '#d63031' }}>🛑 Reject & Request Edit</h2>
+            <p style={{ margin: '0 0 20px 0', color: '#636e72', fontSize: '14px' }}>Send {selectedReport?.studentName}'s {selectedReport?.monthYear} report back to the teacher with required fixes.</p>
+            
+            <form onSubmit={handleRejectSubmit}>
+              <label style={{ fontWeight: 'bold' }}>Admin Notes (Sent via WhatsApp):</label>
+              <textarea 
+                required
+                value={adminNotes} 
+                onChange={(e) => setAdminNotes(e.target.value)} 
+                placeholder="e.g., Please add more detail to the Quran section. Specify which Ayahs." 
+                style={{ width: '100%', height: '100px', margin: '10px 0', padding: '10px', boxSizing: 'border-box', borderRadius: '8px', border: '1px solid #dfe6e9' }} 
+              />
+              <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '15px' }}>
+                <button type="button" onClick={() => setIsRejectModalOpen(false)} disabled={isSubmittingReport} style={{ padding: '10px 15px', cursor: 'pointer', border: '1px solid #b2bec3', borderRadius: '6px', backgroundColor: 'transparent', fontWeight: 'bold', color: '#636e72' }}>Cancel</button>
+                <button type="submit" disabled={isSubmittingReport} style={{ padding: '10px 15px', cursor: 'pointer', backgroundColor: '#d63031', color: 'white', border: 'none', borderRadius: '6px', fontWeight: 'bold' }}>
+                  {isSubmittingReport ? 'Rejecting...' : 'Submit Rejection'}
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}

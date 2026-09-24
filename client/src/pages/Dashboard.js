@@ -1,11 +1,41 @@
 import React, { useEffect, useState } from 'react';
 import axios from 'axios';
 import { useNavigate } from 'react-router-dom';
-// ✨ NEW: Import charting library
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import '../App.css';
 
 const API_URL = process.env.REACT_APP_API_URL || 'https://lms-backend-02zs.onrender.com';
+
+// ✨ NEW: The One-Click Feedback Dictionary
+const FEEDBACK_TEMPLATES = {
+  "Commendation": {
+    Standard: "Masha'Allah, excellent progress! Through dedicated effort and the tawfiq of Allah (SWT), all learning goals for the month were successfully completed. May Allah (SWT) continue to bless your efforts."
+  },
+  "Regarding Absences": {
+    Minor: "Attendance Note: We noticed a few absences this month which slightly slowed our pace. Insha'Allah, with consistent attendance next month, we can fully catch up on all material.",
+    Major: "Action Required: Consistent attendance is a vital trust. Due to frequent absences this month, key study goals were not met. We encourage a renewed commitment to attendance to ensure success. May Allah (SWT) grant you steadfastness."
+  },
+  "Regarding Homework": {
+    Minor: "Homework Reminder: Please remember that homework reinforces our lessons. A few missed assignments this month slowed our progress slightly. Let's aim for full completion next month!",
+    Major: "Action Required: Homework is essential for retention. Unfortunately, frequent incomplete assignments prevented us from meeting our study goals this month. With renewed focus on home revision, you will achieve your objectives."
+  },
+  "Regarding In-Class Attention": {
+    Minor: "Focus Reminder: We noticed some difficulty maintaining focus during class this month. Staying fully engaged in upcoming sessions will help ensure all concepts are mastered and retained.",
+    Major: "Action Required: Active engagement is key to seeking knowledge. Unfortunately, a lack of focus in class has resulted in unmet study goals this month. We encourage better attention to ensure future success. May Allah (SWT) grant you clarity."
+  },
+  "Mixed Concerns (Attendance & Homework)": {
+    Minor: "Consistency Reminder: We noticed slight gaps in both attendance and homework submission this month. Establishing a steady routine for classes and home revision will ensure we stay on schedule next month.",
+    Major: "Action Required: Progress has been hindered this month by both absences and incomplete homework. Consistent attendance and independent practice are necessary trusts for success. We urge a renewed commitment to these areas to meet future goals."
+  },
+  "Mixed Concerns (Focus & Preparation)": {
+    Minor: "Engagement Note: To fully master the current material, we need to see slightly more focus during class and consistent completion of assignments. A small increase in effort will yield great results, Insha'Allah.",
+    Major: "Action Required: Learning requires active participation. Unfortunately, a combination of distraction in class and missed assignments has prevented us from meeting our study goals. We ask for your support in improving focus and preparation."
+  },
+  "General Improvement Needed": {
+    Minor: "Monthly Summary: This month presented a few challenges regarding general preparation and consistency. We are confident that with a fresh start and renewed intention, next month will be very productive.",
+    Major: "Action Required: Due to various inconsistencies this month, we were unable to meet our primary learning objectives. We strongly encourage a fresh start with renewed dedication and discipline for the month ahead. May Allah (SWT) grant you success."
+  }
+};
 
 function Dashboard() {
   const [classes, setClasses] = useState([]);
@@ -29,6 +59,20 @@ function Dashboard() {
   const [preferredMakeupDate, setPreferredMakeupDate] = useState('');
   const [makeupRequestNotes, setMakeupRequestNotes] = useState('');
   const [isRequestingMakeup, setIsRequestingMakeup] = useState(false);
+
+  // ✨ NEW: Teacher Study Plan Modal State
+  const [isPlanModalOpen, setIsPlanModalOpen] = useState(false);
+  const [planStudentIdentifier, setPlanStudentIdentifier] = useState('');
+  const [planForm, setPlanForm] = useState({
+    monthYear: new Date().toLocaleString('default', { month: 'long', year: 'numeric' }),
+    isFinalized: false, // False = Phase 1 (Plan), True = Phase 2 (Report)
+    quranEnrolled: false, quranPlan: '', quranScore: '',
+    arabicEnrolled: false, arabicPlan: '', arabicScore: '',
+    islamicEnrolled: false, islamicPlan: '', islamicScore: '',
+    teacherNote: '',
+    templateCategory: '',
+    templateSeverity: 'Minor'
+  });
 
   useEffect(() => {
     const token = localStorage.getItem('token');
@@ -198,6 +242,47 @@ function Dashboard() {
     }
   };
 
+  // ✨ NEW: Teacher Plan Submission
+  const handleSavePlan = async (e) => {
+    e.preventDefault();
+    setIsSubmitting(true);
+    try {
+      const token = localStorage.getItem('token');
+      const config = { headers: { Authorization: `Bearer ${token}` } };
+      
+      const payload = {
+        studentIdentifier: planStudentIdentifier, // We will map this to an ID on the backend
+        monthYear: planForm.monthYear,
+        isFinalized: planForm.isFinalized,
+        teacherNote: planForm.teacherNote,
+        quran: { enrolled: planForm.quranEnrolled, plan: planForm.quranPlan, score: planForm.quranScore, maxPossible: maxScores.quran },
+        arabic: { enrolled: planForm.arabicEnrolled, plan: planForm.arabicPlan, score: planForm.arabicScore, maxPossible: maxScores.arabic },
+        islamicStudies: { enrolled: planForm.islamicEnrolled, plan: planForm.islamicPlan, score: planForm.islamicScore, maxPossible: maxScores.islamic }
+      };
+
+      await axios.post(`${API_URL}/api/student/reports`, payload, config);
+      alert(planForm.isFinalized ? '✅ Phase 2 Graded Report submitted for Admin Approval!' : '✅ Phase 1 Draft Plan submitted for Admin Approval!');
+      setIsPlanModalOpen(false);
+    } catch (error) {
+      console.error('Error saving plan:', error);
+      alert('❌ Failed to save study plan. Ensure backend route is active.');
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const handleInsertTemplate = () => {
+    if (!planForm.templateCategory) return;
+    const templateText = planForm.templateCategory === "Commendation" 
+      ? FEEDBACK_TEMPLATES["Commendation"].Standard 
+      : FEEDBACK_TEMPLATES[planForm.templateCategory][planForm.templateSeverity];
+    
+    setPlanForm(prev => ({
+      ...prev,
+      teacherNote: prev.teacherNote ? `${prev.teacherNote}\n\n${templateText}` : templateText
+    }));
+  };
+
   const handleLogout = () => {
     localStorage.removeItem('token');
     localStorage.removeItem('user');
@@ -212,8 +297,6 @@ function Dashboard() {
     return now >= fifteenMinsBefore && now <= ninetyMinsAfter;
   };
 
-  const selectedClass = classes.find(c => (c.id === currentClassId || c._id === currentClassId));
-
   const calculateProgress = () => {
     if (!subSummary?.subscription || subSummary.subscription.totalClassesBought === 0) return 0;
     const { classesUsed, totalClassesBought } = subSummary.subscription;
@@ -221,18 +304,30 @@ function Dashboard() {
     return Math.min(percentage, 100); 
   };
 
-  // ✨ NEW: Filter Class History to ONLY show classes from the current cycle
+  // ✨ NEW: Dynamic Math Engine for Grading Scenarios
+  const getDynamicMaxScores = () => {
+    let count = [planForm.quranEnrolled, planForm.arabicEnrolled, planForm.islamicEnrolled].filter(Boolean).length;
+    if (count === 3) return { quran: 4, arabic: 3, islamic: 3 };
+    if (count === 2) {
+      if (planForm.quranEnrolled && planForm.arabicEnrolled) return { quran: 6, arabic: 4, islamic: 0 };
+      if (planForm.quranEnrolled && planForm.islamicEnrolled) return { quran: 6, arabic: 0, islamic: 4 };
+      if (planForm.arabicEnrolled && planForm.islamicEnrolled) return { quran: 0, arabic: 5, islamic: 5 };
+    }
+    if (count === 1) return { quran: 10, arabic: 10, islamic: 10 };
+    return { quran: 0, arabic: 0, islamic: 0 };
+  };
+  const maxScores = getDynamicMaxScores();
+
   const cycleStartDate = subSummary?.subscription?.startDate ? new Date(subSummary.subscription.startDate) : null;
   const filteredHistory = cycleStartDate 
     ? history.filter(cls => new Date(cls.startTime) >= cycleStartDate)
     : history;
 
-  // ✨ NEW: Extract Data for the Charts & Reports
   const reportsData = subSummary?.monthlyReports || [];
   const finalizedReports = reportsData.filter(r => r.isFinalized);
   const activePlan = reportsData.find(r => !r.isFinalized);
   const chartData = finalizedReports.map(r => ({
-    name: r.monthYear.substring(0, 3) || '', // e.g., "Sep"
+    name: r.monthYear.substring(0, 3) || '',
     score: r.totalScore
   }));
 
@@ -255,7 +350,6 @@ function Dashboard() {
             <button onClick={handleLogout} style={{ border: 'none', backgroundColor: '#ff7675', color: 'white', padding: '10px 20px', borderRadius: '8px', cursor: 'pointer', fontWeight: 'bold', transition: 'all 0.2s' }}>Logout</button>
           </div>
 
-          {/* ✨ NEW: RED PAYMENT BANNER */}
           {subSummary?.subscription?.status === 'expired' && (
             <div style={{ backgroundColor: '#ff7675', color: 'white', padding: '20px', borderRadius: '10px', marginBottom: '30px', fontWeight: 'bold', textAlign: 'center', boxShadow: '0 4px 15px rgba(255, 118, 117, 0.3)', fontSize: '16px' }}>
               ⚠️ Payment Due: Your subscription cycle has finished. Please renew your plan to continue booking classes.
@@ -356,13 +450,12 @@ function Dashboard() {
         </div>
       )}
 
-      {/* ✨ NEW: STUDY PLANS & PROGRESS ANALYTICS */}
+      {/* ✨ NEW: STUDY PLANS & PROGRESS ANALYTICS (Parent View) */}
       {user?.role?.toLowerCase() !== 'teacher' && (
         <>
           <h2 style={{ margin: '0 0 20px 0', borderBottom: '2px solid #f1f2f6', paddingBottom: '10px' }}>📈 Progress & Reports</h2>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: '25px', marginBottom: '40px' }}>
             
-            {/* The Investment-Style Line Chart */}
             <div style={{ backgroundColor: 'white', padding: '20px', borderRadius: '15px', boxShadow: '0 5px 15px rgba(0,0,0,0.03)' }}>
               <h3 style={{ margin: '0 0 20px 0', color: '#2d3436', fontSize: '18px' }}>Historical Performance (/10)</h3>
               {chartData.length > 0 ? (
@@ -384,7 +477,6 @@ function Dashboard() {
               )}
             </div>
 
-            {/* The Active Monthly Plan matching the PDFs */}
             <div style={{ backgroundColor: 'white', padding: '20px', borderRadius: '15px', boxShadow: '0 5px 15px rgba(0,0,0,0.03)' }}>
               <h3 style={{ margin: '0 0 20px 0', color: '#2d3436', fontSize: '18px', display: 'flex', justifyContent: 'space-between' }}>
                 <span>🎯 Active Study Plan</span>
@@ -393,18 +485,24 @@ function Dashboard() {
               
               {activePlan ? (
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '10px' }}>
-                  <div style={{ backgroundColor: '#f8f9fa', padding: '15px', borderRadius: '8px', borderTop: '4px solid #6c5ce7' }}>
-                    <h4 style={{ margin: '0 0 10px 0', fontSize: '14px', color: '#2d3436', textAlign: 'center' }}>Quran</h4>
-                    <p style={{ margin: 0, fontSize: '13px', color: '#636e72' }}>{activePlan.quranPlan || 'Pending goals...'}</p>
-                  </div>
-                  <div style={{ backgroundColor: '#f8f9fa', padding: '15px', borderRadius: '8px', borderTop: '4px solid #00b894' }}>
-                    <h4 style={{ margin: '0 0 10px 0', fontSize: '14px', color: '#2d3436', textAlign: 'center' }}>Arabic</h4>
-                    <p style={{ margin: 0, fontSize: '13px', color: '#636e72' }}>{activePlan.arabicPlan || 'Pending goals...'}</p>
-                  </div>
-                  <div style={{ backgroundColor: '#f8f9fa', padding: '15px', borderRadius: '8px', borderTop: '4px solid #fdcb6e' }}>
-                    <h4 style={{ margin: '0 0 10px 0', fontSize: '14px', color: '#2d3436', textAlign: 'center' }}>Islamic Studies</h4>
-                    <p style={{ margin: 0, fontSize: '13px', color: '#636e72' }}>{activePlan.islamicStudiesPlan || 'Pending goals...'}</p>
-                  </div>
+                  {activePlan.quran?.enrolled && (
+                    <div style={{ backgroundColor: '#f8f9fa', padding: '15px', borderRadius: '8px', borderTop: '4px solid #6c5ce7' }}>
+                      <h4 style={{ margin: '0 0 10px 0', fontSize: '14px', color: '#2d3436', textAlign: 'center' }}>Quran</h4>
+                      <p style={{ margin: 0, fontSize: '13px', color: '#636e72' }}>{activePlan.quran.plan || 'Pending goals...'}</p>
+                    </div>
+                  )}
+                  {activePlan.arabic?.enrolled && (
+                    <div style={{ backgroundColor: '#f8f9fa', padding: '15px', borderRadius: '8px', borderTop: '4px solid #00b894' }}>
+                      <h4 style={{ margin: '0 0 10px 0', fontSize: '14px', color: '#2d3436', textAlign: 'center' }}>Arabic</h4>
+                      <p style={{ margin: 0, fontSize: '13px', color: '#636e72' }}>{activePlan.arabic.plan || 'Pending goals...'}</p>
+                    </div>
+                  )}
+                  {activePlan.islamicStudies?.enrolled && (
+                    <div style={{ backgroundColor: '#f8f9fa', padding: '15px', borderRadius: '8px', borderTop: '4px solid #fdcb6e' }}>
+                      <h4 style={{ margin: '0 0 10px 0', fontSize: '14px', color: '#2d3436', textAlign: 'center' }}>Islamic Studies</h4>
+                      <p style={{ margin: 0, fontSize: '13px', color: '#636e72' }}>{activePlan.islamicStudies.plan || 'Pending goals...'}</p>
+                    </div>
+                  )}
                 </div>
               ) : (
                 <p style={{ color: '#b2bec3', fontStyle: 'italic', textAlign: 'center', marginTop: '40px' }}>Your teacher will upload this month's goals soon.</p>
@@ -429,8 +527,24 @@ function Dashboard() {
 
             return (
               <div key={classIdentifier} className="card" style={{ borderLeft: '5px solid #0984e3', borderRadius: '12px', boxShadow: '0 5px 15px rgba(0,0,0,0.03)' }}>
-                <h3 style={{ margin: '0 0 10px 0', color: '#2d3436' }}>📚 {cls.title || cls.subject}</h3>
-                <p style={{ margin: '0 0 15px 0', color: '#636e72' }}><strong>⏰ Time:</strong> {new Date(cls.startTime).toLocaleString(undefined, { weekday: 'long', month: 'long', day: 'numeric', hour: '2-digit', minute: '2-digit' })}</p>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                  <div>
+                    <h3 style={{ margin: '0 0 10px 0', color: '#2d3436' }}>📚 {cls.title || cls.subject}</h3>
+                    <p style={{ margin: '0 0 15px 0', color: '#636e72' }}><strong>⏰ Time:</strong> {new Date(cls.startTime).toLocaleString(undefined, { weekday: 'long', month: 'long', day: 'numeric', hour: '2-digit', minute: '2-digit' })}</p>
+                  </div>
+                  
+                  {/* ✨ NEW: "Manage Plan" Button for Teachers */}
+                  {user?.role?.toLowerCase() === 'teacher' && (
+                    <button 
+                      onClick={() => {
+                        setPlanStudentIdentifier(cls.studentGroupName || cls.title || cls.studentGroupId);
+                        setIsPlanModalOpen(true);
+                      }} 
+                      style={{ backgroundColor: '#6c5ce7', color: 'white', padding: '8px 12px', border: 'none', borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold' }}>
+                      📝 Manage Plan & Reports
+                    </button>
+                  )}
+                </div>
                 
                 <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
                   {(cls.zoomLink || cls.meetingLink) ? (
@@ -465,7 +579,7 @@ function Dashboard() {
         )}
       </div>
 
-      {/* ✨ NEW: FILTERED CLASS HISTORY SECTION */}
+      {/* CLASS HISTORY SECTION */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px', borderBottom: '2px solid #f1f2f6', paddingBottom: '10px' }}>
         <h2 style={{ margin: 0 }}>🕰️ Class History</h2>
         {user?.role?.toLowerCase() !== 'teacher' && (
@@ -507,6 +621,116 @@ function Dashboard() {
           </table>
         )}
       </div>
+
+      {/* ✨ NEW: TEACHER STUDY PLAN MODAL */}
+      {isPlanModalOpen && (
+        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.6)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 }}>
+          <div style={{ backgroundColor: 'white', padding: '30px', borderRadius: '15px', width: '600px', maxHeight: '90vh', overflowY: 'auto', color: '#2d3436' }}>
+            <h2 style={{ margin: '0 0 20px 0', borderBottom: '2px solid #f1f2f6', paddingBottom: '10px' }}>📝 Manage Monthly Study Plan</h2>
+            
+            <form onSubmit={handleSavePlan} style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+              
+              {/* TWO-PHASE TOGGLE */}
+              <div style={{ display: 'flex', gap: '10px', backgroundColor: '#f5f6fa', padding: '10px', borderRadius: '8px' }}>
+                <button type="button" onClick={() => setPlanForm({...planForm, isFinalized: false})} style={{ flex: 1, padding: '10px', border: 'none', borderRadius: '6px', fontWeight: 'bold', cursor: 'pointer', backgroundColor: !planForm.isFinalized ? '#0984e3' : 'transparent', color: !planForm.isFinalized ? 'white' : '#636e72' }}>
+                  Phase 1: Draft Goals
+                </button>
+                <button type="button" onClick={() => setPlanForm({...planForm, isFinalized: true})} style={{ flex: 1, padding: '10px', border: 'none', borderRadius: '6px', fontWeight: 'bold', cursor: 'pointer', backgroundColor: planForm.isFinalized ? '#d63031' : 'transparent', color: planForm.isFinalized ? 'white' : '#636e72' }}>
+                  Phase 2: Final Grades
+                </button>
+              </div>
+
+              {/* SUBJECT SELECTOR */}
+              <div>
+                <label style={{ fontWeight: 'bold', fontSize: '14px' }}>Which subjects are they studying?</label>
+                <div style={{ display: 'flex', gap: '15px', marginTop: '10px' }}>
+                  <label><input type="checkbox" checked={planForm.quranEnrolled} onChange={(e) => setPlanForm({...planForm, quranEnrolled: e.target.checked})} /> Quran (Max: {maxScores.quran})</label>
+                  <label><input type="checkbox" checked={planForm.arabicEnrolled} onChange={(e) => setPlanForm({...planForm, arabicEnrolled: e.target.checked})} /> Arabic (Max: {maxScores.arabic})</label>
+                  <label><input type="checkbox" checked={planForm.islamicEnrolled} onChange={(e) => setPlanForm({...planForm, islamicEnrolled: e.target.checked})} /> Islamic Studies (Max: {maxScores.islamic})</label>
+                </div>
+              </div>
+
+              {/* QURAN FIELD */}
+              {planForm.quranEnrolled && (
+                <div style={{ borderLeft: '4px solid #6c5ce7', paddingLeft: '15px' }}>
+                  <label style={{ fontWeight: 'bold' }}>Quran Plan:</label>
+                  <input type="text" value={planForm.quranPlan} onChange={(e) => setPlanForm({...planForm, quranPlan: e.target.value})} placeholder="e.g., Memorize Surah An-Naba 1-10" style={{ width: '100%', padding: '8px', marginBottom: '10px', border: '1px solid #dfe6e9', borderRadius: '4px' }} />
+                  {planForm.isFinalized && (
+                    <>
+                      <label style={{ fontWeight: 'bold' }}>Score (out of {maxScores.quran}):</label>
+                      <input type="number" step="0.5" max={maxScores.quran} value={planForm.quranScore} onChange={(e) => setPlanForm({...planForm, quranScore: e.target.value})} style={{ width: '100%', padding: '8px', border: '1px solid #dfe6e9', borderRadius: '4px' }} />
+                    </>
+                  )}
+                </div>
+              )}
+
+              {/* ARABIC FIELD */}
+              {planForm.arabicEnrolled && (
+                <div style={{ borderLeft: '4px solid #00b894', paddingLeft: '15px' }}>
+                  <label style={{ fontWeight: 'bold' }}>Arabic Plan:</label>
+                  <input type="text" value={planForm.arabicPlan} onChange={(e) => setPlanForm({...planForm, arabicPlan: e.target.value})} placeholder="e.g., Complete Lesson 10" style={{ width: '100%', padding: '8px', marginBottom: '10px', border: '1px solid #dfe6e9', borderRadius: '4px' }} />
+                  {planForm.isFinalized && (
+                    <>
+                      <label style={{ fontWeight: 'bold' }}>Score (out of {maxScores.arabic}):</label>
+                      <input type="number" step="0.5" max={maxScores.arabic} value={planForm.arabicScore} onChange={(e) => setPlanForm({...planForm, arabicScore: e.target.value})} style={{ width: '100%', padding: '8px', border: '1px solid #dfe6e9', borderRadius: '4px' }} />
+                    </>
+                  )}
+                </div>
+              )}
+
+              {/* ISLAMIC STUDIES FIELD */}
+              {planForm.islamicEnrolled && (
+                <div style={{ borderLeft: '4px solid #fdcb6e', paddingLeft: '15px' }}>
+                  <label style={{ fontWeight: 'bold' }}>Islamic Studies Plan:</label>
+                  <input type="text" value={planForm.islamicPlan} onChange={(e) => setPlanForm({...planForm, islamicPlan: e.target.value})} placeholder="e.g., Pages 40-45" style={{ width: '100%', padding: '8px', marginBottom: '10px', border: '1px solid #dfe6e9', borderRadius: '4px' }} />
+                  {planForm.isFinalized && (
+                    <>
+                      <label style={{ fontWeight: 'bold' }}>Score (out of {maxScores.islamic}):</label>
+                      <input type="number" step="0.5" max={maxScores.islamic} value={planForm.islamicScore} onChange={(e) => setPlanForm({...planForm, islamicScore: e.target.value})} style={{ width: '100%', padding: '8px', border: '1px solid #dfe6e9', borderRadius: '4px' }} />
+                    </>
+                  )}
+                </div>
+              )}
+
+              {/* ⚡ ONE-CLICK FEEDBACK ENGINE */}
+              {planForm.isFinalized && (
+                <div style={{ backgroundColor: '#e8f4fd', padding: '15px', borderRadius: '8px' }}>
+                  <label style={{ fontWeight: 'bold', fontSize: '14px', color: '#0984e3' }}>⚡ Quick-Insert Feedback Template</label>
+                  <div style={{ display: 'flex', gap: '10px', marginTop: '10px' }}>
+                    <select value={planForm.templateCategory} onChange={(e) => setPlanForm({...planForm, templateCategory: e.target.value})} style={{ flex: 2, padding: '8px', borderRadius: '4px', border: '1px solid #dfe6e9' }}>
+                      <option value="">-- Select Category --</option>
+                      {Object.keys(FEEDBACK_TEMPLATES).map(cat => (
+                        <option key={cat} value={cat}>{cat}</option>
+                      ))}
+                    </select>
+                    {planForm.templateCategory && planForm.templateCategory !== "Commendation" && (
+                      <select value={planForm.templateSeverity} onChange={(e) => setPlanForm({...planForm, templateSeverity: e.target.value})} style={{ flex: 1, padding: '8px', borderRadius: '4px', border: '1px solid #dfe6e9' }}>
+                        <option value="Minor">Minor</option>
+                        <option value="Major">Major</option>
+                      </select>
+                    )}
+                    <button type="button" onClick={handleInsertTemplate} style={{ backgroundColor: '#0984e3', color: 'white', padding: '8px 15px', border: 'none', borderRadius: '4px', cursor: 'pointer', fontWeight: 'bold' }}>Insert</button>
+                  </div>
+                  
+                  <textarea 
+                    value={planForm.teacherNote} 
+                    onChange={(e) => setPlanForm({...planForm, teacherNote: e.target.value})} 
+                    placeholder="Final Teacher Report & Notes..." 
+                    style={{ width: '100%', height: '120px', marginTop: '15px', padding: '10px', boxSizing: 'border-box', borderRadius: '4px', border: '1px solid #dfe6e9' }} 
+                  />
+                </div>
+              )}
+
+              <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '10px' }}>
+                <button type="button" onClick={() => setIsPlanModalOpen(false)} disabled={isSubmitting} style={{ padding: '10px 15px', cursor: 'pointer', border: '1px solid #b2bec3', borderRadius: '6px', backgroundColor: 'transparent', fontWeight: 'bold', color: '#636e72' }}>Cancel</button>
+                <button type="submit" disabled={isSubmitting} style={{ padding: '10px 15px', cursor: 'pointer', backgroundColor: '#00b894', color: 'white', border: 'none', borderRadius: '6px', fontWeight: 'bold' }}>
+                  {isSubmitting ? 'Saving...' : 'Submit to Admin Approval'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
 
       {/* END CLASS MODAL */}
       {isModalOpen && (
@@ -575,7 +799,6 @@ function Dashboard() {
                 </button>
               </div>
             </form>
-
           </div>
         </div>
       )}
