@@ -8,6 +8,7 @@ const API_URL = process.env.REACT_APP_API_URL || 'https://lms-backend-02zs.onren
 
 function ProgressHistory() {
   const [reports, setReports] = useState([]);
+  const [legacyReports, setLegacyReports] = useState([]);
   const [loading, setLoading] = useState(true);
   const [chartMode, setChartMode] = useState('total'); // 'total' or 'subjects'
   const navigate = useNavigate();
@@ -23,6 +24,7 @@ function ProgressHistory() {
     }
 
     fetchReports(token);
+    fetchLegacyReports(token, userData._id);
   }, [navigate]);
 
   const fetchReports = async (token) => {
@@ -43,17 +45,38 @@ function ProgressHistory() {
     }
   };
 
+  const fetchLegacyReports = async (token, userId) => {
+    try {
+      // Re-fetch the specific user to grab their legacy PDFs array
+      const config = { headers: { Authorization: `Bearer ${token}` } };
+      const res = await axios.get(`${API_URL}/api/users`, config);
+      const currentUser = res.data.find(u => u._id === userId);
+      if (currentUser && currentUser.legacyReports) {
+        setLegacyReports(currentUser.legacyReports);
+      }
+    } catch (error) {
+      console.error("Failed to fetch legacy reports:", error);
+    }
+  };
+
   const handlePrintPDF = (reportId) => {
-    // For now, we will trigger the browser's native print function 
-    // We can upgrade this to html2pdf.js later if needed
     window.print();
   };
 
-  const handleAppeal = (monthYear) => {
+  // ✨ NEW: Connected Grade Appeal function
+  const handleAppeal = async (monthYear) => {
     const reason = window.prompt(`Please briefly explain why you are appealing the grade for ${monthYear}:`);
     if (reason) {
-      // Future hook for the Appeal Route
-      alert(`Appeal submitted for ${monthYear}. Our admin team will review it shortly.`);
+      try {
+        const token = localStorage.getItem('token');
+        const config = { headers: { Authorization: `Bearer ${token}` } };
+        await axios.post(`${API_URL}/api/student/appeal-report`, { monthYear, reason }, config);
+        
+        alert(`✅ Appeal submitted for ${monthYear}. Our admin team has been notified and will review it shortly.`);
+      } catch (error) {
+        console.error("Error submitting appeal:", error);
+        alert('❌ Failed to submit appeal. Please try again.');
+      }
     }
   };
 
@@ -63,9 +86,9 @@ function ProgressHistory() {
 
   // Format data for Recharts
   const chartData = reports.map(r => ({
-    month: r.monthYear.substring(0, 3), // e.g., "Sep"
+    month: r.monthYear.substring(0, 3), 
     totalScore: r.totalScore,
-    quranScore: r.quran?.enrolled ? (r.quran.score / r.quran.maxPossible) * 10 : null, // Normalized to 10 for comparison
+    quranScore: r.quran?.enrolled ? (r.quran.score / r.quran.maxPossible) * 10 : null, 
     arabicScore: r.arabic?.enrolled ? (r.arabic.score / r.arabic.maxPossible) * 10 : null,
     islamicScore: r.islamicStudies?.enrolled ? (r.islamicStudies.score / r.islamicStudies.maxPossible) * 10 : null,
   }));
@@ -131,16 +154,17 @@ function ProgressHistory() {
         )}
       </div>
 
-      {/* LEGACY PDF VAULT & HISTORICAL REPORTS */}
+      {/* NEW & LEGACY REPORT VAULT */}
       <h2 style={{ margin: '0 0 20px 0', fontSize: '20px', color: '#2d3436', borderBottom: '2px solid #dfe6e9', paddingBottom: '10px' }}>📄 Official Report Vault</h2>
       
       <div style={{ display: 'grid', gap: '20px' }}>
-        {reports.length === 0 && !loading && (
+        {reports.length === 0 && legacyReports.length === 0 && !loading && (
           <p style={{ color: '#b2bec3', fontStyle: 'italic' }}>No official reports available yet.</p>
         )}
-        
+
+        {/* 1. Map through the new LMS-generated Reports */}
         {reports.slice().reverse().map((report, idx) => (
-          <div key={idx} style={{ backgroundColor: 'white', padding: '25px', borderRadius: '12px', boxShadow: '0 4px 15px rgba(0,0,0,0.03)', borderLeft: report.totalScore === 10 ? '5px solid #fdcb6e' : '5px solid #0984e3' }}>
+          <div key={`new-${idx}`} style={{ backgroundColor: 'white', padding: '25px', borderRadius: '12px', boxShadow: '0 4px 15px rgba(0,0,0,0.03)', borderLeft: report.totalScore === 10 ? '5px solid #fdcb6e' : '5px solid #0984e3' }}>
             
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', borderBottom: '1px solid #f1f2f6', paddingBottom: '15px', marginBottom: '15px' }}>
               <div>
@@ -196,6 +220,19 @@ function ProgressHistory() {
                 </button>
               )}
             </div>
+          </div>
+        ))}
+
+        {/* 2. Map through the Legacy Google Drive PDFs */}
+        {legacyReports.slice().reverse().map((report, idx) => (
+          <div key={`legacy-${idx}`} style={{ backgroundColor: '#f8f9fa', padding: '20px', borderRadius: '12px', border: '1px solid #dfe6e9', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <div>
+              <h3 style={{ margin: '0 0 5px 0', color: '#2d3436', fontSize: '18px' }}>📂 {report.monthYear} Official Report</h3>
+              <span style={{ fontSize: '12px', backgroundColor: '#b2bec3', color: 'white', padding: '3px 8px', borderRadius: '12px', fontWeight: 'bold' }}>LEGACY PDF</span>
+            </div>
+            <button onClick={() => window.open(report.pdfLink, '_blank')} style={{ padding: '8px 15px', backgroundColor: '#0984e3', color: 'white', border: 'none', borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold' }}>
+              View Document ↗
+            </button>
           </div>
         ))}
       </div>

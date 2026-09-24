@@ -65,7 +65,7 @@ function Dashboard() {
   const [planStudentIdentifier, setPlanStudentIdentifier] = useState('');
   const [planForm, setPlanForm] = useState({
     monthYear: new Date().toLocaleString('default', { month: 'long', year: 'numeric' }),
-    isFinalized: false, // False = Phase 1 (Plan), True = Phase 2 (Report)
+    isFinalized: false, 
     quranEnrolled: false, quranPlan: '', quranScore: '',
     arabicEnrolled: false, arabicPlan: '', arabicScore: '',
     islamicEnrolled: false, islamicPlan: '', islamicScore: '',
@@ -250,7 +250,7 @@ function Dashboard() {
       const config = { headers: { Authorization: `Bearer ${token}` } };
       
       const payload = {
-        studentIdentifier: planStudentIdentifier, // We will map this to an ID on the backend
+        studentIdentifier: planStudentIdentifier, 
         monthYear: planForm.monthYear,
         isFinalized: planForm.isFinalized,
         teacherNote: planForm.teacherNote,
@@ -314,6 +314,7 @@ function Dashboard() {
     if (count === 1) return { quran: 10, arabic: 10, islamic: 10 };
     return { quran: 0, arabic: 0, islamic: 0 };
   };
+  
   const maxScores = getDynamicMaxScores();
 
   const cycleStartDate = subSummary?.subscription?.startDate ? new Date(subSummary.subscription.startDate) : null;
@@ -328,6 +329,9 @@ function Dashboard() {
     name: r.monthYear.substring(0, 3) || '',
     score: r.totalScore
   }));
+
+  // ✨ FIXED: selectedClass pulled out of calculateProgress so the modal can access it
+  const selectedClass = classes.find(c => (c.id === currentClassId || c._id === currentClassId));
 
   return (
     <div className="dashboard-container" style={{ maxWidth: '1000px', margin: '0 auto' }}>

@@ -44,7 +44,69 @@ const requestMakeup = asyncHandler(async (req, res) => {
   res.status(201).json(request);
 });
 
+// @desc    Add or update a monthly report (Phase 1 or Phase 2)
+// @route   POST /api/student/reports
+// @access  Private (Teacher)
+const addOrUpdateReport = asyncHandler(async (req, res) => {
+  const { studentIdentifier, monthYear, isFinalized, teacherNote, quran, arabic, islamicStudies } = req.body;
+
+  // Find student by name or group ID
+  const student = await User.findOne({
+    $or: [ { name: studentIdentifier }, { studentGroupId: studentIdentifier } ],
+    role: 'student'
+  });
+
+  if (!student) {
+    res.status(404);
+    throw new Error('Student not found to attach report to.');
+  }
+
+  // Calculate total score if finalized
+  let totalScore = null;
+  if (isFinalized) {
+    totalScore = (Number(quran?.score) || 0) + (Number(arabic?.score) || 0) + (Number(islamicStudies?.score) || 0);
+  }
+
+  const existingReportIndex = student.monthlyReports.findIndex(r => r.monthYear === monthYear);
+  const reportData = { monthYear, isFinalized, teacherNote, quran, arabic, islamicStudies, totalScore, approvalStatus: 'pending' };
+
+  if (existingReportIndex >= 0) {
+    student.monthlyReports[existingReportIndex] = { 
+        ...student.monthlyReports[existingReportIndex].toObject(), 
+        ...reportData 
+    };
+  } else {
+    student.monthlyReports.push(reportData);
+  }
+
+  await student.save();
+  res.status(200).json({ message: 'Report saved successfully', reports: student.monthlyReports });
+});
+
+// @desc    Submit a grade appeal
+// @route   POST /api/student/appeal-report
+// @access  Private (Student/Parent)
+const appealReport = asyncHandler(async (req, res) => {
+  const { monthYear, reason } = req.body;
+  const user = await User.findById(req.user._id);
+
+  if (!user) {
+    res.status(404);
+    throw new Error('User not found');
+  }
+
+  // 🤖 WHATSAPP AUTOMATION LOGIC (To the Admin)
+  const adminMessage = `⚖️ NEW GRADE APPEAL \n\nStudent: ${user.name}\nPhone: ${user.whatsappNumber || 'N/A'}\nReport: ${monthYear}\nReason: "${reason}" \n\nPlease review this with the teacher and contact the parent.`;
+
+  // NOTE: Insert your MacroDroid queue save here directed to your Admin WhatsApp number
+  console.log("Admin Alert:", adminMessage);
+
+  res.status(200).json({ message: 'Appeal submitted successfully', adminMessage });
+});
+
 module.exports = {
   getSubscriptionSummary,
-  requestMakeup
+  requestMakeup,
+  addOrUpdateReport,
+  appealReport // 👈 NEW
 };

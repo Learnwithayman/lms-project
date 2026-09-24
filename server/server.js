@@ -3,6 +3,9 @@ const dotenv = require('dotenv').config();
 const connectDB = require('./config/db');
 const cors = require('cors'); 
 
+// ✨ NEW: Import the Report Crons (The Nag System)
+const startReportCrons = require('./cron/reportCrons');
+
 const port = process.env.PORT || 5000;
 
 // Connect to MongoDB Database
@@ -15,6 +18,9 @@ require('./utils/cronJobs'); // Turns on the automated time-based WhatsApp alert
 // 💰 Turn on the new Monthly Payroll Robotic Accountant
 const { startPayrollCron } = require('./utils/payrollCron');
 startPayrollCron(); 
+
+// 🤖 Turn on the Monthly Report Nag System
+startReportCrons();
 
 const app = express();
 
@@ -56,7 +62,7 @@ app.use('/api/schedule', require('./routes/scheduleRoutes'));
 app.use('/api/leads', require('./routes/leadRoutes')); 
 app.use('/api/subscriptions', require('./routes/subscriptionRoutes')); // Subscription & Makeup Engine
 app.use('/api/progress', require('./routes/progressRoutes')); // Progress Hub Sprint Routes
-app.use('/api/student', require('./routes/studentRoutes')); // 👈 NEW: Day 4 Student API Endpoints
+app.use('/api/student', require('./routes/studentRoutes')); 
 
 // 🚀 FIXED: Added '0.0.0.0' to explicitly open the port for Render!
 app.listen(port, '0.0.0.0', () => console.log(`Server started on port ${port}`));
