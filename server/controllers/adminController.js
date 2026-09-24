@@ -55,7 +55,106 @@ const createSubscription = asyncHandler(async (req, res) => {
   res.status(201).json(subscription);
 });
 
+// ==========================================
+// ✨ NEW: APPROVAL GATE FUNCTIONS
+// ==========================================
+
+// @desc    Get all pending reports for Admin review
+// @route   GET /api/admin/pending-reports
+// @access  Private/Admin
+const getPendingReports = asyncHandler(async (req, res) => {
+  // Find users who have reports that are NOT marked as 'approved'
+  const users = await User.find({ "monthlyReports.approvalStatus": { $ne: "approved" } });
+  
+  let pending = [];
+  users.forEach(user => {
+    user.monthlyReports.forEach(report => {
+      if (report.approvalStatus !== 'approved') {
+        pending.push({
+          studentId: user._id,
+          studentName: user.name,
+          monthYear: report.monthYear,
+          isFinalized: report.isFinalized,
+          quran: report.quran,
+          arabic: report.arabic,
+          islamicStudies: report.islamicStudies,
+          totalScore: report.totalScore,
+          teacherNote: report.teacherNote
+        });
+      }
+    });
+  });
+  
+  res.status(200).json(pending);
+});
+
+// @desc    Approve a report and publish it to the student
+// @route   PUT /api/admin/approve-report
+// @access  Private/Admin
+const approveReport = asyncHandler(async (req, res) => {
+  const { studentId, monthYear } = req.body;
+  const user = await User.findById(studentId);
+  
+  if (!user) {
+    res.status(404);
+    throw new Error('Student not found');
+  }
+
+  const report = user.monthlyReports.find(r => r.monthYear === monthYear);
+  if (!report) {
+    res.status(404);
+    throw new Error('Report not found');
+  }
+
+  // Mark as approved so it shows on the Student Portal
+  report.approvalStatus = 'approved';
+  await user.save();
+
+  // 🤖 WHATSAPP AUTOMATION LOGIC (For your MacroDroid Engine)
+  let whatsappMessage = '';
+  if (report.isFinalized) {
+    // Phase 2: Final Report Approved
+    whatsappMessage = `Assalamu Alaikum! Here is the student dashboard. Please log in and see the report for ${monthYear}: https://lms.learnwithayman.com/progress?report=${monthYear.replace(' ', '')} \n\nThe best compliment you can give us is a referral! Share this link with friends, and if they sign up, you get a special reward.`;
+  } else {
+    // Phase 1: Draft Plan Approved
+    whatsappMessage = `Assalamu Alaikum, here is our plan for ${monthYear}. May Allah help us in achieving it: https://lms.learnwithayman.com/progress?report=${monthYear.replace(' ', '')}`;
+  }
+
+  res.status(200).json({ message: 'Report approved and published.', whatsappMessage });
+});
+
+// @desc    Reject a report and request edits from the teacher
+// @route   PUT /api/admin/reject-report
+// @access  Private/Admin
+const rejectReport = asyncHandler(async (req, res) => {
+  const { studentId, monthYear, adminNotes } = req.body;
+  const user = await User.findById(studentId);
+
+  if (!user) {
+    res.status(404);
+    throw new Error('Student not found');
+  }
+
+  const report = user.monthlyReports.find(r => r.monthYear === monthYear);
+  if (!report) {
+    res.status(404);
+    throw new Error('Report not found');
+  }
+
+  // Mark as rejected so the teacher knows they need to fix it
+  report.approvalStatus = 'rejected';
+  await user.save();
+
+  // 🤖 WHATSAPP AUTOMATION LOGIC (To the Teacher)
+  const teacherMessage = `Action Required: Admin has requested an edit on ${user.name}'s ${monthYear} Plan. \n\nAdmin Notes: "${adminNotes}" \n\nPlease go to your dashboard and update immediately.`;
+  
+  res.status(200).json({ message: 'Report rejected and teacher notified.', teacherMessage });
+});
+
 module.exports = {
   updateTeacherRate,
   createSubscription,
+  getPendingReports,
+  approveReport,
+  rejectReport
 };

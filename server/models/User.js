@@ -63,20 +63,37 @@ const userSchema = mongoose.Schema(
     ],
 
     // ==========================================
-    // ✨ NEW: STUDY PLANS & MONTHLY REPORTS ENGINE
+    // ✨ DYNAMIC STUDY PLANS & REPORTS ENGINE
     // ==========================================
     monthlyReports: [
       {
         monthYear: { type: String, required: true }, // e.g., "September 2026"
-        quranPlan: { type: String, default: '' },
-        quranScore: { type: Number, default: null }, // e.g., out of 4
-        arabicPlan: { type: String, default: '' },
-        arabicScore: { type: Number, default: null }, // e.g., out of 3
-        islamicStudiesPlan: { type: String, default: '' },
-        islamicStudiesScore: { type: Number, default: null }, // e.g., out of 3
-        totalScore: { type: Number, default: null }, // out of 10
+        
+        quran: {
+          enrolled: { type: Boolean, default: false },
+          plan: { type: String, default: '' },
+          score: { type: Number, default: null },
+          maxPossible: { type: Number, default: 4 }
+        },
+        
+        arabic: {
+          enrolled: { type: Boolean, default: false },
+          plan: { type: String, default: '' },
+          score: { type: Number, default: null },
+          maxPossible: { type: Number, default: 3 }
+        },
+        
+        islamicStudies: {
+          enrolled: { type: Boolean, default: false },
+          plan: { type: String, default: '' },
+          score: { type: Number, default: null },
+          maxPossible: { type: Number, default: 3 }
+        },
+        
+        totalScore: { type: Number, default: null }, // Always out of 10
         teacherNote: { type: String, default: '' },
-        isFinalized: { type: Boolean, default: false }, // false = Active Plan, true = Final Graded Report
+        isFinalized: { type: Boolean, default: false }, // false = Phase 1 Plan, true = Phase 2 Report
+        approvalStatus: { type: String, enum: ['pending', 'approved', 'rejected'], default: 'pending' }, // ✨ The Admin Gate Lock
         createdAt: { type: Date, default: Date.now }
       }
     ]
