@@ -376,17 +376,20 @@ function Dashboard() {
   return (
     <div className="dashboard-container" style={{ maxWidth: '1000px', margin: '0 auto' }}>
       
-      {/* 👑 LUXURY PARENT PORTAL HEADER */}
+      {/* 👑 LUXURY STUDENT PORTAL HEADER */}
       {user?.role?.toLowerCase() !== 'teacher' ? (
         <>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', backgroundColor: '#fff', padding: '30px', borderRadius: '15px', boxShadow: '0 10px 25px rgba(0,0,0,0.04)', marginBottom: '30px' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '20px' }}>
-              <div style={{ width: '70px', height: '70px', borderRadius: '50%', backgroundColor: '#6c5ce7', color: 'white', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '28px', fontWeight: 'bold', boxShadow: '0 4px 15px rgba(108, 92, 231, 0.3)' }}>
-                {user.name ? user.name.charAt(0).toUpperCase() : '👤'}
+            <div style={{ display: 'flex', alignItems: 'center', gap: '25px' }}>
+              
+              {/* ✨ OFFICIAL BRAND LOGO */}
+              <div style={{ width: '80px', height: '80px', borderRadius: '12px', backgroundColor: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 4px 15px rgba(0,0,0,0.08)', overflow: 'hidden' }}>
+                <img src="/logo512.png" alt="Learn With Ayman Logo" style={{ width: '100%', height: '100%', objectFit: 'contain' }} />
               </div>
+
               <div>
                 <h1 style={{ margin: '0 0 5px 0', color: '#2d3436', fontSize: '28px' }}>Hello, {user.name}</h1>
-                <span style={{ backgroundColor: '#e8f4fd', color: '#0984e3', padding: '5px 12px', borderRadius: '20px', fontSize: '12px', fontWeight: 'bold', letterSpacing: '0.5px', textTransform: 'uppercase' }}>Parent Portal</span>
+                <span style={{ backgroundColor: '#e8f4fd', color: '#0984e3', padding: '5px 12px', borderRadius: '20px', fontSize: '12px', fontWeight: 'bold', letterSpacing: '0.5px', textTransform: 'uppercase' }}>Student Portal</span>
               </div>
             </div>
             <button onClick={handleLogout} style={{ border: 'none', backgroundColor: '#ff7675', color: 'white', padding: '10px 20px', borderRadius: '8px', cursor: 'pointer', fontWeight: 'bold', transition: 'all 0.2s' }}>Logout</button>
@@ -629,7 +632,7 @@ function Dashboard() {
 
       {/* CLASS HISTORY SECTION */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px', borderBottom: '2px solid #f1f2f6', paddingBottom: '10px' }}>
-        <h2 style={{ margin: 0 }}>🕰️ Class History</h2>
+        <h2 style={{ margin: '0' }}>🕰️ Class History</h2>
         {user?.role?.toLowerCase() !== 'teacher' && (
           <span style={{ fontSize: '14px', color: '#636e72', fontWeight: 'bold' }}>Showing Current Cycle Only</span>
         )}
@@ -906,6 +909,26 @@ function Dashboard() {
           </div>
         </div>
       )}
+
+      {/* 📞 SUPPORT & CONTACT FOOTER */}
+      <div style={{ backgroundColor: '#2d3436', color: 'white', padding: '30px', borderRadius: '15px', marginTop: '40px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '20px' }}>
+        <div>
+          <h3 style={{ margin: '0 0 10px 0', fontSize: '20px' }}>Need Assistance?</h3>
+          <p style={{ margin: 0, color: '#b2bec3', fontSize: '14px' }}>Our admin team is here to help with billing, scheduling, or technical support.</p>
+        </div>
+        <div style={{ display: 'flex', gap: '15px' }}>
+          <a href="https://wa.me/201012345678" target="_blank" rel="noopener noreferrer" style={{ textDecoration: 'none' }}>
+            <button style={{ backgroundColor: '#25D366', color: 'white', padding: '10px 20px', border: 'none', borderRadius: '8px', cursor: 'pointer', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '8px' }}>
+              💬 WhatsApp Admin
+            </button>
+          </a>
+          <a href="mailto:admin@learnwithayman.com" style={{ textDecoration: 'none' }}>
+            <button style={{ backgroundColor: '#636e72', color: 'white', padding: '10px 20px', border: 'none', borderRadius: '8px', cursor: 'pointer', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '8px' }}>
+              ✉️ Email Us
+            </button>
+          </a>
+        </div>
+      </div>
 
     </div>
   );

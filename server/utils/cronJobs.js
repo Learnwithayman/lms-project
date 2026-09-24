@@ -165,3 +165,49 @@ cron.schedule('0 0 * * *', async () => {
     console.error('❌ Error running Midnight Sweeper:', error);
   }
 });
+
+// ==========================================
+// 📝 PHASE 1 NAG: 3RD OF THE MONTH AT 10:00 AM
+// ==========================================
+cron.schedule('0 10 3 * *', async () => {
+  console.log('Running Phase 1 Teacher Nag...');
+  try {
+    const teachers = await User.find({ role: 'teacher' });
+    const currentMonth = new Date().toLocaleString('default', { month: 'long', year: 'numeric' });
+
+    for (const teacher of teachers) {
+      if (teacher.whatsappNumber) {
+        const msg = `🔔 *Reminder: Phase 1 Study Plans*\n\nAssalamu Alaikum ${teacher.name},\n\nPlease ensure you have submitted the Draft Study Plans for all your students for ${currentMonth}. Log into your LMS dashboard to complete this today!`;
+        
+        const jid = teacher.whatsappNumber.includes('@') ? teacher.whatsappNumber : `${teacher.whatsappNumber}@s.whatsapp.net`;
+        await sendMessage(jid, msg).catch(err => console.log(`Skipped msg for ${teacher.name}`));
+        await delay(5000); // Prevents overlapping/banning
+      }
+    }
+  } catch (error) {
+    console.error('Error in Phase 1 Cron:', error);
+  }
+});
+
+// ==========================================
+// 📝 PHASE 2 NAG: 27TH OF THE MONTH AT 10:00 AM
+// ==========================================
+cron.schedule('0 10 27 * *', async () => {
+  console.log('Running Phase 2 Teacher Nag...');
+  try {
+    const teachers = await User.find({ role: 'teacher' });
+    const currentMonth = new Date().toLocaleString('default', { month: 'long', year: 'numeric' });
+
+    for (const teacher of teachers) {
+      if (teacher.whatsappNumber) {
+        const msg = `🔔 *Reminder: Phase 2 Final Grades*\n\nAssalamu Alaikum ${teacher.name},\n\nThe month of ${currentMonth} is ending soon! Please finalize the grades and reports for your students via your LMS dashboard.`;
+        
+        const jid = teacher.whatsappNumber.includes('@') ? teacher.whatsappNumber : `${teacher.whatsappNumber}@s.whatsapp.net`;
+        await sendMessage(jid, msg).catch(err => console.log(`Skipped msg for ${teacher.name}`));
+        await delay(5000); // Prevents overlapping/banning
+      }
+    }
+  } catch (error) {
+    console.error('Error in Phase 2 Cron:', error);
+  }
+});

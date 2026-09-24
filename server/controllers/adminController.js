@@ -1,6 +1,7 @@
 const asyncHandler = require('express-async-handler');
 const User = require('../models/User');
 const Subscription = require('../models/Subscription');
+const { sendMessage } = require('../utils/whatsappBot'); // 👈 ADDED: The WhatsApp Bot Queue
 
 // @desc    Update a Teacher's Hourly Rate
 // @route   PUT /api/admin/teacher-rate/:id
@@ -110,14 +111,24 @@ const approveReport = asyncHandler(async (req, res) => {
   report.approvalStatus = 'approved';
   await user.save();
 
-  // 🤖 WHATSAPP AUTOMATION LOGIC (For your MacroDroid Engine)
+  // 🤖 WHATSAPP AUTOMATION LOGIC (Queue to Student Group)
   let whatsappMessage = '';
   if (report.isFinalized) {
-    // Phase 2: Final Report Approved
-    whatsappMessage = `Assalamu Alaikum! Here is the student dashboard. Please log in and see the report for ${monthYear}: https://lms.learnwithayman.com/progress?report=${monthYear.replace(' ', '')} \n\nThe best compliment you can give us is a referral! Share this link with friends, and if they sign up, you get a special reward.`;
+    whatsappMessage = `🏆 *Monthly Report Card Available!*\n\nAssalamu Alaikum ${user.name},\n\nYour final graded report and teacher feedback for ${monthYear} are now available.\n\nPlease log in to view your scores and notes:\n🔗 https://lms.learnwithayman.com/progress`;
   } else {
-    // Phase 1: Draft Plan Approved
-    whatsappMessage = `Assalamu Alaikum, here is our plan for ${monthYear}. May Allah help us in achieving it: https://lms.learnwithayman.com/progress?report=${monthYear.replace(' ', '')}`;
+    whatsappMessage = `📚 *Monthly Study Plan Available!*\n\nAssalamu Alaikum ${user.name},\n\nYour study plan for ${monthYear} has been finalized by your teacher and approved.\n\nYou can view your goals for this month in your Progress Hub:\n🔗 https://lms.learnwithayman.com/progress`;
+  }
+
+  try {
+    // Attempt to grab the group ID first, fallback to standard number
+    const targetJid = user.studentGroupId || user.whatsappNumber;
+    if (targetJid && sendMessage) {
+      // Format correctly based on whether it's a group or individual
+      const formattedJid = targetJid.includes('@') ? targetJid : (targetJid.length > 15 ? `${targetJid}@g.us` : `${targetJid}@s.whatsapp.net`);
+      await sendMessage(formattedJid, whatsappMessage).catch(err => console.log("Bot offline, skipping."));
+    }
+  } catch (err) {
+    console.error("Failed to queue WhatsApp approval message:", err);
   }
 
   res.status(200).json({ message: 'Report approved and published.', whatsappMessage });
@@ -145,7 +156,8 @@ const rejectReport = asyncHandler(async (req, res) => {
   report.approvalStatus = 'rejected';
   await user.save();
 
-  // 🤖 WHATSAPP AUTOMATION LOGIC (To the Teacher)
+  // Teacher notification logic could be added here if teacher JIDs are mapped, 
+  // currently it returns the payload for the frontend to handle or log.
   const teacherMessage = `Action Required: Admin has requested an edit on ${user.name}'s ${monthYear} Plan. \n\nAdmin Notes: "${adminNotes}" \n\nPlease go to your dashboard and update immediately.`;
   
   res.status(200).json({ message: 'Report rejected and teacher notified.', teacherMessage });
