@@ -1,6 +1,8 @@
 import React, { useEffect, useState } from 'react';
 import axios from 'axios';
 import { useNavigate } from 'react-router-dom';
+// ✨ NEW: Import charting library
+import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import '../App.css';
 
 const API_URL = process.env.REACT_APP_API_URL || 'https://lms-backend-02zs.onrender.com';
@@ -11,20 +13,17 @@ function Dashboard() {
   const [earnings, setEarnings] = useState(null); 
   const [subSummary, setSubSummary] = useState(null);
   
-  // ✨ NEW: Day 7 Class History State
   const [history, setHistory] = useState([]);
   const [loadingHistory, setLoadingHistory] = useState(true);
 
   const navigate = useNavigate();
   
-  // End Class Modal State
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [currentClassId, setCurrentClassId] = useState(null);
   const [notes, setNotes] = useState('');
   const [classroomChecked, setClassroomChecked] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  // Makeup Request Modal State
   const [isMakeupModalOpen, setIsMakeupModalOpen] = useState(false);
   const [selectedOriginalDate, setSelectedOriginalDate] = useState('');
   const [preferredMakeupDate, setPreferredMakeupDate] = useState('');
@@ -41,7 +40,7 @@ function Dashboard() {
     setUser(parsedUser);
     
     fetchClasses(token);
-    fetchHistory(token); // 👈 Fetch class history on load
+    fetchHistory(token); 
 
     if (parsedUser?.role?.toLowerCase() === 'teacher') {
       fetchEarnings(token);
@@ -60,7 +59,6 @@ function Dashboard() {
     }
   };
 
-  // ✨ NEW: Fetch Completed & Cancelled History
   const fetchHistory = async (token) => {
     try {
       const config = { headers: { Authorization: `Bearer ${token}` } };
@@ -143,7 +141,7 @@ function Dashboard() {
       
       fetchClasses(token);
       fetchEarnings(token);
-      fetchHistory(token); // Refresh history
+      fetchHistory(token); 
       alert('✅ Class ended successfully and hours logged!');
     } catch (error) {
       console.error('Error ending class:', error);
@@ -167,7 +165,7 @@ function Dashboard() {
         zoomLink: cls.zoomLink || cls.meetingLink
       }, config);
       alert(`✅ Student marked as ${status}. WhatsApp message sent!`);
-      fetchHistory(token); // Refresh history
+      fetchHistory(token); 
     } catch (error) {
       console.error('Error marking attendance:', error);
       alert('Failed to mark attendance.');
@@ -223,23 +221,47 @@ function Dashboard() {
     return Math.min(percentage, 100); 
   };
 
+  // ✨ NEW: Filter Class History to ONLY show classes from the current cycle
+  const cycleStartDate = subSummary?.subscription?.startDate ? new Date(subSummary.subscription.startDate) : null;
+  const filteredHistory = cycleStartDate 
+    ? history.filter(cls => new Date(cls.startTime) >= cycleStartDate)
+    : history;
+
+  // ✨ NEW: Extract Data for the Charts & Reports
+  const reportsData = subSummary?.monthlyReports || [];
+  const finalizedReports = reportsData.filter(r => r.isFinalized);
+  const activePlan = reportsData.find(r => !r.isFinalized);
+  const chartData = finalizedReports.map(r => ({
+    name: r.monthYear.substring(0, 3) || '', // e.g., "Sep"
+    score: r.totalScore
+  }));
+
   return (
     <div className="dashboard-container" style={{ maxWidth: '1000px', margin: '0 auto' }}>
       
       {/* 👑 LUXURY PARENT PORTAL HEADER */}
       {user?.role?.toLowerCase() !== 'teacher' ? (
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', backgroundColor: '#fff', padding: '30px', borderRadius: '15px', boxShadow: '0 10px 25px rgba(0,0,0,0.04)', marginBottom: '30px' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '20px' }}>
-            <div style={{ width: '70px', height: '70px', borderRadius: '50%', backgroundColor: '#6c5ce7', color: 'white', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '28px', fontWeight: 'bold', boxShadow: '0 4px 15px rgba(108, 92, 231, 0.3)' }}>
-              {user.name ? user.name.charAt(0).toUpperCase() : '👤'}
+        <>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', backgroundColor: '#fff', padding: '30px', borderRadius: '15px', boxShadow: '0 10px 25px rgba(0,0,0,0.04)', marginBottom: '30px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '20px' }}>
+              <div style={{ width: '70px', height: '70px', borderRadius: '50%', backgroundColor: '#6c5ce7', color: 'white', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '28px', fontWeight: 'bold', boxShadow: '0 4px 15px rgba(108, 92, 231, 0.3)' }}>
+                {user.name ? user.name.charAt(0).toUpperCase() : '👤'}
+              </div>
+              <div>
+                <h1 style={{ margin: '0 0 5px 0', color: '#2d3436', fontSize: '28px' }}>Hello, {user.name}</h1>
+                <span style={{ backgroundColor: '#e8f4fd', color: '#0984e3', padding: '5px 12px', borderRadius: '20px', fontSize: '12px', fontWeight: 'bold', letterSpacing: '0.5px', textTransform: 'uppercase' }}>Parent Portal</span>
+              </div>
             </div>
-            <div>
-              <h1 style={{ margin: '0 0 5px 0', color: '#2d3436', fontSize: '28px' }}>Hello, {user.name}</h1>
-              <span style={{ backgroundColor: '#e8f4fd', color: '#0984e3', padding: '5px 12px', borderRadius: '20px', fontSize: '12px', fontWeight: 'bold', letterSpacing: '0.5px', textTransform: 'uppercase' }}>Parent Portal</span>
-            </div>
+            <button onClick={handleLogout} style={{ border: 'none', backgroundColor: '#ff7675', color: 'white', padding: '10px 20px', borderRadius: '8px', cursor: 'pointer', fontWeight: 'bold', transition: 'all 0.2s' }}>Logout</button>
           </div>
-          <button onClick={handleLogout} style={{ border: 'none', backgroundColor: '#ff7675', color: 'white', padding: '10px 20px', borderRadius: '8px', cursor: 'pointer', fontWeight: 'bold', transition: 'all 0.2s' }}>Logout</button>
-        </div>
+
+          {/* ✨ NEW: RED PAYMENT BANNER */}
+          {subSummary?.subscription?.status === 'expired' && (
+            <div style={{ backgroundColor: '#ff7675', color: 'white', padding: '20px', borderRadius: '10px', marginBottom: '30px', fontWeight: 'bold', textAlign: 'center', boxShadow: '0 4px 15px rgba(255, 118, 117, 0.3)', fontSize: '16px' }}>
+              ⚠️ Payment Due: Your subscription cycle has finished. Please renew your plan to continue booking classes.
+            </div>
+          )}
+        </>
       ) : (
         <div className="dashboard-header">
           <h1>👋 Welcome, {user.name}</h1>
@@ -284,11 +306,11 @@ function Dashboard() {
                 </div>
 
                 <div style={{ backgroundColor: '#f5f6fa', padding: '15px', borderRadius: '8px', display: 'flex', alignItems: 'center', gap: '10px' }}>
-                  <span style={{ fontSize: '20px' }}>⏳</span>
+                  <span style={{ fontSize: '20px' }}>🔄</span>
                   <div>
-                    <p style={{ margin: 0, fontSize: '12px', color: '#636e72', textTransform: 'uppercase', fontWeight: 'bold' }}>Next Renewal Date</p>
+                    <p style={{ margin: 0, fontSize: '12px', color: '#636e72', textTransform: 'uppercase', fontWeight: 'bold' }}>Cycle Start Date</p>
                     <p style={{ margin: 0, color: '#2d3436', fontWeight: 'bold', fontSize: '16px' }}>
-                      {new Date(subSummary.subscription.endDate).toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' })}
+                      {subSummary.subscription.startDate ? new Date(subSummary.subscription.startDate).toLocaleDateString(undefined, { month: 'long', day: 'numeric', year: 'numeric' }) : 'Not Set'}
                     </p>
                   </div>
                 </div>
@@ -334,12 +356,67 @@ function Dashboard() {
         </div>
       )}
 
+      {/* ✨ NEW: STUDY PLANS & PROGRESS ANALYTICS */}
+      {user?.role?.toLowerCase() !== 'teacher' && (
+        <>
+          <h2 style={{ margin: '0 0 20px 0', borderBottom: '2px solid #f1f2f6', paddingBottom: '10px' }}>📈 Progress & Reports</h2>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: '25px', marginBottom: '40px' }}>
+            
+            {/* The Investment-Style Line Chart */}
+            <div style={{ backgroundColor: 'white', padding: '20px', borderRadius: '15px', boxShadow: '0 5px 15px rgba(0,0,0,0.03)' }}>
+              <h3 style={{ margin: '0 0 20px 0', color: '#2d3436', fontSize: '18px' }}>Historical Performance (/10)</h3>
+              {chartData.length > 0 ? (
+                <div style={{ width: '100%', height: 250 }}>
+                  <ResponsiveContainer>
+                    <LineChart data={chartData} margin={{ top: 5, right: 20, bottom: 5, left: -20 }}>
+                      <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f2f6" />
+                      <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fill: '#b2bec3', fontSize: 12 }} />
+                      <YAxis domain={[0, 10]} axisLine={false} tickLine={false} tick={{ fill: '#b2bec3', fontSize: 12 }} />
+                      <Tooltip contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 15px rgba(0,0,0,0.1)' }} />
+                      <Line type="monotone" dataKey="score" stroke="#0984e3" strokeWidth={4} dot={{ r: 6, fill: '#0984e3', stroke: 'white', strokeWidth: 2 }} activeDot={{ r: 8 }} />
+                    </LineChart>
+                  </ResponsiveContainer>
+                </div>
+              ) : (
+                <div style={{ height: '250px', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#b2bec3', fontStyle: 'italic' }}>
+                  Analytics will appear after the first monthly report.
+                </div>
+              )}
+            </div>
+
+            {/* The Active Monthly Plan matching the PDFs */}
+            <div style={{ backgroundColor: 'white', padding: '20px', borderRadius: '15px', boxShadow: '0 5px 15px rgba(0,0,0,0.03)' }}>
+              <h3 style={{ margin: '0 0 20px 0', color: '#2d3436', fontSize: '18px', display: 'flex', justifyContent: 'space-between' }}>
+                <span>🎯 Active Study Plan</span>
+                <span style={{ fontSize: '14px', color: '#0984e3' }}>{activePlan ? activePlan.monthYear : 'No Active Plan'}</span>
+              </h3>
+              
+              {activePlan ? (
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '10px' }}>
+                  <div style={{ backgroundColor: '#f8f9fa', padding: '15px', borderRadius: '8px', borderTop: '4px solid #6c5ce7' }}>
+                    <h4 style={{ margin: '0 0 10px 0', fontSize: '14px', color: '#2d3436', textAlign: 'center' }}>Quran</h4>
+                    <p style={{ margin: 0, fontSize: '13px', color: '#636e72' }}>{activePlan.quranPlan || 'Pending goals...'}</p>
+                  </div>
+                  <div style={{ backgroundColor: '#f8f9fa', padding: '15px', borderRadius: '8px', borderTop: '4px solid #00b894' }}>
+                    <h4 style={{ margin: '0 0 10px 0', fontSize: '14px', color: '#2d3436', textAlign: 'center' }}>Arabic</h4>
+                    <p style={{ margin: 0, fontSize: '13px', color: '#636e72' }}>{activePlan.arabicPlan || 'Pending goals...'}</p>
+                  </div>
+                  <div style={{ backgroundColor: '#f8f9fa', padding: '15px', borderRadius: '8px', borderTop: '4px solid #fdcb6e' }}>
+                    <h4 style={{ margin: '0 0 10px 0', fontSize: '14px', color: '#2d3436', textAlign: 'center' }}>Islamic Studies</h4>
+                    <p style={{ margin: 0, fontSize: '13px', color: '#636e72' }}>{activePlan.islamicStudiesPlan || 'Pending goals...'}</p>
+                  </div>
+                </div>
+              ) : (
+                <p style={{ color: '#b2bec3', fontStyle: 'italic', textAlign: 'center', marginTop: '40px' }}>Your teacher will upload this month's goals soon.</p>
+              )}
+            </div>
+          </div>
+        </>
+      )}
+
       {/* 🗓️ UPCOMING CLASSES SECTION */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
         <h2 style={{ margin: 0 }}>🗓️ Your Schedule</h2>
-        <button onClick={() => navigate('/progress')} style={{ backgroundColor: '#0984e3', color: 'white', padding: '10px 20px', border: 'none', borderRadius: '8px', cursor: 'pointer', fontWeight: 'bold', boxShadow: '0 4px 10px rgba(9, 132, 227, 0.2)' }}>
-          📈 View Progress
-        </button>
       </div>
       
       <div style={{ display: 'grid', gap: '20px', marginBottom: '40px' }}>
@@ -388,14 +465,19 @@ function Dashboard() {
         )}
       </div>
 
-      {/* ✨ NEW: CLASS HISTORY SECTION */}
-      <h2 style={{ margin: '0 0 20px 0', borderBottom: '2px solid #f1f2f6', paddingBottom: '10px' }}>🕰️ Class History</h2>
+      {/* ✨ NEW: FILTERED CLASS HISTORY SECTION */}
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px', borderBottom: '2px solid #f1f2f6', paddingBottom: '10px' }}>
+        <h2 style={{ margin: 0 }}>🕰️ Class History</h2>
+        {user?.role?.toLowerCase() !== 'teacher' && (
+          <span style={{ fontSize: '14px', color: '#636e72', fontWeight: 'bold' }}>Showing Current Cycle Only</span>
+        )}
+      </div>
       
       <div style={{ backgroundColor: 'white', borderRadius: '12px', boxShadow: '0 5px 15px rgba(0,0,0,0.03)', padding: '20px', overflowX: 'auto', marginBottom: '40px' }}>
         {loadingHistory ? (
           <p style={{ color: '#636e72' }}>Loading history...</p>
-        ) : history.length === 0 ? (
-          <p style={{ fontStyle: 'italic', color: 'gray' }}>No past classes recorded yet.</p>
+        ) : filteredHistory.length === 0 ? (
+          <p style={{ fontStyle: 'italic', color: 'gray' }}>No past classes recorded in this cycle yet.</p>
         ) : (
           <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
             <thead>
@@ -406,7 +488,7 @@ function Dashboard() {
               </tr>
             </thead>
             <tbody>
-              {history.map((cls, index) => (
+              {filteredHistory.map((cls, index) => (
                 <tr key={index} style={{ borderBottom: '1px solid #f1f2f6' }}>
                   <td style={{ padding: '12px', fontWeight: 'bold', color: '#2d3436' }}>{cls.subject || 'Class Session'}</td>
                   <td style={{ padding: '12px', color: '#636e72' }}>{new Date(cls.startTime).toLocaleDateString()}</td>

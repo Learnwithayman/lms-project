@@ -1,59 +1,47 @@
 const asyncHandler = require('express-async-handler');
 const User = require('../models/User');
-const MakeupRequest = require('../models/MakeupRequest'); // ✨ NEW: Import the model
-const whatsappClient = require('../utils/whatsappBot');
+const MakeupRequest = require('../models/MakeupRequest');
 
-// @desc    Get student subscription & makeup summary
-// @route   GET /api/student/subscription-summary
-// @access  Private (Student)
 const getSubscriptionSummary = asyncHandler(async (req, res) => {
-  const user = await User.findById(req.user.id);
+  const user = await User.findById(req.user._id);
   
   if (!user) {
     res.status(404);
     throw new Error('User not found');
   }
 
-  const activeMakeups = user.makeupBank 
-    ? user.makeupBank.filter(m => !m.isUsed && new Date(m.expirationDate) > new Date()) 
-    : [];
+  const now = new Date();
+  
+  // Filter for valid, unused makeup credits
+  const activeMakeups = user.makeupBank ? user.makeupBank.filter(
+    (makeup) => !makeup.isUsed && new Date(makeup.expirationDate) > now
+  ) : [];
 
   res.status(200).json({
-    subscription: user.subscription,
+    subscription: user.subscription || { status: 'none', totalClassesBought: 0, classesUsed: 0 },
     makeupCount: activeMakeups.length,
-    activeMakeups: activeMakeups
+    activeMakeups: activeMakeups,
+    // ✨ NEW: Send the Study Plans and Reports to the frontend charts
+    monthlyReports: user.monthlyReports || [] 
   });
 });
 
-// @desc    Request a makeup class
-// @route   POST /api/student/request-makeup
-// @access  Private (Student)
 const requestMakeup = asyncHandler(async (req, res) => {
   const { originalDate, preferredDate, reason } = req.body;
-  const user = await User.findById(req.user.id);
 
-  if (!user) {
-    res.status(404);
-    throw new Error('User not found');
+  if (!originalDate || !preferredDate) {
+    res.status(400);
+    throw new Error('Please provide both the original missed date and your preferred makeup date.');
   }
 
-  // ✨ NEW: Save the request to the database so it shows up in the Admin Inbox
-  await MakeupRequest.create({
-    student: user._id,
+  const request = await MakeupRequest.create({
+    student: req.user._id,
     originalDate,
     preferredDate,
     reason
   });
 
-  const adminMessage = `🔔 *New Makeup Request*\n\n*Student:* ${user.name}\n*Original Missed Date:* ${new Date(originalDate).toLocaleDateString()}\n*Preferred Makeup Date:* ${new Date(preferredDate).toLocaleDateString()}\n*Reason:* ${reason || 'Not provided'}\n\nPlease check the admin dashboard to process this request.`;
-  
-  try {
-    await whatsappClient.sendMessage('BYFE1IPRs2KGJNhGaxvpJd', adminMessage); 
-  } catch (error) {
-    console.error('⚠️ Failed to send admin WhatsApp alert:', error.message);
-  }
-
-  res.status(200).json({ message: 'Makeup request submitted successfully! Admin will contact you shortly.' });
+  res.status(201).json(request);
 });
 
 module.exports = {

@@ -35,11 +35,11 @@ const userSchema = mongoose.Schema(
     ],
 
     // --- ASSIGNED TEACHERS (For Students) ---
-    assignedTeacher: { type: mongoose.Schema.Types.ObjectId, ref: 'User' }, // Legacy single teacher support
-    assignedTeachers: [{ type: mongoose.Schema.Types.ObjectId, ref: 'User' }], // NEW: Multi-teacher array
+    assignedTeacher: { type: mongoose.Schema.Types.ObjectId, ref: 'User' }, 
+    assignedTeachers: [{ type: mongoose.Schema.Types.ObjectId, ref: 'User' }], 
 
     // ==========================================
-    // ✨ NEW: SUBSCRIPTION & MAKEUP ENGINE 
+    // ✨ SUBSCRIPTION & MAKEUP ENGINE 
     // ==========================================
     subscription: {
       status: { 
@@ -59,6 +59,25 @@ const userSchema = mongoose.Schema(
         expirationDate: { type: Date, required: true }, 
         reason: { type: String }, 
         isUsed: { type: Boolean, default: false } 
+      }
+    ],
+
+    // ==========================================
+    // ✨ NEW: STUDY PLANS & MONTHLY REPORTS ENGINE
+    // ==========================================
+    monthlyReports: [
+      {
+        monthYear: { type: String, required: true }, // e.g., "September 2026"
+        quranPlan: { type: String, default: '' },
+        quranScore: { type: Number, default: null }, // e.g., out of 4
+        arabicPlan: { type: String, default: '' },
+        arabicScore: { type: Number, default: null }, // e.g., out of 3
+        islamicStudiesPlan: { type: String, default: '' },
+        islamicStudiesScore: { type: Number, default: null }, // e.g., out of 3
+        totalScore: { type: Number, default: null }, // out of 10
+        teacherNote: { type: String, default: '' },
+        isFinalized: { type: Boolean, default: false }, // false = Active Plan, true = Final Graded Report
+        createdAt: { type: Date, default: Date.now }
       }
     ]
   },
