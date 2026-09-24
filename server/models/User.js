@@ -93,8 +93,19 @@ const userSchema = mongoose.Schema(
         totalScore: { type: Number, default: null }, // Always out of 10
         teacherNote: { type: String, default: '' },
         isFinalized: { type: Boolean, default: false }, // false = Phase 1 Plan, true = Phase 2 Report
-        approvalStatus: { type: String, enum: ['pending', 'approved', 'rejected'], default: 'pending' }, // ✨ The Admin Gate Lock
+        approvalStatus: { type: String, enum: ['pending', 'approved', 'rejected'], default: 'pending' }, 
         createdAt: { type: Date, default: Date.now }
+      }
+    ],
+
+    // ==========================================
+    // ✨ LEGACY PDF VAULT
+    // ==========================================
+    legacyReports: [
+      {
+        monthYear: { type: String, required: true }, // e.g., "August 2026"
+        pdfLink: { type: String, required: true },   // Google Drive Link
+        addedAt: { type: Date, default: Date.now }
       }
     ]
   },

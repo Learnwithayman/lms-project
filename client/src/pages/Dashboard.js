@@ -242,7 +242,6 @@ function Dashboard() {
     }
   };
 
-  // ✨ NEW: Teacher Plan Submission
   const handleSavePlan = async (e) => {
     e.preventDefault();
     setIsSubmitting(true);
@@ -304,7 +303,6 @@ function Dashboard() {
     return Math.min(percentage, 100); 
   };
 
-  // ✨ NEW: Dynamic Math Engine for Grading Scenarios
   const getDynamicMaxScores = () => {
     let count = [planForm.quranEnrolled, planForm.arabicEnrolled, planForm.islamicEnrolled].filter(Boolean).length;
     if (count === 3) return { quran: 4, arabic: 3, islamic: 3 };
@@ -453,7 +451,13 @@ function Dashboard() {
       {/* ✨ NEW: STUDY PLANS & PROGRESS ANALYTICS (Parent View) */}
       {user?.role?.toLowerCase() !== 'teacher' && (
         <>
-          <h2 style={{ margin: '0 0 20px 0', borderBottom: '2px solid #f1f2f6', paddingBottom: '10px' }}>📈 Progress & Reports</h2>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '2px solid #f1f2f6', paddingBottom: '10px', marginBottom: '20px' }}>
+            <h2 style={{ margin: 0 }}>📈 Progress & Reports</h2>
+            <button onClick={() => navigate('/progress')} style={{ fontSize: '14px', padding: '8px 15px', backgroundColor: '#0984e3', color: 'white', border: 'none', borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold' }}>
+              View Full History
+            </button>
+          </div>
+          
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: '25px', marginBottom: '40px' }}>
             
             <div style={{ backgroundColor: 'white', padding: '20px', borderRadius: '15px', boxShadow: '0 5px 15px rgba(0,0,0,0.03)' }}>

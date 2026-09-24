@@ -7,14 +7,13 @@ import CreateUser from './pages/CreateUser';
 import ScheduleClass from './pages/ScheduleClass';
 import UserList from './pages/UserList';
 import AdminSchedule from './pages/AdminSchedule'; 
-import ProgressHub from './pages/ProgressHub';
-import AdminPayroll from './pages/AdminPayroll'; // <--- NEW IMPORT ADDED HERE
+import ProgressHistory from './pages/ProgressHistory'; // ✨ Updated to match the component we built
+import AdminPayroll from './pages/AdminPayroll'; 
 
 function App() {
   return (
     <Router>
       <Routes>
-        <Route path="/progress" element={<ProgressHub />} />
         <Route path="/" element={<Login />} />
         <Route path="/dashboard" element={<Dashboard />} />
         <Route path="/admin" element={<AdminDashboard />} />
@@ -22,7 +21,8 @@ function App() {
         <Route path="/schedule-class" element={<ScheduleClass />} />
         <Route path="/users" element={<UserList />} />
         <Route path="/all-classes" element={<AdminSchedule />} /> 
-        <Route path="/admin-payroll" element={<AdminPayroll />} /> {/* <--- NEW ROUTE ADDED HERE */}
+        <Route path="/admin-payroll" element={<AdminPayroll />} /> 
+        <Route path="/progress" element={<ProgressHistory />} /> {/* ✨ New Parent Hub Route */}
       </Routes>
     </Router>
   );

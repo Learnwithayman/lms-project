@@ -16,15 +16,20 @@ function AdminDashboard() {
   const [pendingMakeups, setPendingMakeups] = useState([]);
   const [loadingMakeups, setLoadingMakeups] = useState(true);
 
-  // ✨ NEW: Pending Reports States (Approval Gate)
+  // Pending Reports States (Approval Gate)
   const [pendingReports, setPendingReports] = useState([]);
   const [loadingReports, setLoadingReports] = useState(true);
   
-  // ✨ NEW: Rejection Modal State
+  // Rejection Modal State
   const [isRejectModalOpen, setIsRejectModalOpen] = useState(false);
   const [selectedReport, setSelectedReport] = useState(null);
   const [adminNotes, setAdminNotes] = useState('');
   const [isSubmittingReport, setIsSubmittingReport] = useState(false);
+
+  // ✨ NEW: Legacy PDF Vault States
+  const [studentsList, setStudentsList] = useState([]);
+  const [legacyForm, setLegacyForm] = useState({ studentId: '', monthYear: '', pdfLink: '' });
+  const [isSubmittingLegacy, setIsSubmittingLegacy] = useState(false);
 
   // State to handle the View Notes Modal
   const [viewNotesModal, setViewNotesModal] = useState({ isOpen: false, text: '', student: '' });
@@ -48,11 +53,54 @@ function AdminDashboard() {
       fetchLiveClasses(token);
       fetchMessageLogs(token);
       fetchPendingMakeups(token); 
-      fetchPendingReports(token); // 👈 Fetch pending reports on load
+      fetchPendingReports(token);
+      fetchStudents(token); // 👈 Fetch students for the Legacy Vault dropdown
     }
   }, [navigate]);
 
-  // ✨ FETCH PENDING REPORTS (Phase 1 & Phase 2)
+  const fetchStudents = async (token) => {
+    try {
+      const response = await fetch(`${process.env.REACT_APP_API_URL || 'https://lms-backend-02zs.onrender.com'}/api/users`, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      if (response.ok) {
+        const data = await response.json();
+        // Filter out only the students for the dropdown
+        setStudentsList(data.filter(u => u.role === 'student'));
+      }
+    } catch (error) {
+      console.error('Error fetching students:', error);
+    }
+  };
+
+  // ✨ HANDLE LEGACY PDF SUBMISSION
+  const handleLegacySubmit = async (e) => {
+    e.preventDefault();
+    setIsSubmittingLegacy(true);
+    try {
+      const token = localStorage.getItem('token');
+      const response = await fetch(`${process.env.REACT_APP_API_URL || 'https://lms-backend-02zs.onrender.com'}/api/admin/legacy-report`, {
+        method: 'POST',
+        headers: { 
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}` 
+        },
+        body: JSON.stringify(legacyForm)
+      });
+      
+      if (response.ok) {
+        alert('✅ Legacy PDF linked successfully! The parent can now view it in their Progress Hub.');
+        setLegacyForm({ studentId: '', monthYear: '', pdfLink: '' });
+      } else {
+        alert('❌ Failed to link legacy PDF. Ensure the backend route is active.');
+      }
+    } catch (error) {
+      console.error(error);
+    } finally {
+      setIsSubmittingLegacy(false);
+    }
+  };
+
   const fetchPendingReports = async (token) => {
     try {
       const response = await fetch(`${process.env.REACT_APP_API_URL || 'https://lms-backend-02zs.onrender.com'}/api/admin/pending-reports`, {
@@ -69,7 +117,6 @@ function AdminDashboard() {
     }
   };
 
-  // ✨ APPROVE REPORT HANDLER
   const handleApproveReport = async (studentId, monthYear) => {
     if (!window.confirm('Approve this report and publish it to the student dashboard?')) return;
     try {
@@ -93,7 +140,6 @@ function AdminDashboard() {
     }
   };
 
-  // ✨ REJECT REPORT HANDLER
   const handleRejectSubmit = async (e) => {
     e.preventDefault();
     setIsSubmittingReport(true);
@@ -357,7 +403,45 @@ function AdminDashboard() {
       </div>
 
       {/* ========================================== */}
-      {/* ✨ NEW: PENDING STUDY PLANS & REPORTS INBOX */}
+      {/* ✨ NEW: 📂 LEGACY PDF VAULT UPLOAD */}
+      {/* ========================================== */}
+      <div style={{ marginTop: '40px', backgroundColor: '#f8f9fa', padding: '25px', borderRadius: '12px', border: '1px solid #dfe6e9', boxShadow: '0 4px 15px rgba(0,0,0,0.05)' }}>
+        <h2 style={{ margin: '0 0 10px 0', color: '#2d3436', display: 'flex', alignItems: 'center', gap: '10px' }}>
+          📂 Legacy PDF Vault Linker
+        </h2>
+        <p style={{ color: '#636e72', margin: '0 0 20px 0', fontSize: '14px' }}>Paste a Google Drive link from an old report to permanently attach it to a student's profile.</p>
+        
+        <form onSubmit={handleLegacySubmit} style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '15px' }}>
+          <div style={{ gridColumn: '1 / -1' }}>
+            <label style={{ fontWeight: 'bold', fontSize: '14px', color: '#2d3436' }}>Select Student:</label>
+            <select required value={legacyForm.studentId} onChange={(e) => setLegacyForm({...legacyForm, studentId: e.target.value})} style={{ width: '100%', padding: '10px', marginTop: '5px', borderRadius: '6px', border: '1px solid #dfe6e9' }}>
+              <option value="">-- Choose a Student --</option>
+              {studentsList.map(s => (
+                <option key={s._id} value={s._id}>{s.name} ({s.email})</option>
+              ))}
+            </select>
+          </div>
+          
+          <div>
+            <label style={{ fontWeight: 'bold', fontSize: '14px', color: '#2d3436' }}>Month & Year:</label>
+            <input required type="text" placeholder="e.g., August 2026" value={legacyForm.monthYear} onChange={(e) => setLegacyForm({...legacyForm, monthYear: e.target.value})} style={{ width: '100%', padding: '10px', marginTop: '5px', borderRadius: '6px', border: '1px solid #dfe6e9', boxSizing: 'border-box' }} />
+          </div>
+
+          <div>
+            <label style={{ fontWeight: 'bold', fontSize: '14px', color: '#2d3436' }}>Google Drive Link:</label>
+            <input required type="url" placeholder="https://drive.google.com/..." value={legacyForm.pdfLink} onChange={(e) => setLegacyForm({...legacyForm, pdfLink: e.target.value})} style={{ width: '100%', padding: '10px', marginTop: '5px', borderRadius: '6px', border: '1px solid #dfe6e9', boxSizing: 'border-box' }} />
+          </div>
+
+          <div style={{ gridColumn: '1 / -1', marginTop: '10px' }}>
+            <button type="submit" disabled={isSubmittingLegacy} style={{ width: '100%', padding: '12px', backgroundColor: '#6c5ce7', color: 'white', border: 'none', borderRadius: '8px', fontWeight: 'bold', cursor: 'pointer', transition: 'all 0.2s' }}>
+              {isSubmittingLegacy ? 'Linking PDF...' : '🔗 Attach PDF to Student Vault'}
+            </button>
+          </div>
+        </form>
+      </div>
+
+      {/* ========================================== */}
+      {/* PENDING STUDY PLANS & REPORTS INBOX */}
       {/* ========================================== */}
       <div style={{ marginTop: '40px', backgroundColor: '#e8f4fd', padding: '20px', borderRadius: '8px', border: '1px solid #b6d4fe', color: '#004085' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
@@ -420,9 +504,7 @@ function AdminDashboard() {
         )}
       </div>
 
-      {/* ========================================== */}
-      {/* 📥 PENDING MAKEUP REQUESTS INBOX */}
-      {/* ========================================== */}
+      {/* PENDING MAKEUP REQUESTS INBOX */}
       <div style={{ marginTop: '40px', backgroundColor: '#fff3cd', padding: '20px', borderRadius: '8px', border: '1px solid #ffeeba', color: '#856404' }}>
         <h2 style={{ margin: 0, display: 'flex', alignItems: 'center', gap: '10px' }}>
           📥 Pending Makeup Requests
@@ -643,7 +725,7 @@ function AdminDashboard() {
         </div>
       )}
 
-      {/* ✨ NEW: REJECTION MODAL */}
+      {/* REJECTION MODAL */}
       {isRejectModalOpen && (
         <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.6)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 }}>
           <div style={{ backgroundColor: 'white', padding: '30px', borderRadius: '15px', width: '450px', color: '#2d3436' }}>

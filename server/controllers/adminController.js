@@ -56,7 +56,7 @@ const createSubscription = asyncHandler(async (req, res) => {
 });
 
 // ==========================================
-// ✨ NEW: APPROVAL GATE FUNCTIONS
+// ✨ APPROVAL GATE FUNCTIONS
 // ==========================================
 
 // @desc    Get all pending reports for Admin review
@@ -151,10 +151,33 @@ const rejectReport = asyncHandler(async (req, res) => {
   res.status(200).json({ message: 'Report rejected and teacher notified.', teacherMessage });
 });
 
+// ==========================================
+// ✨ NEW: LEGACY PDF VAULT FUNCTION
+// ==========================================
+// @desc    Add a Legacy PDF link to a student's vault
+// @route   POST /api/admin/legacy-report
+// @access  Private/Admin
+const addLegacyReport = asyncHandler(async (req, res) => {
+  const { studentId, monthYear, pdfLink } = req.body;
+
+  const user = await User.findById(studentId);
+  if (!user) {
+    res.status(404);
+    throw new Error('Student not found');
+  }
+
+  // Push the new legacy report link
+  user.legacyReports.push({ monthYear, pdfLink });
+  await user.save();
+
+  res.status(201).json({ message: 'Legacy report added successfully!', legacyReports: user.legacyReports });
+});
+
 module.exports = {
   updateTeacherRate,
   createSubscription,
   getPendingReports,
   approveReport,
-  rejectReport
+  rejectReport,
+  addLegacyReport
 };
