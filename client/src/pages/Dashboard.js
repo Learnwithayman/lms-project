@@ -264,7 +264,8 @@ function Dashboard() {
       setIsPlanModalOpen(false);
     } catch (error) {
       console.error('Error saving plan:', error);
-      alert('❌ Failed to save study plan. Ensure backend route is active.');
+      // ✨ SHOW THE EXACT DATABASE ERROR INSTEAD OF A GENERIC ONE
+      alert(error.response?.data?.message || '❌ Failed to save study plan. Ensure backend route is active.');
     } finally {
       setIsSubmitting(false);
     }

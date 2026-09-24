@@ -50,15 +50,25 @@ const requestMakeup = asyncHandler(async (req, res) => {
 const addOrUpdateReport = asyncHandler(async (req, res) => {
   const { studentIdentifier, monthYear, isFinalized, teacherNote, quran, arabic, islamicStudies } = req.body;
 
-  // Find student by name or group ID
+  if (!studentIdentifier) {
+    res.status(400);
+    throw new Error('No student identifier was found from the calendar event.');
+  }
+
+  const searchName = studentIdentifier.trim();
+
+  // 🧠 SMART SEARCH: Case-insensitive regex search to forgive minor typos
   const student = await User.findOne({
-    $or: [ { name: studentIdentifier }, { studentGroupId: studentIdentifier } ],
+    $or: [ 
+      { name: { $regex: new RegExp(`^${searchName}$`, 'i') } }, 
+      { studentGroupId: searchName } 
+    ],
     role: 'student'
   });
 
   if (!student) {
     res.status(404);
-    throw new Error('Student not found to attach report to.');
+    throw new Error(`❌ Database Error: Could not find a student named "${searchName}". Please check the student's exact name in the Admin Users tab.`);
   }
 
   // Calculate total score if finalized
@@ -108,5 +118,5 @@ module.exports = {
   getSubscriptionSummary,
   requestMakeup,
   addOrUpdateReport,
-  appealReport // 👈 NEW
+  appealReport 
 };
