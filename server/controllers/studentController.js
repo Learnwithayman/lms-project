@@ -114,9 +114,47 @@ const appealReport = asyncHandler(async (req, res) => {
   res.status(200).json({ message: 'Appeal submitted successfully', adminMessage });
 });
 
+// @desc    Get an existing report for a specific student and month
+// @route   GET /api/student/reports/:studentIdentifier/:monthYear
+// @access  Private (Teacher/Admin)
+const getExistingReport = asyncHandler(async (req, res) => {
+  const { studentIdentifier, monthYear } = req.params;
+
+  if (!studentIdentifier) {
+    res.status(400);
+    throw new Error('No student identifier provided.');
+  }
+
+  const searchName = studentIdentifier.trim();
+
+  // Smart Search to find the student
+  const student = await User.findOne({
+    $or: [ 
+      { name: { $regex: new RegExp(`^${searchName}$`, 'i') } }, 
+      { studentGroupId: searchName } 
+    ],
+    role: 'student'
+  });
+
+  if (!student) {
+    res.status(404);
+    throw new Error(`Could not find a student named "${searchName}".`);
+  }
+
+  // Look for the specific month's report
+  const report = student.monthlyReports.find(r => r.monthYear === monthYear);
+
+  if (!report) {
+    return res.status(200).json(null); // Return null if it doesn't exist yet
+  }
+
+  res.status(200).json(report);
+});
+
 module.exports = {
   getSubscriptionSummary,
   requestMakeup,
   addOrUpdateReport,
-  appealReport 
+  appealReport,
+  getExistingReport // 👈 NEW
 };

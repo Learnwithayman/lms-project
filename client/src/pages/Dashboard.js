@@ -6,7 +6,6 @@ import '../App.css';
 
 const API_URL = process.env.REACT_APP_API_URL || 'https://lms-backend-02zs.onrender.com';
 
-// ✨ NEW: The One-Click Feedback Dictionary
 const FEEDBACK_TEMPLATES = {
   "Commendation": {
     Standard: "Masha'Allah, excellent progress! Through dedicated effort and the tawfiq of Allah (SWT), all learning goals for the month were successfully completed. May Allah (SWT) continue to bless your efforts."
@@ -60,15 +59,16 @@ function Dashboard() {
   const [makeupRequestNotes, setMakeupRequestNotes] = useState('');
   const [isRequestingMakeup, setIsRequestingMakeup] = useState(false);
 
-  // ✨ NEW: Teacher Study Plan Modal State
+  // ✨ UPDATED: Teacher Study Plan Modal State (Added checklist & comments)
   const [isPlanModalOpen, setIsPlanModalOpen] = useState(false);
   const [planStudentIdentifier, setPlanStudentIdentifier] = useState('');
+  const [isLoadingPlan, setIsLoadingPlan] = useState(false);
   const [planForm, setPlanForm] = useState({
     monthYear: new Date().toLocaleString('default', { month: 'long', year: 'numeric' }),
     isFinalized: false, 
-    quranEnrolled: false, quranPlan: '', quranScore: '',
-    arabicEnrolled: false, arabicPlan: '', arabicScore: '',
-    islamicEnrolled: false, islamicPlan: '', islamicScore: '',
+    quranEnrolled: false, quranPlan: '', quranScore: '', quranCompleted: false, quranComment: '',
+    arabicEnrolled: false, arabicPlan: '', arabicScore: '', arabicCompleted: false, arabicComment: '',
+    islamicEnrolled: false, islamicPlan: '', islamicScore: '', islamicCompleted: false, islamicComment: '',
     teacherNote: '',
     templateCategory: '',
     templateSeverity: 'Minor'
@@ -132,6 +132,47 @@ function Dashboard() {
       setSubSummary(res.data);
     } catch (error) {
       console.error("Failed to fetch subscription summary:", error);
+    }
+  };
+
+  // ✨ NEW: Fetch the previously saved plan so the teacher doesn't have to retype it
+  const fetchExistingPlan = async () => {
+    setIsLoadingPlan(true);
+    try {
+      const token = localStorage.getItem('token');
+      const config = { headers: { Authorization: `Bearer ${token}` } };
+      const res = await axios.get(`${API_URL}/api/student/reports/${planStudentIdentifier}/${planForm.monthYear}`, config);
+      
+      if (res.data) {
+        const r = res.data;
+        setPlanForm(prev => ({
+          ...prev,
+          quranEnrolled: r.quran?.enrolled || false,
+          quranPlan: r.quran?.plan || '',
+          quranScore: r.quran?.score || '',
+          quranCompleted: r.quran?.completed || false,
+          quranComment: r.quran?.comment || '',
+          arabicEnrolled: r.arabic?.enrolled || false,
+          arabicPlan: r.arabic?.plan || '',
+          arabicScore: r.arabic?.score || '',
+          arabicCompleted: r.arabic?.completed || false,
+          arabicComment: r.arabic?.comment || '',
+          islamicEnrolled: r.islamicStudies?.enrolled || false,
+          islamicPlan: r.islamicStudies?.plan || '',
+          islamicScore: r.islamicStudies?.score || '',
+          islamicCompleted: r.islamicStudies?.completed || false,
+          islamicComment: r.islamicStudies?.comment || '',
+          teacherNote: r.teacherNote || '',
+        }));
+        alert(`✅ Found existing plan for ${planForm.monthYear}!`);
+      } else {
+        alert('ℹ️ No existing plan found for this month.');
+      }
+    } catch (error) {
+      console.error(error);
+      alert(error.response?.data?.message || '❌ Could not fetch the plan. We need to add the GET route to the backend!');
+    } finally {
+      setIsLoadingPlan(false);
     }
   };
 
@@ -254,9 +295,9 @@ function Dashboard() {
         monthYear: planForm.monthYear,
         isFinalized: planForm.isFinalized,
         teacherNote: planForm.teacherNote,
-        quran: { enrolled: planForm.quranEnrolled, plan: planForm.quranPlan, score: planForm.quranScore, maxPossible: maxScores.quran },
-        arabic: { enrolled: planForm.arabicEnrolled, plan: planForm.arabicPlan, score: planForm.arabicScore, maxPossible: maxScores.arabic },
-        islamicStudies: { enrolled: planForm.islamicEnrolled, plan: planForm.islamicPlan, score: planForm.islamicScore, maxPossible: maxScores.islamic }
+        quran: { enrolled: planForm.quranEnrolled, plan: planForm.quranPlan, score: planForm.quranScore, maxPossible: maxScores.quran, completed: planForm.quranCompleted, comment: planForm.quranComment },
+        arabic: { enrolled: planForm.arabicEnrolled, plan: planForm.arabicPlan, score: planForm.arabicScore, maxPossible: maxScores.arabic, completed: planForm.arabicCompleted, comment: planForm.arabicComment },
+        islamicStudies: { enrolled: planForm.islamicEnrolled, plan: planForm.islamicPlan, score: planForm.islamicScore, maxPossible: maxScores.islamic, completed: planForm.islamicCompleted, comment: planForm.islamicComment }
       };
 
       await axios.post(`${API_URL}/api/student/reports`, payload, config);
@@ -264,7 +305,6 @@ function Dashboard() {
       setIsPlanModalOpen(false);
     } catch (error) {
       console.error('Error saving plan:', error);
-      // ✨ SHOW THE EXACT DATABASE ERROR INSTEAD OF A GENERIC ONE
       alert(error.response?.data?.message || '❌ Failed to save study plan. Ensure backend route is active.');
     } finally {
       setIsSubmitting(false);
@@ -331,7 +371,6 @@ function Dashboard() {
     score: r.totalScore
   }));
 
-  // ✨ FIXED: selectedClass pulled out of calculateProgress so the modal can access it
   const selectedClass = classes.find(c => (c.id === currentClassId || c._id === currentClassId));
 
   return (
@@ -542,7 +581,7 @@ function Dashboard() {
                     <p style={{ margin: '0 0 15px 0', color: '#636e72' }}><strong>⏰ Time:</strong> {new Date(cls.startTime).toLocaleString(undefined, { weekday: 'long', month: 'long', day: 'numeric', hour: '2-digit', minute: '2-digit' })}</p>
                   </div>
                   
-                  {/* ✨ NEW: "Manage Plan" Button for Teachers */}
+                  {/* ✨ "Manage Plan" Button for Teachers */}
                   {user?.role?.toLowerCase() === 'teacher' && (
                     <button 
                       onClick={() => {
@@ -631,11 +670,19 @@ function Dashboard() {
         )}
       </div>
 
-      {/* ✨ NEW: TEACHER STUDY PLAN MODAL */}
+      {/* ✨ UPDATED: TEACHER STUDY PLAN MODAL (Checklist Workflow) */}
       {isPlanModalOpen && (
         <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.6)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 }}>
           <div style={{ backgroundColor: 'white', padding: '30px', borderRadius: '15px', width: '600px', maxHeight: '90vh', overflowY: 'auto', color: '#2d3436' }}>
-            <h2 style={{ margin: '0 0 20px 0', borderBottom: '2px solid #f1f2f6', paddingBottom: '10px' }}>📝 Manage Monthly Study Plan</h2>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '2px solid #f1f2f6', paddingBottom: '10px', marginBottom: '20px' }}>
+              <h2 style={{ margin: 0 }}>📝 Manage Monthly Study Plan</h2>
+              <button 
+                onClick={fetchExistingPlan} 
+                disabled={isLoadingPlan}
+                style={{ backgroundColor: '#3498db', color: 'white', border: 'none', padding: '6px 12px', borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold' }}>
+                {isLoadingPlan ? 'Loading...' : '🔄 Load Existing Plan'}
+              </button>
+            </div>
             
             <form onSubmit={handleSavePlan} style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
               
@@ -662,12 +709,28 @@ function Dashboard() {
               {/* QURAN FIELD */}
               {planForm.quranEnrolled && (
                 <div style={{ borderLeft: '4px solid #6c5ce7', paddingLeft: '15px' }}>
-                  <label style={{ fontWeight: 'bold' }}>Quran Plan:</label>
-                  <input type="text" value={planForm.quranPlan} onChange={(e) => setPlanForm({...planForm, quranPlan: e.target.value})} placeholder="e.g., Memorize Surah An-Naba 1-10" style={{ width: '100%', padding: '8px', marginBottom: '10px', border: '1px solid #dfe6e9', borderRadius: '4px' }} />
-                  {planForm.isFinalized && (
-                    <>
-                      <label style={{ fontWeight: 'bold' }}>Score (out of {maxScores.quran}):</label>
+                  {planForm.isFinalized ? (
+                    <div style={{ backgroundColor: '#f8f9fa', padding: '15px', borderRadius: '8px', marginBottom: '10px' }}>
+                      <h4 style={{ margin: '0 0 10px 0', color: '#6c5ce7' }}>📖 Quran Assessment</h4>
+                      
+                      <label style={{ fontWeight: 'bold', fontSize: '13px' }}>Target Plan:</label>
+                      <input type="text" value={planForm.quranPlan} onChange={(e) => setPlanForm({...planForm, quranPlan: e.target.value})} placeholder="e.g., Memorize Surah An-Naba 1-10" style={{ width: '100%', padding: '8px', marginBottom: '10px', border: '1px solid #dfe6e9', borderRadius: '4px', backgroundColor: '#fff' }} />
+
+                      <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', marginBottom: '10px' }}>
+                        <input type="checkbox" checked={planForm.quranCompleted} onChange={(e) => setPlanForm({...planForm, quranCompleted: e.target.checked})} style={{ transform: 'scale(1.2)' }} />
+                        <span style={{ fontWeight: 'bold', color: '#2d3436' }}>☑ All goals completed successfully</span>
+                      </label>
+
+                      <label style={{ fontWeight: 'bold', fontSize: '13px' }}>Subject Notes (Optional):</label>
+                      <input type="text" placeholder="e.g., Struggled slightly with Tajweed rules..." value={planForm.quranComment} onChange={(e) => setPlanForm({...planForm, quranComment: e.target.value})} style={{ width: '100%', padding: '8px', marginBottom: '10px', border: '1px solid #dfe6e9', borderRadius: '4px' }} />
+
+                      <label style={{ fontWeight: 'bold', fontSize: '13px' }}>Score (out of {maxScores.quran}):</label>
                       <input type="number" step="0.5" max={maxScores.quran} value={planForm.quranScore} onChange={(e) => setPlanForm({...planForm, quranScore: e.target.value})} style={{ width: '100%', padding: '8px', border: '1px solid #dfe6e9', borderRadius: '4px' }} />
+                    </div>
+                  ) : (
+                    <>
+                      <label style={{ fontWeight: 'bold' }}>Quran Draft Plan:</label>
+                      <input type="text" value={planForm.quranPlan} onChange={(e) => setPlanForm({...planForm, quranPlan: e.target.value})} placeholder="e.g., Memorize Surah An-Naba 1-10" style={{ width: '100%', padding: '8px', marginBottom: '10px', border: '1px solid #dfe6e9', borderRadius: '4px' }} />
                     </>
                   )}
                 </div>
@@ -676,12 +739,28 @@ function Dashboard() {
               {/* ARABIC FIELD */}
               {planForm.arabicEnrolled && (
                 <div style={{ borderLeft: '4px solid #00b894', paddingLeft: '15px' }}>
-                  <label style={{ fontWeight: 'bold' }}>Arabic Plan:</label>
-                  <input type="text" value={planForm.arabicPlan} onChange={(e) => setPlanForm({...planForm, arabicPlan: e.target.value})} placeholder="e.g., Complete Lesson 10" style={{ width: '100%', padding: '8px', marginBottom: '10px', border: '1px solid #dfe6e9', borderRadius: '4px' }} />
-                  {planForm.isFinalized && (
-                    <>
-                      <label style={{ fontWeight: 'bold' }}>Score (out of {maxScores.arabic}):</label>
+                  {planForm.isFinalized ? (
+                    <div style={{ backgroundColor: '#f8f9fa', padding: '15px', borderRadius: '8px', marginBottom: '10px' }}>
+                      <h4 style={{ margin: '0 0 10px 0', color: '#00b894' }}>🗣️ Arabic Assessment</h4>
+                      
+                      <label style={{ fontWeight: 'bold', fontSize: '13px' }}>Target Plan:</label>
+                      <input type="text" value={planForm.arabicPlan} onChange={(e) => setPlanForm({...planForm, arabicPlan: e.target.value})} placeholder="e.g., Complete Lesson 10" style={{ width: '100%', padding: '8px', marginBottom: '10px', border: '1px solid #dfe6e9', borderRadius: '4px', backgroundColor: '#fff' }} />
+
+                      <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', marginBottom: '10px' }}>
+                        <input type="checkbox" checked={planForm.arabicCompleted} onChange={(e) => setPlanForm({...planForm, arabicCompleted: e.target.checked})} style={{ transform: 'scale(1.2)' }} />
+                        <span style={{ fontWeight: 'bold', color: '#2d3436' }}>☑ All goals completed successfully</span>
+                      </label>
+
+                      <label style={{ fontWeight: 'bold', fontSize: '13px' }}>Subject Notes (Optional):</label>
+                      <input type="text" placeholder="e.g., Needs to focus more on vocabulary..." value={planForm.arabicComment} onChange={(e) => setPlanForm({...planForm, arabicComment: e.target.value})} style={{ width: '100%', padding: '8px', marginBottom: '10px', border: '1px solid #dfe6e9', borderRadius: '4px' }} />
+
+                      <label style={{ fontWeight: 'bold', fontSize: '13px' }}>Score (out of {maxScores.arabic}):</label>
                       <input type="number" step="0.5" max={maxScores.arabic} value={planForm.arabicScore} onChange={(e) => setPlanForm({...planForm, arabicScore: e.target.value})} style={{ width: '100%', padding: '8px', border: '1px solid #dfe6e9', borderRadius: '4px' }} />
+                    </div>
+                  ) : (
+                    <>
+                      <label style={{ fontWeight: 'bold' }}>Arabic Draft Plan:</label>
+                      <input type="text" value={planForm.arabicPlan} onChange={(e) => setPlanForm({...planForm, arabicPlan: e.target.value})} placeholder="e.g., Complete Lesson 10" style={{ width: '100%', padding: '8px', marginBottom: '10px', border: '1px solid #dfe6e9', borderRadius: '4px' }} />
                     </>
                   )}
                 </div>
@@ -690,12 +769,28 @@ function Dashboard() {
               {/* ISLAMIC STUDIES FIELD */}
               {planForm.islamicEnrolled && (
                 <div style={{ borderLeft: '4px solid #fdcb6e', paddingLeft: '15px' }}>
-                  <label style={{ fontWeight: 'bold' }}>Islamic Studies Plan:</label>
-                  <input type="text" value={planForm.islamicPlan} onChange={(e) => setPlanForm({...planForm, islamicPlan: e.target.value})} placeholder="e.g., Pages 40-45" style={{ width: '100%', padding: '8px', marginBottom: '10px', border: '1px solid #dfe6e9', borderRadius: '4px' }} />
-                  {planForm.isFinalized && (
-                    <>
-                      <label style={{ fontWeight: 'bold' }}>Score (out of {maxScores.islamic}):</label>
+                  {planForm.isFinalized ? (
+                    <div style={{ backgroundColor: '#f8f9fa', padding: '15px', borderRadius: '8px', marginBottom: '10px' }}>
+                      <h4 style={{ margin: '0 0 10px 0', color: '#fdcb6e' }}>🕌 Islamic Studies Assessment</h4>
+                      
+                      <label style={{ fontWeight: 'bold', fontSize: '13px' }}>Target Plan:</label>
+                      <input type="text" value={planForm.islamicPlan} onChange={(e) => setPlanForm({...planForm, islamicPlan: e.target.value})} placeholder="e.g., Pages 40-45" style={{ width: '100%', padding: '8px', marginBottom: '10px', border: '1px solid #dfe6e9', borderRadius: '4px', backgroundColor: '#fff' }} />
+
+                      <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', marginBottom: '10px' }}>
+                        <input type="checkbox" checked={planForm.islamicCompleted} onChange={(e) => setPlanForm({...planForm, islamicCompleted: e.target.checked})} style={{ transform: 'scale(1.2)' }} />
+                        <span style={{ fontWeight: 'bold', color: '#2d3436' }}>☑ All goals completed successfully</span>
+                      </label>
+
+                      <label style={{ fontWeight: 'bold', fontSize: '13px' }}>Subject Notes (Optional):</label>
+                      <input type="text" placeholder="e.g., Excellent understanding of the stories..." value={planForm.islamicComment} onChange={(e) => setPlanForm({...planForm, islamicComment: e.target.value})} style={{ width: '100%', padding: '8px', marginBottom: '10px', border: '1px solid #dfe6e9', borderRadius: '4px' }} />
+
+                      <label style={{ fontWeight: 'bold', fontSize: '13px' }}>Score (out of {maxScores.islamic}):</label>
                       <input type="number" step="0.5" max={maxScores.islamic} value={planForm.islamicScore} onChange={(e) => setPlanForm({...planForm, islamicScore: e.target.value})} style={{ width: '100%', padding: '8px', border: '1px solid #dfe6e9', borderRadius: '4px' }} />
+                    </div>
+                  ) : (
+                    <>
+                      <label style={{ fontWeight: 'bold' }}>Islamic Studies Draft Plan:</label>
+                      <input type="text" value={planForm.islamicPlan} onChange={(e) => setPlanForm({...planForm, islamicPlan: e.target.value})} placeholder="e.g., Pages 40-45" style={{ width: '100%', padding: '8px', marginBottom: '10px', border: '1px solid #dfe6e9', borderRadius: '4px' }} />
                     </>
                   )}
                 </div>
@@ -704,7 +799,7 @@ function Dashboard() {
               {/* ⚡ ONE-CLICK FEEDBACK ENGINE */}
               {planForm.isFinalized && (
                 <div style={{ backgroundColor: '#e8f4fd', padding: '15px', borderRadius: '8px' }}>
-                  <label style={{ fontWeight: 'bold', fontSize: '14px', color: '#0984e3' }}>⚡ Quick-Insert Feedback Template</label>
+                  <label style={{ fontWeight: 'bold', fontSize: '14px', color: '#0984e3' }}>⚡ Quick-Insert General Feedback Template</label>
                   <div style={{ display: 'flex', gap: '10px', marginTop: '10px' }}>
                     <select value={planForm.templateCategory} onChange={(e) => setPlanForm({...planForm, templateCategory: e.target.value})} style={{ flex: 2, padding: '8px', borderRadius: '4px', border: '1px solid #dfe6e9' }}>
                       <option value="">-- Select Category --</option>
@@ -724,7 +819,7 @@ function Dashboard() {
                   <textarea 
                     value={planForm.teacherNote} 
                     onChange={(e) => setPlanForm({...planForm, teacherNote: e.target.value})} 
-                    placeholder="Final Teacher Report & Notes..." 
+                    placeholder="Final Overall Teacher Report..." 
                     style={{ width: '100%', height: '120px', marginTop: '15px', padding: '10px', boxSizing: 'border-box', borderRadius: '4px', border: '1px solid #dfe6e9' }} 
                   />
                 </div>
