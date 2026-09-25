@@ -151,7 +151,7 @@ function UserList() {
     }
   };
 
-  // ⚡ 2-Phase Auto-Sync Wallet Handler
+  // ⚡ BUTTON 1: Auto-Count Past Classes
   const handleAutoSyncWallet = async () => {
     if (!subEnd) {
       alert('Please select an End Date first so the system knows which period to calculate!');
@@ -165,7 +165,8 @@ function UserList() {
       const res = await axios.post(`${API_URL}/api/users/${selectedStudent._id}/sync-wallet`, {
         startDate: subStart || new Date().toISOString().split('T')[0],
         endDate: subEnd,
-        totalClassesBought: subTotal
+        totalClassesBought: subTotal,
+        resetZero: false
       }, config);
 
       setSubTotal(res.data.subscription.totalClassesBought);
@@ -177,6 +178,34 @@ function UserList() {
     } catch (error) {
       console.error(error);
       alert('❌ Failed to auto-sync wallet from calendar.');
+    } finally {
+      setIsSubUpdating(false);
+    }
+  };
+
+  // 🔄 BUTTON 2: Reset Completed to 0 (All Upcoming)
+  const handleResetCompletedToZero = async () => {
+    setIsSubUpdating(true);
+    try {
+      const token = localStorage.getItem('token');
+      const config = { headers: { Authorization: `Bearer ${token}` } };
+      
+      const res = await axios.post(`${API_URL}/api/users/${selectedStudent._id}/sync-wallet`, {
+        startDate: subStart || new Date().toISOString().split('T')[0],
+        endDate: subEnd,
+        totalClassesBought: subTotal,
+        resetZero: true
+      }, config);
+
+      setSubTotal(res.data.subscription.totalClassesBought);
+      setSubUsed(0);
+      setSubStatus('active');
+
+      alert('✅ Reset Successful! Phase 1 (Classes Completed) is now set to 0.');
+      fetchUsers();
+    } catch (error) {
+      console.error(error);
+      alert('❌ Failed to reset completed classes.');
     } finally {
       setIsSubUpdating(false);
     }
@@ -523,14 +552,23 @@ function UserList() {
             <div style={{ backgroundColor: '#eef2f5', padding: '20px', borderRadius: '8px', marginBottom: '20px' }}>
               <h3 style={{ margin: '0 0 15px 0', color: '#2c3e50', borderBottom: '1px solid #ccc', paddingBottom: '10px' }}>⚙️ Manage Subscription</h3>
               
-              {/* ✨ AUTO-COUNT BUTTON */}
-              <button 
-                type="button" 
-                onClick={handleAutoSyncWallet}
-                disabled={isSubUpdating}
-                style={{ width: '100%', padding: '10px', backgroundColor: '#8e44ad', color: 'white', border: 'none', borderRadius: '5px', cursor: 'pointer', fontWeight: 'bold', marginBottom: '15px' }}>
-                {isSubUpdating ? 'Syncing...' : '⚡ Auto-Count Classes from Calendar'}
-              </button>
+              {/* ✨ 2 ACTION BUTTONS */}
+              <div style={{ display: 'flex', gap: '10px', marginBottom: '15px' }}>
+                <button 
+                  type="button" 
+                  onClick={handleAutoSyncWallet}
+                  disabled={isSubUpdating}
+                  style={{ flex: 1, padding: '10px', backgroundColor: '#8e44ad', color: 'white', border: 'none', borderRadius: '5px', cursor: 'pointer', fontWeight: 'bold', fontSize: '12px' }}>
+                  {isSubUpdating ? 'Syncing...' : '⚡ Auto-Count Past Classes'}
+                </button>
+                <button 
+                  type="button" 
+                  onClick={handleResetCompletedToZero}
+                  disabled={isSubUpdating}
+                  style={{ flex: 1, padding: '10px', backgroundColor: '#e67e22', color: 'white', border: 'none', borderRadius: '5px', cursor: 'pointer', fontWeight: 'bold', fontSize: '12px' }}>
+                  🔄 Reset Completed to 0
+                </button>
+              </div>
 
               {/* ✨ 2-PHASE VISUAL BREAKDOWN */}
               <div style={{ display: 'flex', gap: '10px', marginBottom: '15px' }}>

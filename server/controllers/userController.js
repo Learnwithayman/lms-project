@@ -173,12 +173,10 @@ const updateSubscription = asyncHandler(async (req, res) => {
   res.status(200).json({ message: 'Subscription updated successfully!', user });
 });
 
-// ⚡ 2-PHASE CALCULATION ENGINE
-// Phase 1: Classes Done (Start Date -> TODAY)
-// Phase 2: Classes Remaining (TODAY -> End Date)
+// ⚡ STRICT 2-PHASE CALCULATION ENGINE
 const syncStudentWallet = asyncHandler(async (req, res) => {
   const { id } = req.params;
-  const { startDate, endDate, totalClassesBought: inputTotal } = req.body;
+  const { startDate, endDate, totalClassesBought: inputTotal, resetZero } = req.body;
 
   const student = await User.findById(id);
   if (!student) {
@@ -198,8 +196,8 @@ const syncStudentWallet = asyncHandler(async (req, res) => {
   const studentFirstName = studentFullName.split(' ')[0];
   const studentGroupId = (student.studentGroupId || '').toLowerCase().trim();
 
-  let phase1Done = 0;      // Start Date -> NOW
-  let phase2Remaining = 0; // NOW -> End Date
+  let phase1Done = 0;      // Past classes (Start Date -> TODAY)
+  let phase2Remaining = 0; // Future classes (TODAY -> End Date)
 
   try {
     const response = await calendar.events.list({
@@ -228,12 +226,10 @@ const syncStudentWallet = asyncHandler(async (req, res) => {
 
         const eventTime = new Date(rawTime).getTime();
 
-        // Phase 1: Past classes (Start Date -> Today)
+        // Strict comparison against server current time
         if (eventTime < now.getTime()) {
           phase1Done++;
-        } 
-        // Phase 2: Remaining classes (Today -> End Date)
-        else {
+        } else {
           phase2Remaining++;
         }
       }
@@ -243,13 +239,18 @@ const syncStudentWallet = asyncHandler(async (req, res) => {
     console.error("Google Calendar Auto-Sync Error:", err.message);
   }
 
+  // If resetZero is triggered, explicitly force Phase 1 = 0
+  if (resetZero) {
+    phase1Done = 0;
+  }
+
   const calendarTotal = phase1Done + phase2Remaining;
   const finalTotal = Number(inputTotal) > 0 ? Number(inputTotal) : calendarTotal;
 
   student.subscription = {
     status: 'active',
     totalClassesBought: finalTotal,
-    classesUsed: phase1Done, // Set to Phase 1 count (0 for future schedules)
+    classesUsed: phase1Done,
     startDate: start,
     endDate: end
   };
@@ -257,7 +258,9 @@ const syncStudentWallet = asyncHandler(async (req, res) => {
   await student.save();
 
   res.status(200).json({
-    message: `⚡ 2-Phase Auto-Sync Complete!\n\n• Phase 1 (Classes Completed): ${phase1Done}\n• Phase 2 (Classes Remaining): ${phase2Remaining}\n• Total Package: ${finalTotal}`,
+    message: resetZero 
+      ? `✅ Reset Complete!\n\n• Phase 1 (Classes Completed): 0\n• Phase 2 (Classes Remaining): ${finalTotal}\n• Total Package: ${finalTotal}`
+      : `⚡ 2-Phase Auto-Sync Complete!\n\n• Phase 1 (Classes Completed): ${phase1Done}\n• Phase 2 (Classes Remaining): ${phase2Remaining}\n• Total Package: ${finalTotal}`,
     subscription: student.subscription,
     phase1Done,
     phase2Remaining
