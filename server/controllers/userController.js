@@ -160,8 +160,8 @@ const updateSubscription = asyncHandler(async (req, res) => {
   res.status(200).json({ message: 'Subscription updated successfully!', user });
 });
 
-// ✨ FIX: Auto-count student classes safely without crashing
-// @desc    Auto-count student classes from Class Logs
+// ✨ UPDATED: Auto-count student classes (Past dates = Completed, Future dates = Upcoming)
+// @desc    Auto-count student classes from Google Calendar
 // @route   POST /api/users/:id/sync-wallet
 // @access  Private (Admin)
 const syncStudentWallet = asyncHandler(async (req, res) => {
@@ -176,14 +176,39 @@ const syncStudentWallet = asyncHandler(async (req, res) => {
 
   const start = startDate ? new Date(startDate) : new Date();
   const end = endDate ? new Date(endDate) : new Date(start.getTime() + 28 * 24 * 60 * 60 * 1000);
+  const now = new Date();
 
   const studentNameLower = (student.name || '').toLowerCase().trim();
+  const studentGroupIdLower = (student.studentGroupId || '').toLowerCase().trim();
 
-  let classesUsed = 0;
-  // Keep whatever total classes the admin already typed in, default to 0 if blank
-  let totalClassesBought = student.subscription?.totalClassesBought || 0;
+  let totalClasses = 0;
+  let completedClasses = 0;
 
-  // Safely attempt to count completed classes from the database
+  // 1. Try pulling live classes from Google Calendar helper
+  try {
+    const calendarUtil = require('../utils/googleCalendar'); 
+    if (calendarUtil && typeof calendarUtil.getCalendarEvents === 'function') {
+      const events = await calendarUtil.getCalendarEvents(start, end);
+      
+      const studentEvents = events.filter(evt => {
+        const title = (evt.summary || evt.title || '').toLowerCase();
+        return (studentNameLower && title.includes(studentNameLower)) || 
+               (studentGroupIdLower && title.includes(studentGroupIdLower));
+      });
+
+      totalClasses = studentEvents.length;
+      
+      // Past classes = Completed, Future classes = Pending
+      completedClasses = studentEvents.filter(evt => {
+        const eventTime = new Date(evt.start?.dateTime || evt.start || evt.startTime);
+        return eventTime < now;
+      }).length;
+    }
+  } catch (err) {
+    console.log("Calendar sync notice:", err.message);
+  }
+
+  // 2. Fallback: Check MongoDB ClassLog
   try {
     const ClassLog = require('../models/ClassLog');
     const completedLogs = await ClassLog.find({
@@ -194,15 +219,19 @@ const syncStudentWallet = asyncHandler(async (req, res) => {
       status: 'completed',
       startTime: { $gte: start,$lte: end }
     });
-    classesUsed = completedLogs.length;
+    if (completedLogs.length > completedClasses) {
+      completedClasses = completedLogs.length;
+    }
   } catch (err) {
-    console.log("ClassLog model missing or query skipped:", err.message);
+    console.log("ClassLog query notice:", err.message);
   }
+
+  const finalTotal = totalClasses > 0 ? totalClasses : (student.subscription?.totalClassesBought || 0);
 
   student.subscription = {
     status: 'active',
-    totalClassesBought: totalClassesBought,
-    classesUsed: classesUsed,
+    totalClassesBought: finalTotal,
+    classesUsed: completedClasses,
     startDate: start,
     endDate: end
   };
@@ -274,7 +303,7 @@ module.exports = {
   testGroupMessage, 
   createAdminInstantly,
   updateSubscription,
-  syncStudentWallet, // 👈 EXPORTED HERE
+  syncStudentWallet,
   getMyStudents,
   assignTeachers,
   updateUserProfile
