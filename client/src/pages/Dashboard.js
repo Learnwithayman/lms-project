@@ -940,7 +940,7 @@ function Dashboard() {
           <p style={{ margin: 0, color: '#b2bec3', fontSize: '14px' }}>Our admin team is here to help with billing, scheduling, or technical support.</p>
         </div>
         <div style={{ display: 'flex', gap: '15px' }}>
-          <a href="https://wa.me/201012345678" target="_blank" rel="noopener noreferrer" style={{ textDecoration: 'none' }}>
+          <a href="https://wa.me/201064067519" target="_blank" rel="noopener noreferrer" style={{ textDecoration: 'none' }}>
             <button style={{ backgroundColor: '#25D366', color: 'white', padding: '10px 20px', border: 'none', borderRadius: '8px', cursor: 'pointer', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '8px' }}>
               💬 WhatsApp Admin
             </button>
