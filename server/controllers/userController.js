@@ -174,13 +174,15 @@ const updateSubscription = asyncHandler(async (req, res) => {
   res.status(200).json({ message: 'Subscription updated successfully!', user });
 });
 
-// ⚡ STRICT PAST VS FUTURE DATE CALCULATION
+// ⚡ 2-PHASE AUTO-COUNT ENGINE
+// Phase 1: Start Date -> NOW (Classes Done)
+// Phase 2: NOW -> End Date (Classes Remaining)
 // @desc    Auto-count student classes directly from Google Calendar
 // @route   POST /api/users/:id/sync-wallet
 // @access  Private (Admin)
 const syncStudentWallet = asyncHandler(async (req, res) => {
   const { id } = req.params;
-  const { startDate, endDate } = req.body;
+  const { startDate, endDate, totalClassesBought: inputTotal } = req.body;
 
   const student = await User.findById(id);
   if (!student) {
@@ -188,11 +190,9 @@ const syncStudentWallet = asyncHandler(async (req, res) => {
     throw new Error('Student not found');
   }
 
-  // Parse start as beginning of the day (00:00:00)
   const start = startDate ? new Date(startDate) : new Date();
   start.setHours(0, 0, 0, 0);
 
-  // Parse end as end of the day (23:59:59)
   const end = endDate ? new Date(endDate) : new Date(start.getTime() + 28 * 24 * 60 * 60 * 1000);
   end.setHours(23, 59, 59, 999);
 
@@ -202,9 +202,8 @@ const syncStudentWallet = asyncHandler(async (req, res) => {
   const studentFirstName = studentFullName.split(' ')[0];
   const studentGroupId = (student.studentGroupId || '').toLowerCase().trim();
 
-  let totalClasses = 0;
-  let completedClasses = 0;
-  let upcomingClasses = 0;
+  let classesDone = 0;      // Phase 1: Start Date to NOW
+  let classesRemaining = 0; // Phase 2: NOW to End Date
 
   try {
     const response = await calendar.events.list({
@@ -217,8 +216,8 @@ const syncStudentWallet = asyncHandler(async (req, res) => {
 
     const events = response.data.items || [];
 
-    const matchedEvents = events.filter(evt => {
-      if (evt.status === 'cancelled') return false;
+    events.forEach(evt => {
+      if (evt.status === 'cancelled') return;
 
       const summary = (evt.summary || '').toLowerCase();
       const description = (evt.description || '').toLowerCase();
@@ -227,21 +226,21 @@ const syncStudentWallet = asyncHandler(async (req, res) => {
       const matchesFirstName = studentFirstName && studentFirstName.length >= 3 && (summary.includes(studentFirstName) || description.includes(studentFirstName));
       const matchesGroupId = studentGroupId && studentGroupId.length > 3 && description.includes(studentGroupId);
 
-      return matchesFullName || matchesFirstName || matchesGroupId;
-    });
+      if (matchesFullName || matchesFirstName || matchesGroupId) {
+        const rawTime = evt.start?.dateTime || evt.start?.date;
+        if (!rawTime) return;
 
-    totalClasses = matchedEvents.length;
+        const eventTime = new Date(rawTime).getTime();
+        const nowTime = now.getTime();
 
-    // Strict evaluation against current timestamp
-    matchedEvents.forEach(evt => {
-      const rawTime = evt.start?.dateTime || evt.start?.date;
-      if (!rawTime) return;
-
-      const eventDate = new Date(rawTime);
-      if (eventDate.getTime() < now.getTime()) {
-        completedClasses++;
-      } else {
-        upcomingClasses++;
+        // Phase 1: Past classes (Start Date -> NOW)
+        if (eventTime < nowTime) {
+          classesDone++;
+        } 
+        // Phase 2: Future classes (NOW -> End Date)
+        else {
+          classesRemaining++;
+        }
       }
     });
 
@@ -249,12 +248,13 @@ const syncStudentWallet = asyncHandler(async (req, res) => {
     console.error("Google Calendar Auto-Sync Error:", err.message);
   }
 
-  const finalTotal = totalClasses > 0 ? totalClasses : (student.subscription?.totalClassesBought || 0);
+  const calendarTotal = classesDone + classesRemaining;
+  const finalTotal = Number(inputTotal) > 0 ? Number(inputTotal) : calendarTotal;
 
   student.subscription = {
     status: 'active',
     totalClassesBought: finalTotal,
-    classesUsed: completedClasses,
+    classesUsed: classesDone, // Phase 1: Classes Done
     startDate: start,
     endDate: end
   };
@@ -262,10 +262,10 @@ const syncStudentWallet = asyncHandler(async (req, res) => {
   await student.save();
 
   res.status(200).json({
-    message: `✅ Auto-synced! Found ${finalTotal} total classes: ${completedClasses} completed (past) and ${upcomingClasses} upcoming (future).`,
+    message: `⚡ 2-Phase Auto-Sync Complete!\n\n• Phase 1 (Classes Done before today): ${classesDone}\n• Phase 2 (Classes Remaining from today): ${classesRemaining}\n• Total Package: ${finalTotal}`,
     subscription: student.subscription,
-    completedClasses,
-    upcomingClasses
+    classesDone,
+    classesRemaining
   });
 });
 
