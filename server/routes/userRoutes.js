@@ -9,9 +9,10 @@ const {
   testGroupMessage,
   createAdminInstantly, 
   updateSubscription,
+  syncStudentWallet, // 👈 Imported auto-sync function
   getMyStudents,
   assignTeachers,
-  updateUserProfile // 👈 Imported new function
+  updateUserProfile
 } = require('../controllers/userController');
 const { protect } = require('../middleware/authMiddleware');
 
@@ -23,16 +24,17 @@ router.get('/me', protect, getMe);
 // 🧑‍🏫 Teacher Students Route
 router.get('/my-students', protect, getMyStudents);
 
-// ✏️ NEW: Edit Profile Route
+// ✏️ Edit Profile Route
 router.put('/:id', protect, updateUserProfile);
 
 // Delete User Route
 router.delete('/:id', protect, deleteUser);
 
-// 💳 Subscription Route
+// 💳 Subscription Routes
 router.put('/:id/subscription', protect, updateSubscription);
+router.post('/:id/sync-wallet', protect, syncStudentWallet); // 👈 NEW: Auto-Sync Wallet Route
 
-// ✨ NEW: Assign Teachers Route
+// ✨ Assign Teachers Route
 router.put('/:id/assign', protect, assignTeachers);
 
 // --- TEST & ADMIN ROUTES ---

@@ -154,11 +154,82 @@ const updateSubscription = asyncHandler(async (req, res) => {
   if (endDate) user.subscription.endDate = endDate;
   if (totalClassesBought !== undefined) user.subscription.totalClassesBought = Number(totalClassesBought);
   
-  // ✨ NEW: Allow manual updating of completed classes
   if (classesUsed !== undefined) user.subscription.classesUsed = Number(classesUsed);
 
   await user.save();
   res.status(200).json({ message: 'Subscription updated successfully!', user });
+});
+
+// ✨ NEW: Auto-count student classes from Calendar and Class Logs
+// @desc    Auto-count student classes from Calendar and Class Logs
+// @route   POST /api/users/:id/sync-wallet
+// @access  Private (Admin)
+const syncStudentWallet = asyncHandler(async (req, res) => {
+  const { id } = req.params;
+  const { startDate, endDate } = req.body;
+
+  const student = await User.findById(id);
+  if (!student) {
+    res.status(404);
+    throw new Error('Student not found');
+  }
+
+  const start = startDate ? new Date(startDate) : new Date();
+  const end = endDate ? new Date(endDate) : new Date(start.getTime() + 28 * 24 * 60 * 60 * 1000);
+
+  const studentNameLower = (student.name || '').toLowerCase().trim();
+
+  // Safely import models for counting
+  const ClassLog = require('../models/ClassLog');
+  const Schedule = require('../models/Schedule');
+
+  // 1. Fetch completed classes from MongoDB Class Logs
+  let completedLogs = [];
+  try {
+    completedLogs = await ClassLog.find({
+      $or: [
+        { studentName: { $regex: new RegExp(`^${studentNameLower}$`, 'i') } },
+        { studentGroupId: student.studentGroupId }
+      ],
+      status: 'completed',
+      startTime: { $gte: start,$lte: end }
+    });
+  } catch (err) {
+    console.log("ClassLog query skipped:", err.message);
+  }
+
+  // 2. Fetch scheduled events from Calendar/Schedule collection
+  let scheduledClasses = [];
+  try {
+    scheduledClasses = await Schedule.find({
+      $or: [
+        { title: { $regex: new RegExp(studentNameLower, 'i') } },
+        { studentGroupName: { $regex: new RegExp(studentNameLower, 'i') } },
+        { studentGroupId: student.studentGroupId }
+      ],
+      startTime: { $gte: start,$lte: end }
+    });
+  } catch (err) {
+    console.log("Schedule query skipped:", err.message);
+  }
+
+  const classesUsed = completedLogs.length;
+  const totalClassesBought = Math.max(scheduledClasses.length, classesUsed);
+
+  student.subscription = {
+    status: 'active',
+    totalClassesBought,
+    classesUsed,
+    startDate: start,
+    endDate: end
+  };
+
+  await student.save();
+
+  res.status(200).json({
+    message: 'Wallet auto-synced successfully',
+    subscription: student.subscription
+  });
 });
 
 // ==========================================
@@ -177,7 +248,7 @@ const getMyStudents = asyncHandler(async (req, res) => {
   res.status(200).json(students);
 });
 
-// ✨ NEW: Assign Teachers directly to a student profile
+// Assign Teachers directly to a student profile
 const assignTeachers = asyncHandler(async (req, res) => {
   const { assignedTeachers } = req.body;
   const user = await User.findById(req.params.id);
@@ -193,7 +264,7 @@ const assignTeachers = asyncHandler(async (req, res) => {
   res.status(200).json({ message: 'Teachers updated successfully!', user });
 });
 
-// ✨ NEW: Update user profile details
+// Update user profile details
 const updateUserProfile = asyncHandler(async (req, res) => {
   const user = await User.findById(req.params.id);
   
@@ -220,6 +291,7 @@ module.exports = {
   testGroupMessage, 
   createAdminInstantly,
   updateSubscription,
+  syncStudentWallet, // 👈 EXPORTED HERE
   getMyStudents,
   assignTeachers,
   updateUserProfile

@@ -9,11 +9,11 @@ function UserList() {
   const [users, setUsers] = useState([]);
   const navigate = useNavigate();
 
-  // ✨ NEW: Search & Filter State
+  // Search & Filter State
   const [roleFilter, setRoleFilter] = useState('ALL');
   const [searchTerm, setSearchTerm] = useState('');
 
-  // ✨ NEW: Create User State
+  // Create User State
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   const [isCreatingUser, setIsCreatingUser] = useState(false);
   const [newUser, setNewUser] = useState({
@@ -64,7 +64,6 @@ function UserList() {
     }
   };
 
-  // ✨ NEW: Handle Create User
   const handleCreateUser = async (e) => {
     e.preventDefault();
     setIsCreatingUser(true);
@@ -152,6 +151,36 @@ function UserList() {
     }
   };
 
+  // ✨ NEW: Auto-Sync Wallet Handler
+  const handleAutoSyncWallet = async () => {
+    if (!subEnd) {
+      alert('Please select an End Date first so the system knows which period to calculate!');
+      return;
+    }
+    setIsSubUpdating(true);
+    try {
+      const token = localStorage.getItem('token');
+      const config = { headers: { Authorization: `Bearer ${token}` } };
+      
+      const res = await axios.post(`${API_URL}/api/users/${selectedStudent._id}/sync-wallet`, {
+        startDate: subStart || new Date().toISOString().split('T')[0],
+        endDate: subEnd
+      }, config);
+
+      setSubTotal(res.data.subscription.totalClassesBought);
+      setSubUsed(res.data.subscription.classesUsed);
+      setSubStatus('active');
+
+      alert(`✅ Auto-synced! Found ${res.data.subscription.totalClassesBought} total scheduled classes and ${res.data.subscription.classesUsed} completed classes.`);
+      fetchUsers();
+    } catch (error) {
+      console.error(error);
+      alert('❌ Failed to auto-sync wallet from calendar.');
+    } finally {
+      setIsSubUpdating(false);
+    }
+  };
+
   const handleSaveAssignments = async () => {
     setIsAssigning(true);
     try {
@@ -190,11 +219,7 @@ function UserList() {
   };
 
   const toggleTeacher = (teacherId) => {
-    setSelectedTeachers((prev) => 
-      prev.includes(teacherId) 
-        ? prev.filter(id => id !== teacherId) 
-        : [...prev, teacherId]
-    );
+    setSelectedTeachers([teacherId]); // Restricts to one teacher based on previous update
   };
 
   const openWallet = (student) => {
@@ -228,7 +253,6 @@ function UserList() {
 
   const allTeachers = users.filter(u => u.role === 'teacher');
 
-  // ✨ NEW: ALPHABETICAL SORT & ROLE FILTER LOGIC
   const filteredUsers = users
     .filter((user) => {
       const matchesRole = roleFilter === 'ALL' || user.role?.toLowerCase() === roleFilter.toLowerCase();
@@ -444,22 +468,27 @@ function UserList() {
         <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.6)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, padding: '20px' }}>
           <div style={{ backgroundColor: 'white', padding: '30px', borderRadius: '8px', width: '400px', color: 'black' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '2px solid #eee', paddingBottom: '10px', marginBottom: '20px' }}>
-              <h2 style={{ margin: 0 }}>🧑‍🏫 Assign Teachers</h2>
+              <h2 style={{ margin: 0 }}>🧑‍🏫 Assign Teacher</h2>
               <button onClick={() => setIsAssignModalOpen(false)} style={{ background: 'none', border: 'none', fontSize: '20px', cursor: 'pointer' }}>✖</button>
             </div>
-            <p style={{ color: '#555', marginBottom: '15px', fontSize: '14px' }}>Select all teachers that teach <strong>{assignStudent.name}</strong>.</p>
-            <div style={{ maxHeight: '300px', overflowY: 'auto', marginBottom: '20px', border: '1px solid #ccc', borderRadius: '5px', padding: '10px' }}>
-              {allTeachers.length === 0 ? <p>No teachers found.</p> : (
-                allTeachers.map(teacher => (
-                  <label key={teacher._id} style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '8px 0', borderBottom: '1px solid #f0f0f0', cursor: 'pointer' }}>
-                    <input type="checkbox" checked={selectedTeachers.includes(teacher._id)} onChange={() => toggleTeacher(teacher._id)} style={{ transform: 'scale(1.2)' }} />
+            <p style={{ color: '#555', marginBottom: '15px', fontSize: '14px' }}>Select the primary teacher for <strong>{assignStudent.name}</strong>.</p>
+            
+            <div style={{ marginBottom: '25px' }}>
+              <select 
+                value={selectedTeachers.length > 0 ? selectedTeachers[0] : ''} 
+                onChange={(e) => setSelectedTeachers([e.target.value])} 
+                style={{ width: '100%', padding: '12px', borderRadius: '6px', border: '1px solid #ccc', fontSize: '15px' }}>
+                <option value="">-- Unassigned (Select a Teacher) --</option>
+                {allTeachers.map(teacher => (
+                  <option key={teacher._id} value={teacher._id}>
                     {teacher.name}
-                  </label>
-                ))
-              )}
+                  </option>
+                ))}
+              </select>
             </div>
+
             <button onClick={handleSaveAssignments} disabled={isAssigning} style={{ width: '100%', padding: '12px', backgroundColor: isAssigning ? '#95a5a6' : '#9b59b6', color: 'white', border: 'none', borderRadius: '5px', cursor: isAssigning ? 'not-allowed' : 'pointer', fontWeight: 'bold' }}>
-              {isAssigning ? 'Saving...' : 'Save Assignments'}
+              {isAssigning ? 'Saving...' : 'Save Assignment'}
             </button>
           </div>
         </div>
@@ -496,7 +525,38 @@ function UserList() {
 
             <div style={{ backgroundColor: '#eef2f5', padding: '20px', borderRadius: '8px', marginBottom: '20px' }}>
               <h3 style={{ margin: '0 0 15px 0', color: '#2c3e50', borderBottom: '1px solid #ccc', paddingBottom: '10px' }}>⚙️ Manage Subscription</h3>
+              
+              {/* ✨ NEW: Auto-Count Classes Button */}
+              <button 
+                type="button" 
+                onClick={handleAutoSyncWallet}
+                disabled={isSubUpdating}
+                style={{ width: '100%', padding: '10px', backgroundColor: '#8e44ad', color: 'white', border: 'none', borderRadius: '5px', cursor: 'pointer', fontWeight: 'bold', marginBottom: '15px' }}>
+                {isSubUpdating ? 'Syncing...' : '⚡ Auto-Count Classes from Calendar'}
+              </button>
+
               <form onSubmit={handleUpdateSubscription} style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '15px' }}>
+                
+                {/* ✨ NEW: PLAN PRESET SELECTOR */}
+                <div style={{ gridColumn: '1 / -1', backgroundColor: '#fff', padding: '12px', borderRadius: '6px', border: '1px solid #3498db' }}>
+                  <label style={{ display: 'block', marginBottom: '5px', fontWeight: 'bold', fontSize: '14px', color: '#2980b9' }}>⚡ Quick Auto-Calculate End Date:</label>
+                  <select 
+                    onChange={(e) => {
+                      const days = Number(e.target.value);
+                      if (!days) return;
+                      const start = subStart ? new Date(subStart) : new Date();
+                      const end = new Date(start.getTime() + days * 24 * 60 * 60 * 1000);
+                      setSubStart(start.toISOString().split('T')[0]);
+                      setSubEnd(end.toISOString().split('T')[0]);
+                    }} 
+                    style={{ width: '100%', padding: '8px', borderRadius: '5px', border: '1px solid #ccc', fontWeight: 'bold' }}>
+                    <option value="">-- Choose Duration Preset --</option>
+                    <option value="28">Monthly Cycle (28 Days)</option>
+                    <option value="84">Quarterly Cycle (84 Days / 3 Months)</option>
+                    <option value="336">Yearly Cycle (336 Days / 12 Months)</option>
+                  </select>
+                </div>
+
                 <div>
                   <label style={{ display: 'block', marginBottom: '5px', fontWeight: 'bold', fontSize: '14px' }}>Status:</label>
                   <select value={subStatus} onChange={(e) => setSubStatus(e.target.value)} style={{ width: '100%', padding: '10px', borderRadius: '5px', border: '1px solid #ccc' }}>
@@ -506,23 +566,29 @@ function UserList() {
                     <option value="expired">Expired</option>
                   </select>
                 </div>
+
                 <div>
                   <label style={{ display: 'block', marginBottom: '5px', fontWeight: 'bold', fontSize: '14px' }}>Total Classes Bought:</label>
                   <input type="number" min="0" value={subTotal} onChange={(e) => setSubTotal(e.target.value)} style={{ width: '100%', padding: '10px', borderRadius: '5px', border: '1px solid #ccc', boxSizing: 'border-box' }} />
                 </div>
+
                 <div>
                   <label style={{ display: 'block', marginBottom: '5px', fontWeight: 'bold', fontSize: '14px' }}>Classes Completed:</label>
                   <input type="number" min="0" value={subUsed} onChange={(e) => setSubUsed(e.target.value)} style={{ width: '100%', padding: '10px', borderRadius: '5px', border: '1px solid #ccc', boxSizing: 'border-box' }} />
                 </div>
+
                 <div></div>
+
                 <div>
                   <label style={{ display: 'block', marginBottom: '5px', fontWeight: 'bold', fontSize: '14px' }}>Start Date:</label>
                   <input type="date" value={subStart} onChange={(e) => setSubStart(e.target.value)} style={{ width: '100%', padding: '10px', borderRadius: '5px', border: '1px solid #ccc', boxSizing: 'border-box' }} />
                 </div>
+
                 <div>
                   <label style={{ display: 'block', marginBottom: '5px', fontWeight: 'bold', fontSize: '14px' }}>End Date:</label>
                   <input type="date" value={subEnd} onChange={(e) => setSubEnd(e.target.value)} style={{ width: '100%', padding: '10px', borderRadius: '5px', border: '1px solid #ccc', boxSizing: 'border-box' }} />
                 </div>
+
                 <div style={{ gridColumn: '1 / -1' }}>
                   <button type="submit" disabled={isSubUpdating} style={{ width: '100%', padding: '12px', backgroundColor: isSubUpdating ? '#95a5a6' : '#2ecc71', color: 'white', border: 'none', borderRadius: '5px', cursor: isSubUpdating ? 'not-allowed' : 'pointer', fontWeight: 'bold', marginTop: '10px' }}>
                     {isSubUpdating ? 'Updating...' : 'Update Subscription'}
