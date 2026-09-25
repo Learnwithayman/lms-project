@@ -2,9 +2,23 @@ const jwt = require('jsonwebtoken');
 const bcrypt = require('bcryptjs');
 const asyncHandler = require('express-async-handler');
 const User = require('../models/User');
+const { google } = require('googleapis');
+const path = require('path');
+const fs = require('fs');
 
 // 1. Import your WhatsApp Bot 
 const whatsappClient = require('../utils/whatsappBot');
+
+// --- GOOGLE CALENDAR DIRECT AUTH SETUP ---
+let CREDENTIALS_PATH = path.join(__dirname, '..', 'credentials.json'); 
+if (!fs.existsSync(CREDENTIALS_PATH)) {
+  CREDENTIALS_PATH = path.join(__dirname, '..', '..', 'credentials.json'); 
+}
+const auth = new google.auth.GoogleAuth({
+  keyFile: CREDENTIALS_PATH,
+  scopes: ['https://www.googleapis.com/auth/calendar.readonly'],
+});
+const calendar = google.calendar({ version: 'v3', auth });
 
 // @desc    Register new user
 const registerUser = asyncHandler(async (req, res) => {
@@ -160,8 +174,7 @@ const updateSubscription = asyncHandler(async (req, res) => {
   res.status(200).json({ message: 'Subscription updated successfully!', user });
 });
 
-// ✨ UPDATED: Auto-count student classes (Past dates = Completed, Future dates = Upcoming)
-// @desc    Auto-count student classes from Google Calendar
+// @desc    Auto-count student classes directly from Google Calendar
 // @route   POST /api/users/:id/sync-wallet
 // @access  Private (Admin)
 const syncStudentWallet = asyncHandler(async (req, res) => {
@@ -178,52 +191,64 @@ const syncStudentWallet = asyncHandler(async (req, res) => {
   const end = endDate ? new Date(endDate) : new Date(start.getTime() + 28 * 24 * 60 * 60 * 1000);
   const now = new Date();
 
-  const studentNameLower = (student.name || '').toLowerCase().trim();
-  const studentGroupIdLower = (student.studentGroupId || '').toLowerCase().trim();
+  const studentFullName = (student.name || '').toLowerCase().trim();
+  const studentFirstName = studentFullName.split(' ')[0];
+  const studentGroupId = (student.studentGroupId || '').toLowerCase().trim();
 
   let totalClasses = 0;
   let completedClasses = 0;
 
-  // 1. Try pulling live classes from Google Calendar helper
+  // 1. Direct Google Calendar Query
   try {
-    const calendarUtil = require('../utils/googleCalendar'); 
-    if (calendarUtil && typeof calendarUtil.getCalendarEvents === 'function') {
-      const events = await calendarUtil.getCalendarEvents(start, end);
-      
-      const studentEvents = events.filter(evt => {
-        const title = (evt.summary || evt.title || '').toLowerCase();
-        return (studentNameLower && title.includes(studentNameLower)) || 
-               (studentGroupIdLower && title.includes(studentGroupIdLower));
-      });
+    const response = await calendar.events.list({
+      calendarId: 'admin@learnwithayman.com',
+      timeMin: start.toISOString(),
+      timeMax: end.toISOString(),
+      singleEvents: true,
+      orderBy: 'startTime',
+    });
 
-      totalClasses = studentEvents.length;
-      
-      // Past classes = Completed, Future classes = Pending
-      completedClasses = studentEvents.filter(evt => {
-        const eventTime = new Date(evt.start?.dateTime || evt.start || evt.startTime);
-        return eventTime < now;
-      }).length;
-    }
+    const events = response.data.items || [];
+
+    const matchedEvents = events.filter(evt => {
+      const summary = (evt.summary || '').toLowerCase();
+      const description = (evt.description || '').toLowerCase();
+
+      const matchesFullName = studentFullName && (summary.includes(studentFullName) || description.includes(studentFullName));
+      const matchesFirstName = studentFirstName && studentFirstName.length >= 3 && (summary.includes(studentFirstName) || description.includes(studentFirstName));
+      const matchesGroupId = studentGroupId && description.includes(studentGroupId);
+
+      return matchesFullName || matchesFirstName || matchesGroupId;
+    });
+
+    totalClasses = matchedEvents.length;
+
+    // Past events = Completed, Future events = Upcoming
+    completedClasses = matchedEvents.filter(evt => {
+      const eventTime = new Date(evt.start.dateTime || evt.start.date);
+      return eventTime < now;
+    }).length;
+
   } catch (err) {
-    console.log("Calendar sync notice:", err.message);
+    console.error("Google Calendar Auto-Sync Error:", err.message);
   }
 
-  // 2. Fallback: Check MongoDB ClassLog
+  // 2. Database Fallback (Check ClassSession model)
   try {
-    const ClassLog = require('../models/ClassLog');
-    const completedLogs = await ClassLog.find({
+    const ClassSession = require('../models/ClassSession');
+    const dbCompleted = await ClassSession.countDocuments({
       $or: [
-        { studentName: { $regex: new RegExp(`^${studentNameLower}$`, 'i') } },
-        { studentGroupId: student.studentGroupId }
+        { student: student._id },
+        { studentGroupName: { $regex: new RegExp(studentFirstName, 'i') } }
       ],
       status: 'completed',
       startTime: { $gte: start,$lte: end }
     });
-    if (completedLogs.length > completedClasses) {
-      completedClasses = completedLogs.length;
+    if (dbCompleted > completedClasses) {
+      completedClasses = dbCompleted;
     }
   } catch (err) {
-    console.log("ClassLog query notice:", err.message);
+    console.log("DB query notice:", err.message);
   }
 
   const finalTotal = totalClasses > 0 ? totalClasses : (student.subscription?.totalClassesBought || 0);
