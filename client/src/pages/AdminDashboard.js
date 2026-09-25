@@ -26,7 +26,11 @@ function AdminDashboard() {
   const [adminNotes, setAdminNotes] = useState('');
   const [isSubmittingReport, setIsSubmittingReport] = useState(false);
 
-  // ✨ NEW: Legacy PDF Vault States
+  // ✨ NEW: Edit & Approve Modal State
+  const [isEditApproveModalOpen, setIsEditApproveModalOpen] = useState(false);
+  const [editedNote, setEditedNote] = useState('');
+
+  // Legacy PDF Vault States
   const [studentsList, setStudentsList] = useState([]);
   const [legacyForm, setLegacyForm] = useState({ studentId: '', monthYear: '', pdfLink: '' });
   const [isSubmittingLegacy, setIsSubmittingLegacy] = useState(false);
@@ -54,7 +58,7 @@ function AdminDashboard() {
       fetchMessageLogs(token);
       fetchPendingMakeups(token); 
       fetchPendingReports(token);
-      fetchStudents(token); // 👈 Fetch students for the Legacy Vault dropdown
+      fetchStudents(token);
     }
   }, [navigate]);
 
@@ -65,7 +69,6 @@ function AdminDashboard() {
       });
       if (response.ok) {
         const data = await response.json();
-        // Filter out only the students for the dropdown
         setStudentsList(data.filter(u => u.role === 'student'));
       }
     } catch (error) {
@@ -73,7 +76,6 @@ function AdminDashboard() {
     }
   };
 
-  // ✨ HANDLE LEGACY PDF SUBMISSION
   const handleLegacySubmit = async (e) => {
     e.preventDefault();
     setIsSubmittingLegacy(true);
@@ -117,8 +119,11 @@ function AdminDashboard() {
     }
   };
 
-  const handleApproveReport = async (studentId, monthYear) => {
-    if (!window.confirm('Approve this report and publish it to the student dashboard?')) return;
+  // ✨ UPDATED: Added editedNote parameter
+  const handleApproveReport = async (studentId, monthYear, customNote = null) => {
+    if (!customNote && !window.confirm('Approve this report exactly as the teacher wrote it?')) return;
+    
+    setIsSubmittingReport(true);
     try {
       const token = localStorage.getItem('token');
       const response = await fetch(`${process.env.REACT_APP_API_URL || 'https://lms-backend-02zs.onrender.com'}/api/admin/approve-report`, {
@@ -127,16 +132,19 @@ function AdminDashboard() {
           'Content-Type': 'application/json',
           Authorization: `Bearer ${token}` 
         },
-        body: JSON.stringify({ studentId, monthYear })
+        body: JSON.stringify({ studentId, monthYear, editedNote: customNote }) // Passes the fixed note to backend
       });
       if (response.ok) {
         alert('✅ Report Approved! It is now live on the Student Portal.');
+        setIsEditApproveModalOpen(false);
         fetchPendingReports(token);
       } else {
         alert('❌ Failed to approve report.');
       }
     } catch (error) {
       console.error('Error approving report:', error);
+    } finally {
+      setIsSubmittingReport(false);
     }
   };
 
@@ -392,7 +400,7 @@ function AdminDashboard() {
       
       <div style={{ marginTop: '20px', display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
         <button onClick={() => navigate('/users')} className="action-btn btn-grey" style={{width: 'auto', padding: '10px 20px'}}>
-          📋 View Users
+          👥 Manage Users
         </button>
         <button onClick={() => navigate('/all-classes')} className="action-btn btn-grey" style={{width: 'auto', padding: '10px 20px'}}>
           🗓️ Manage Classes
@@ -403,7 +411,7 @@ function AdminDashboard() {
       </div>
 
       {/* ========================================== */}
-      {/* ✨ NEW: 📂 LEGACY PDF VAULT UPLOAD */}
+      {/* 📂 LEGACY PDF VAULT UPLOAD */}
       {/* ========================================== */}
       <div style={{ marginTop: '40px', backgroundColor: '#f8f9fa', padding: '25px', borderRadius: '12px', border: '1px solid #dfe6e9', boxShadow: '0 4px 15px rgba(0,0,0,0.05)' }}>
         <h2 style={{ margin: '0 0 10px 0', color: '#2d3436', display: 'flex', alignItems: 'center', gap: '10px' }}>
@@ -468,21 +476,34 @@ function AdminDashboard() {
           <div style={{ display: 'grid', gap: '15px' }}>
             {pendingReports.map((report, idx) => (
               <div key={idx} style={{ backgroundColor: 'white', padding: '20px', borderRadius: '8px', borderLeft: report.isFinalized ? '5px solid #d63031' : '5px solid #0984e3', boxShadow: '0 2px 4px rgba(0,0,0,0.05)' }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '15px' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '15px', flexWrap: 'wrap', gap: '10px' }}>
                   <div>
                     <h3 style={{ margin: '0 0 5px 0', color: '#2d3436' }}>👤 {report.studentName}</h3>
                     <p style={{ margin: 0, color: '#636e72', fontWeight: 'bold' }}>{report.monthYear} - {report.isFinalized ? 'Phase 2: Final Graded Report' : 'Phase 1: Draft Monthly Plan'}</p>
                   </div>
-                  <div style={{ display: 'flex', gap: '10px' }}>
+                  <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
+                    
                     <button 
                       onClick={() => { setSelectedReport(report); setIsRejectModalOpen(true); }}
                       style={{ backgroundColor: 'transparent', color: '#d63031', border: '1px solid #d63031', padding: '8px 15px', borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold' }}>
-                      Reject & Request Edit
+                      Reject & Edit
                     </button>
+
+                    {/* ✨ NEW: Edit & Approve Button */}
+                    <button 
+                      onClick={() => { 
+                        setSelectedReport(report); 
+                        setEditedNote(report.teacherNote || ''); 
+                        setIsEditApproveModalOpen(true); 
+                      }}
+                      style={{ backgroundColor: '#f39c12', color: 'white', border: 'none', padding: '8px 15px', borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold' }}>
+                      ✏️ Edit & Approve
+                    </button>
+
                     <button 
                       onClick={() => handleApproveReport(report.studentId, report.monthYear)}
                       style={{ backgroundColor: '#2ecc71', color: 'white', border: 'none', padding: '8px 15px', borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold' }}>
-                      ✅ Approve & Publish
+                      ✅ Approve As-Is
                     </button>
                   </div>
                 </div>
@@ -719,6 +740,32 @@ function AdminDashboard() {
                 style={{ padding: '10px 20px', cursor: 'pointer', backgroundColor: '#34495e', color: 'white', border: 'none', borderRadius: '4px' }}
               >
                 Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ✨ NEW: EDIT & APPROVE MODAL */}
+      {isEditApproveModalOpen && (
+        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.6)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 }}>
+          <div style={{ backgroundColor: 'white', padding: '30px', borderRadius: '15px', width: '500px', color: '#2d3436' }}>
+            <h2 style={{ margin: '0 0 10px 0', color: '#f39c12' }}>✏️ Edit General Feedback</h2>
+            <p style={{ margin: '0 0 20px 0', color: '#636e72', fontSize: '14px' }}>Edit the teacher's note before publishing it to {selectedReport?.studentName}'s parent.</p>
+            
+            <textarea 
+              value={editedNote} 
+              onChange={(e) => setEditedNote(e.target.value)} 
+              style={{ width: '100%', height: '150px', padding: '10px', boxSizing: 'border-box', borderRadius: '8px', border: '1px solid #dfe6e9', fontFamily: 'inherit' }} 
+            />
+            
+            <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '20px' }}>
+              <button type="button" onClick={() => setIsEditApproveModalOpen(false)} disabled={isSubmittingReport} style={{ padding: '10px 15px', cursor: 'pointer', border: '1px solid #b2bec3', borderRadius: '6px', backgroundColor: 'transparent', fontWeight: 'bold', color: '#636e72' }}>Cancel</button>
+              <button 
+                onClick={() => handleApproveReport(selectedReport.studentId, selectedReport.monthYear, editedNote)} 
+                disabled={isSubmittingReport} 
+                style={{ padding: '10px 15px', cursor: 'pointer', backgroundColor: '#2ecc71', color: 'white', border: 'none', borderRadius: '6px', fontWeight: 'bold' }}>
+                {isSubmittingReport ? 'Saving...' : '💾 Save & Approve'}
               </button>
             </div>
           </div>
