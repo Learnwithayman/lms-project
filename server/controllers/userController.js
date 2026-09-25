@@ -174,6 +174,7 @@ const updateSubscription = asyncHandler(async (req, res) => {
   res.status(200).json({ message: 'Subscription updated successfully!', user });
 });
 
+// ⚡ STRICT AUTO-COUNT: Past events = Completed, Future events = Upcoming
 // @desc    Auto-count student classes directly from Google Calendar
 // @route   POST /api/users/:id/sync-wallet
 // @access  Private (Admin)
@@ -198,7 +199,6 @@ const syncStudentWallet = asyncHandler(async (req, res) => {
   let totalClasses = 0;
   let completedClasses = 0;
 
-  // 1. Direct Google Calendar Query
   try {
     const response = await calendar.events.list({
       calendarId: 'admin@learnwithayman.com',
@@ -223,32 +223,17 @@ const syncStudentWallet = asyncHandler(async (req, res) => {
 
     totalClasses = matchedEvents.length;
 
-    // Past events = Completed, Future events = Upcoming
-    completedClasses = matchedEvents.filter(evt => {
-      const eventTime = new Date(evt.start.dateTime || evt.start.date);
-      return eventTime < now;
-    }).length;
+    // ✨ STRICT SEPARATION: Only events whose start time is BEFORE right now are marked completed!
+    const pastEvents = matchedEvents.filter(evt => {
+      const eventStartStr = evt.start?.dateTime || evt.start?.date;
+      if (!eventStartStr) return false;
+      return new Date(eventStartStr) < now;
+    });
+
+    completedClasses = pastEvents.length;
 
   } catch (err) {
     console.error("Google Calendar Auto-Sync Error:", err.message);
-  }
-
-  // 2. Database Fallback (Check ClassSession model)
-  try {
-    const ClassSession = require('../models/ClassSession');
-    const dbCompleted = await ClassSession.countDocuments({
-      $or: [
-        { student: student._id },
-        { studentGroupName: { $regex: new RegExp(studentFirstName, 'i') } }
-      ],
-      status: 'completed',
-      startTime: { $gte: start,$lte: end }
-    });
-    if (dbCompleted > completedClasses) {
-      completedClasses = dbCompleted;
-    }
-  } catch (err) {
-    console.log("DB query notice:", err.message);
   }
 
   const finalTotal = totalClasses > 0 ? totalClasses : (student.subscription?.totalClassesBought || 0);
@@ -264,7 +249,7 @@ const syncStudentWallet = asyncHandler(async (req, res) => {
   await student.save();
 
   res.status(200).json({
-    message: 'Wallet auto-synced successfully',
+    message: `Auto-synced! Found ${finalTotal} total scheduled classes and ${completedClasses} completed classes.`,
     subscription: student.subscription
   });
 });
