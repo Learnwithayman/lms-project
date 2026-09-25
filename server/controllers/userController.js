@@ -160,8 +160,8 @@ const updateSubscription = asyncHandler(async (req, res) => {
   res.status(200).json({ message: 'Subscription updated successfully!', user });
 });
 
-// ✨ NEW: Auto-count student classes from Calendar and Class Logs
-// @desc    Auto-count student classes from Calendar and Class Logs
+// ✨ FIX: Auto-count student classes safely without crashing
+// @desc    Auto-count student classes from Class Logs
 // @route   POST /api/users/:id/sync-wallet
 // @access  Private (Admin)
 const syncStudentWallet = asyncHandler(async (req, res) => {
@@ -179,14 +179,14 @@ const syncStudentWallet = asyncHandler(async (req, res) => {
 
   const studentNameLower = (student.name || '').toLowerCase().trim();
 
-  // Safely import models for counting
-  const ClassLog = require('../models/ClassLog');
-  const Schedule = require('../models/Schedule');
+  let classesUsed = 0;
+  // Keep whatever total classes the admin already typed in, default to 0 if blank
+  let totalClassesBought = student.subscription?.totalClassesBought || 0;
 
-  // 1. Fetch completed classes from MongoDB Class Logs
-  let completedLogs = [];
+  // Safely attempt to count completed classes from the database
   try {
-    completedLogs = await ClassLog.find({
+    const ClassLog = require('../models/ClassLog');
+    const completedLogs = await ClassLog.find({
       $or: [
         { studentName: { $regex: new RegExp(`^${studentNameLower}$`, 'i') } },
         { studentGroupId: student.studentGroupId }
@@ -194,32 +194,15 @@ const syncStudentWallet = asyncHandler(async (req, res) => {
       status: 'completed',
       startTime: { $gte: start,$lte: end }
     });
+    classesUsed = completedLogs.length;
   } catch (err) {
-    console.log("ClassLog query skipped:", err.message);
+    console.log("ClassLog model missing or query skipped:", err.message);
   }
-
-  // 2. Fetch scheduled events from Calendar/Schedule collection
-  let scheduledClasses = [];
-  try {
-    scheduledClasses = await Schedule.find({
-      $or: [
-        { title: { $regex: new RegExp(studentNameLower, 'i') } },
-        { studentGroupName: { $regex: new RegExp(studentNameLower, 'i') } },
-        { studentGroupId: student.studentGroupId }
-      ],
-      startTime: { $gte: start,$lte: end }
-    });
-  } catch (err) {
-    console.log("Schedule query skipped:", err.message);
-  }
-
-  const classesUsed = completedLogs.length;
-  const totalClassesBought = Math.max(scheduledClasses.length, classesUsed);
 
   student.subscription = {
     status: 'active',
-    totalClassesBought,
-    classesUsed,
+    totalClassesBought: totalClassesBought,
+    classesUsed: classesUsed,
     startDate: start,
     endDate: end
   };
