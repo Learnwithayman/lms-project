@@ -5,7 +5,8 @@ const {
   requestMakeup, 
   addOrUpdateReport, 
   appealReport,
-  getExistingReport // 👈 IMPORTED HERE
+  getExistingReport,
+  getStudentReportStatuses // 👈 IMPORTED HERE
 } = require('../controllers/studentController');
 const { protect } = require('../middleware/authMiddleware');
 
@@ -14,6 +15,9 @@ router.get('/subscription-summary', protect, getSubscriptionSummary);
 
 // Submit a makeup class request
 router.post('/request-makeup', protect, requestMakeup);
+
+// ✨ NEW: Get all student report statuses for the current month (Must be above /reports/:id)
+router.get('/reports-status', protect, getStudentReportStatuses);
 
 // ✨ DYNAMIC GRADING: Get an existing report (For Teacher Phase 2 Loading)
 router.get('/reports/:studentIdentifier/:monthYear', protect, getExistingReport);

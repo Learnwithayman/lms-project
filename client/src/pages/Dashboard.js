@@ -45,6 +45,9 @@ function Dashboard() {
   const [history, setHistory] = useState([]);
   const [loadingHistory, setLoadingHistory] = useState(true);
 
+  // ✨ NEW: Teacher Report Statuses Map
+  const [reportStatuses, setReportStatuses] = useState({});
+
   const navigate = useNavigate();
   
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -59,7 +62,6 @@ function Dashboard() {
   const [makeupRequestNotes, setMakeupRequestNotes] = useState('');
   const [isRequestingMakeup, setIsRequestingMakeup] = useState(false);
 
-  // ✨ UPDATED: Teacher Study Plan Modal State (Added checklist & comments)
   const [isPlanModalOpen, setIsPlanModalOpen] = useState(false);
   const [planStudentIdentifier, setPlanStudentIdentifier] = useState('');
   const [isLoadingPlan, setIsLoadingPlan] = useState(false);
@@ -88,6 +90,7 @@ function Dashboard() {
 
     if (parsedUser?.role?.toLowerCase() === 'teacher') {
       fetchEarnings(token);
+      fetchReportStatuses(token); // 👈 NEW STATUS FETCH TRIGGER
     } else {
       fetchSubSummary(token);
     }
@@ -135,7 +138,17 @@ function Dashboard() {
     }
   };
 
-  // ✨ NEW: Fetch the previously saved plan so the teacher doesn't have to retype it
+  // ✨ NEW: Fetch Report Statuses for Badges
+  const fetchReportStatuses = async (token) => {
+    try {
+      const config = { headers: { Authorization: `Bearer ${token}` } };
+      const res = await axios.get(`${API_URL}/api/student/reports-status`, config);
+      setReportStatuses(res.data);
+    } catch (error) {
+      console.error("Failed to fetch report statuses:", error);
+    }
+  };
+
   const fetchExistingPlan = async () => {
     setIsLoadingPlan(true);
     try {
@@ -303,6 +316,7 @@ function Dashboard() {
       await axios.post(`${API_URL}/api/student/reports`, payload, config);
       alert(planForm.isFinalized ? '✅ Phase 2 Graded Report submitted for Admin Approval!' : '✅ Phase 1 Draft Plan submitted for Admin Approval!');
       setIsPlanModalOpen(false);
+      fetchReportStatuses(token); // Refresh badges after submission
     } catch (error) {
       console.error('Error saving plan:', error);
       alert(error.response?.data?.message || '❌ Failed to save study plan. Ensure backend route is active.');
@@ -575,6 +589,10 @@ function Dashboard() {
           classes.filter(cls => cls.status !== 'completed').map((cls) => {
             const isLive = isClassLive(cls.startTime);
             const classIdentifier = cls._id || cls.id;
+            
+            // ✨ MATCH THE STUDENT'S STATUS FOR THE BADGE
+            const studentLookupKey = (cls.studentGroupName || cls.title || cls.studentGroupId || '').toLowerCase();
+            const planStatus = reportStatuses[studentLookupKey] || '⚪ No Plan Yet';
 
             return (
               <div key={classIdentifier} className="card" style={{ borderLeft: '5px solid #0984e3', borderRadius: '12px', boxShadow: '0 5px 15px rgba(0,0,0,0.03)' }}>
@@ -584,20 +602,25 @@ function Dashboard() {
                     <p style={{ margin: '0 0 15px 0', color: '#636e72' }}><strong>⏰ Time:</strong> {new Date(cls.startTime).toLocaleString(undefined, { weekday: 'long', month: 'long', day: 'numeric', hour: '2-digit', minute: '2-digit' })}</p>
                   </div>
                   
-                  {/* ✨ "Manage Plan" Button for Teachers */}
+                  {/* ✨ "Manage Plan" Button & Badge for Teachers */}
                   {user?.role?.toLowerCase() === 'teacher' && (
-                    <button 
-                      onClick={() => {
-                        setPlanStudentIdentifier(cls.studentGroupName || cls.title || cls.studentGroupId);
-                        setIsPlanModalOpen(true);
-                      }} 
-                      style={{ backgroundColor: '#6c5ce7', color: 'white', padding: '8px 12px', border: 'none', borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold' }}>
-                      📝 Manage Plan & Reports
-                    </button>
+                    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '8px' }}>
+                      <span style={{ fontSize: '12px', padding: '4px 10px', borderRadius: '12px', backgroundColor: '#f1f2f6', color: '#2d3436', fontWeight: 'bold' }}>
+                        {planStatus}
+                      </span>
+                      <button 
+                        onClick={() => {
+                          setPlanStudentIdentifier(cls.studentGroupName || cls.title || cls.studentGroupId);
+                          setIsPlanModalOpen(true);
+                        }} 
+                        style={{ backgroundColor: '#6c5ce7', color: 'white', padding: '8px 12px', border: 'none', borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold' }}>
+                        📝 Manage Plan & Reports
+                      </button>
+                    </div>
                   )}
                 </div>
                 
-                <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap', marginTop: '10px' }}>
                   {(cls.zoomLink || cls.meetingLink) ? (
                     <button 
                       className={isLive ? "btn-blue" : "btn-disabled"}
@@ -917,7 +940,7 @@ function Dashboard() {
           <p style={{ margin: 0, color: '#b2bec3', fontSize: '14px' }}>Our admin team is here to help with billing, scheduling, or technical support.</p>
         </div>
         <div style={{ display: 'flex', gap: '15px' }}>
-          <a href="https://wa.me/201064067519" target="_blank" rel="noopener noreferrer" style={{ textDecoration: 'none' }}>
+          <a href="https://wa.me/201012345678" target="_blank" rel="noopener noreferrer" style={{ textDecoration: 'none' }}>
             <button style={{ backgroundColor: '#25D366', color: 'white', padding: '10px 20px', border: 'none', borderRadius: '8px', cursor: 'pointer', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '8px' }}>
               💬 WhatsApp Admin
             </button>

@@ -1,6 +1,7 @@
 const asyncHandler = require('express-async-handler');
 const User = require('../models/User');
 const MakeupRequest = require('../models/MakeupRequest');
+const { sendMessage } = require('../utils/whatsappBot'); 
 
 const getSubscriptionSummary = asyncHandler(async (req, res) => {
   const user = await User.findById(req.user._id);
@@ -21,7 +22,6 @@ const getSubscriptionSummary = asyncHandler(async (req, res) => {
     subscription: user.subscription || { status: 'none', totalClassesBought: 0, classesUsed: 0 },
     makeupCount: activeMakeups.length,
     activeMakeups: activeMakeups,
-    // ✨ NEW: Send the Study Plans and Reports to the frontend charts
     monthlyReports: user.monthlyReports || [] 
   });
 });
@@ -90,6 +90,20 @@ const addOrUpdateReport = asyncHandler(async (req, res) => {
   }
 
   await student.save();
+
+  // 🤖 TRIGGER WHATSAPP ALERT TO ADMIN
+  try {
+    const adminPhone = process.env.ADMIN_WHATSAPP_NUMBER; 
+    if (adminPhone && sendMessage) {
+      const phaseName = isFinalized ? "Phase 2 (Final Grades)" : "Phase 1 (Draft Plan)";
+      const msg = `📝 *Pending Approval Alert*\n\n*Student:* ${student.name}\n*Month:* ${monthYear}\n*Submission:* ${phaseName}\n\nPlease log in to the Admin Dashboard to review and approve.`;
+      
+      await sendMessage(`${adminPhone}@s.whatsapp.net`, msg).catch(err => console.log("Bot offline, skipping message."));
+    }
+  } catch (err) {
+    console.error("Failed to send WhatsApp alert for report:", err);
+  }
+
   res.status(200).json({ message: 'Report saved successfully', reports: student.monthlyReports });
 });
 
@@ -106,10 +120,16 @@ const appealReport = asyncHandler(async (req, res) => {
   }
 
   // 🤖 WHATSAPP AUTOMATION LOGIC (To the Admin)
-  const adminMessage = `⚖️ NEW GRADE APPEAL \n\nStudent: ${user.name}\nPhone: ${user.whatsappNumber || 'N/A'}\nReport: ${monthYear}\nReason: "${reason}" \n\nPlease review this with the teacher and contact the parent.`;
+  const adminMessage = `⚖️ *NEW GRADE APPEAL* \n\n*Student:* ${user.name}\n*Phone:* ${user.whatsappNumber || 'N/A'}\n*Report:* ${monthYear}\n*Reason:* "${reason}" \n\nPlease review this with the teacher and contact the parent.`;
 
-  // NOTE: Insert your MacroDroid queue save here directed to your Admin WhatsApp number
-  console.log("Admin Alert:", adminMessage);
+  try {
+    const adminPhone = process.env.ADMIN_WHATSAPP_NUMBER;
+    if (adminPhone && sendMessage) {
+      await sendMessage(`${adminPhone}@s.whatsapp.net`, adminMessage).catch(err => console.log("Bot offline, skipping appeal message."));
+    }
+  } catch (err) {
+    console.error("Failed to send appeal WhatsApp alert:", err);
+  }
 
   res.status(200).json({ message: 'Appeal submitted successfully', adminMessage });
 });
@@ -145,10 +165,43 @@ const getExistingReport = asyncHandler(async (req, res) => {
   const report = student.monthlyReports.find(r => r.monthYear === monthYear);
 
   if (!report) {
-    return res.status(200).json(null); // Return null if it doesn't exist yet
+    return res.status(200).json(null); 
   }
 
   res.status(200).json(report);
+});
+
+// @desc    Get report statuses for all students (Teacher View)
+// @route   GET /api/student/reports-status
+// @access  Private (Teacher)
+const getStudentReportStatuses = asyncHandler(async (req, res) => {
+  const students = await User.find({ role: 'student' });
+  const currentMonth = new Date().toLocaleString('default', { month: 'long', year: 'numeric' });
+
+  const statuses = {};
+
+  students.forEach(student => {
+    const report = student.monthlyReports?.find(r => r.monthYear === currentMonth);
+    let status = '⚪ No Plan Yet';
+
+    if (report) {
+      if (report.isFinalized && report.approvalStatus === 'approved') {
+        status = '🏆 Phase 2 Finalized';
+      } else if (report.isFinalized && report.approvalStatus !== 'approved') {
+        status = '🟡 Phase 2 Pending Admin';
+      } else if (!report.isFinalized && report.approvalStatus === 'approved') {
+        status = '🟢 Phase 1 Active';
+      } else {
+        status = '🔵 Phase 1 Drafted (Pending Admin)';
+      }
+    }
+
+    // Map by both name and studentGroupId to ensure the frontend can match it perfectly
+    if (student.name) statuses[student.name.toLowerCase()] = status;
+    if (student.studentGroupId) statuses[student.studentGroupId.toLowerCase()] = status;
+  });
+
+  res.status(200).json(statuses);
 });
 
 module.exports = {
@@ -156,5 +209,6 @@ module.exports = {
   requestMakeup,
   addOrUpdateReport,
   appealReport,
-  getExistingReport // 👈 NEW
+  getExistingReport,
+  getStudentReportStatuses 
 };
