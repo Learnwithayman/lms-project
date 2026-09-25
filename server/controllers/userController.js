@@ -174,7 +174,7 @@ const updateSubscription = asyncHandler(async (req, res) => {
   res.status(200).json({ message: 'Subscription updated successfully!', user });
 });
 
-// ⚡ STRICT AUTO-COUNT: Past events = Completed, Future events = Upcoming
+// ⚡ STRICT PAST VS FUTURE DATE CALCULATION
 // @desc    Auto-count student classes directly from Google Calendar
 // @route   POST /api/users/:id/sync-wallet
 // @access  Private (Admin)
@@ -188,8 +188,14 @@ const syncStudentWallet = asyncHandler(async (req, res) => {
     throw new Error('Student not found');
   }
 
+  // Parse start as beginning of the day (00:00:00)
   const start = startDate ? new Date(startDate) : new Date();
+  start.setHours(0, 0, 0, 0);
+
+  // Parse end as end of the day (23:59:59)
   const end = endDate ? new Date(endDate) : new Date(start.getTime() + 28 * 24 * 60 * 60 * 1000);
+  end.setHours(23, 59, 59, 999);
+
   const now = new Date();
 
   const studentFullName = (student.name || '').toLowerCase().trim();
@@ -198,6 +204,7 @@ const syncStudentWallet = asyncHandler(async (req, res) => {
 
   let totalClasses = 0;
   let completedClasses = 0;
+  let upcomingClasses = 0;
 
   try {
     const response = await calendar.events.list({
@@ -211,26 +218,32 @@ const syncStudentWallet = asyncHandler(async (req, res) => {
     const events = response.data.items || [];
 
     const matchedEvents = events.filter(evt => {
+      if (evt.status === 'cancelled') return false;
+
       const summary = (evt.summary || '').toLowerCase();
       const description = (evt.description || '').toLowerCase();
 
       const matchesFullName = studentFullName && (summary.includes(studentFullName) || description.includes(studentFullName));
       const matchesFirstName = studentFirstName && studentFirstName.length >= 3 && (summary.includes(studentFirstName) || description.includes(studentFirstName));
-      const matchesGroupId = studentGroupId && description.includes(studentGroupId);
+      const matchesGroupId = studentGroupId && studentGroupId.length > 3 && description.includes(studentGroupId);
 
       return matchesFullName || matchesFirstName || matchesGroupId;
     });
 
     totalClasses = matchedEvents.length;
 
-    // ✨ STRICT SEPARATION: Only events whose start time is BEFORE right now are marked completed!
-    const pastEvents = matchedEvents.filter(evt => {
-      const eventStartStr = evt.start?.dateTime || evt.start?.date;
-      if (!eventStartStr) return false;
-      return new Date(eventStartStr) < now;
-    });
+    // Strict evaluation against current timestamp
+    matchedEvents.forEach(evt => {
+      const rawTime = evt.start?.dateTime || evt.start?.date;
+      if (!rawTime) return;
 
-    completedClasses = pastEvents.length;
+      const eventDate = new Date(rawTime);
+      if (eventDate.getTime() < now.getTime()) {
+        completedClasses++;
+      } else {
+        upcomingClasses++;
+      }
+    });
 
   } catch (err) {
     console.error("Google Calendar Auto-Sync Error:", err.message);
@@ -249,8 +262,10 @@ const syncStudentWallet = asyncHandler(async (req, res) => {
   await student.save();
 
   res.status(200).json({
-    message: `Auto-synced! Found ${finalTotal} total scheduled classes and ${completedClasses} completed classes.`,
-    subscription: student.subscription
+    message: `✅ Auto-synced! Found ${finalTotal} total classes: ${completedClasses} completed (past) and ${upcomingClasses} upcoming (future).`,
+    subscription: student.subscription,
+    completedClasses,
+    upcomingClasses
   });
 });
 
