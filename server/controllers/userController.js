@@ -6,10 +6,10 @@ const { google } = require('googleapis');
 const path = require('path');
 const fs = require('fs');
 
-// 1. Import your WhatsApp Bot 
+// 1. Import WhatsApp Bot 
 const whatsappClient = require('../utils/whatsappBot');
 
-// --- GOOGLE CALENDAR DIRECT AUTH SETUP ---
+// --- GOOGLE CALENDAR AUTH ---
 let CREDENTIALS_PATH = path.join(__dirname, '..', 'credentials.json'); 
 if (!fs.existsSync(CREDENTIALS_PATH)) {
   CREDENTIALS_PATH = path.join(__dirname, '..', '..', 'credentials.json'); 
@@ -117,7 +117,6 @@ const deleteUser = asyncHandler(async (req, res) => {
 });
 
 // --- TEST FUNCTION ---
-// @desc    Test sending a group message
 const testGroupMessage = asyncHandler(async (req, res) => {
   const targetName = req.body.groupName || 'Test Group'; 
   const message = '🤖 Hello! This is an automated test message from the LMS backend!';
@@ -174,12 +173,9 @@ const updateSubscription = asyncHandler(async (req, res) => {
   res.status(200).json({ message: 'Subscription updated successfully!', user });
 });
 
-// ⚡ 2-PHASE AUTO-COUNT ENGINE
-// Phase 1: Start Date -> NOW (Classes Done)
-// Phase 2: NOW -> End Date (Classes Remaining)
-// @desc    Auto-count student classes directly from Google Calendar
-// @route   POST /api/users/:id/sync-wallet
-// @access  Private (Admin)
+// ⚡ 2-PHASE CALCULATION ENGINE
+// Phase 1: Classes Done (Start Date -> TODAY)
+// Phase 2: Classes Remaining (TODAY -> End Date)
 const syncStudentWallet = asyncHandler(async (req, res) => {
   const { id } = req.params;
   const { startDate, endDate, totalClassesBought: inputTotal } = req.body;
@@ -202,8 +198,8 @@ const syncStudentWallet = asyncHandler(async (req, res) => {
   const studentFirstName = studentFullName.split(' ')[0];
   const studentGroupId = (student.studentGroupId || '').toLowerCase().trim();
 
-  let classesDone = 0;      // Phase 1: Start Date to NOW
-  let classesRemaining = 0; // Phase 2: NOW to End Date
+  let phase1Done = 0;      // Start Date -> NOW
+  let phase2Remaining = 0; // NOW -> End Date
 
   try {
     const response = await calendar.events.list({
@@ -231,15 +227,14 @@ const syncStudentWallet = asyncHandler(async (req, res) => {
         if (!rawTime) return;
 
         const eventTime = new Date(rawTime).getTime();
-        const nowTime = now.getTime();
 
-        // Phase 1: Past classes (Start Date -> NOW)
-        if (eventTime < nowTime) {
-          classesDone++;
+        // Phase 1: Past classes (Start Date -> Today)
+        if (eventTime < now.getTime()) {
+          phase1Done++;
         } 
-        // Phase 2: Future classes (NOW -> End Date)
+        // Phase 2: Remaining classes (Today -> End Date)
         else {
-          classesRemaining++;
+          phase2Remaining++;
         }
       }
     });
@@ -248,13 +243,13 @@ const syncStudentWallet = asyncHandler(async (req, res) => {
     console.error("Google Calendar Auto-Sync Error:", err.message);
   }
 
-  const calendarTotal = classesDone + classesRemaining;
+  const calendarTotal = phase1Done + phase2Remaining;
   const finalTotal = Number(inputTotal) > 0 ? Number(inputTotal) : calendarTotal;
 
   student.subscription = {
     status: 'active',
     totalClassesBought: finalTotal,
-    classesUsed: classesDone, // Phase 1: Classes Done
+    classesUsed: phase1Done, // Set to Phase 1 count (0 for future schedules)
     startDate: start,
     endDate: end
   };
@@ -262,17 +257,16 @@ const syncStudentWallet = asyncHandler(async (req, res) => {
   await student.save();
 
   res.status(200).json({
-    message: `⚡ 2-Phase Auto-Sync Complete!\n\n• Phase 1 (Classes Done before today): ${classesDone}\n• Phase 2 (Classes Remaining from today): ${classesRemaining}\n• Total Package: ${finalTotal}`,
+    message: `⚡ 2-Phase Auto-Sync Complete!\n\n• Phase 1 (Classes Completed): ${phase1Done}\n• Phase 2 (Classes Remaining): ${phase2Remaining}\n• Total Package: ${finalTotal}`,
     subscription: student.subscription,
-    classesDone,
-    classesRemaining
+    phase1Done,
+    phase2Remaining
   });
 });
 
 // ==========================================
 // 🧑‍🏫 TEACHER STUDENTS ENGINE
 // ==========================================
-// @desc    Get students assigned to the logged-in teacher
 const getMyStudents = asyncHandler(async (req, res) => {
   const students = await User.find({ 
     role: 'student', 
@@ -285,7 +279,6 @@ const getMyStudents = asyncHandler(async (req, res) => {
   res.status(200).json(students);
 });
 
-// Assign Teachers directly to a student profile
 const assignTeachers = asyncHandler(async (req, res) => {
   const { assignedTeachers } = req.body;
   const user = await User.findById(req.params.id);
@@ -301,7 +294,6 @@ const assignTeachers = asyncHandler(async (req, res) => {
   res.status(200).json({ message: 'Teachers updated successfully!', user });
 });
 
-// Update user profile details
 const updateUserProfile = asyncHandler(async (req, res) => {
   const user = await User.findById(req.params.id);
   

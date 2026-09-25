@@ -151,7 +151,7 @@ function UserList() {
     }
   };
 
-  // ✨ NEW: Auto-Sync Wallet Handler
+  // ⚡ 2-Phase Auto-Sync Wallet Handler
   const handleAutoSyncWallet = async () => {
     if (!subEnd) {
       alert('Please select an End Date first so the system knows which period to calculate!');
@@ -164,14 +164,15 @@ function UserList() {
       
       const res = await axios.post(`${API_URL}/api/users/${selectedStudent._id}/sync-wallet`, {
         startDate: subStart || new Date().toISOString().split('T')[0],
-        endDate: subEnd
+        endDate: subEnd,
+        totalClassesBought: subTotal
       }, config);
 
       setSubTotal(res.data.subscription.totalClassesBought);
       setSubUsed(res.data.subscription.classesUsed);
       setSubStatus('active');
 
-      alert(`✅ Auto-synced! Found ${res.data.subscription.totalClassesBought} total scheduled classes and ${res.data.subscription.classesUsed} completed classes.`);
+      alert(res.data.message);
       fetchUsers();
     } catch (error) {
       console.error(error);
@@ -189,7 +190,7 @@ function UserList() {
       await axios.put(`${API_URL}/api/users/${assignStudent._id}/assign`, {
         assignedTeachers: selectedTeachers
       }, config);
-      alert(`✅ Teachers linked successfully to ${assignStudent.name}!`);
+      alert(`✅ Teacher linked successfully to ${assignStudent.name}!`);
       setIsAssignModalOpen(false);
       fetchUsers();
     } catch (error) {
@@ -216,10 +217,6 @@ function UserList() {
     } finally {
       setIsEditing(false);
     }
-  };
-
-  const toggleTeacher = (teacherId) => {
-    setSelectedTeachers([teacherId]); // Restricts to one teacher based on previous update
   };
 
   const openWallet = (student) => {
@@ -526,7 +523,7 @@ function UserList() {
             <div style={{ backgroundColor: '#eef2f5', padding: '20px', borderRadius: '8px', marginBottom: '20px' }}>
               <h3 style={{ margin: '0 0 15px 0', color: '#2c3e50', borderBottom: '1px solid #ccc', paddingBottom: '10px' }}>⚙️ Manage Subscription</h3>
               
-              {/* ✨ NEW: Auto-Count Classes Button */}
+              {/* ✨ AUTO-COUNT BUTTON */}
               <button 
                 type="button" 
                 onClick={handleAutoSyncWallet}
@@ -535,9 +532,23 @@ function UserList() {
                 {isSubUpdating ? 'Syncing...' : '⚡ Auto-Count Classes from Calendar'}
               </button>
 
+              {/* ✨ 2-PHASE VISUAL BREAKDOWN */}
+              <div style={{ display: 'flex', gap: '10px', marginBottom: '15px' }}>
+                <div style={{ flex: 1, backgroundColor: '#e8f8f5', padding: '10px', borderRadius: '6px', border: '1px solid #2ecc71', textAlign: 'center' }}>
+                  <div style={{ fontSize: '11px', fontWeight: 'bold', color: '#27ae60' }}>PHASE 1: CLASSES DONE</div>
+                  <div style={{ fontSize: '18px', fontWeight: 'bold', color: '#2d3436' }}>{subUsed}</div>
+                  <div style={{ fontSize: '10px', color: '#7f8c8d' }}>(Start Date ➔ Today)</div>
+                </div>
+                <div style={{ flex: 1, backgroundColor: '#e8f4fd', padding: '10px', borderRadius: '6px', border: '1px solid #3498db', textAlign: 'center' }}>
+                  <div style={{ fontSize: '11px', fontWeight: 'bold', color: '#2980b9' }}>PHASE 2: CLASSES REMAINING</div>
+                  <div style={{ fontSize: '18px', fontWeight: 'bold', color: '#2d3436' }}>{Math.max(0, subTotal - subUsed)}</div>
+                  <div style={{ fontSize: '10px', color: '#7f8c8d' }}>(Today ➔ End Date)</div>
+                </div>
+              </div>
+
               <form onSubmit={handleUpdateSubscription} style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '15px' }}>
                 
-                {/* ✨ NEW: PLAN PRESET SELECTOR */}
+                {/* PLAN PRESET SELECTOR */}
                 <div style={{ gridColumn: '1 / -1', backgroundColor: '#fff', padding: '12px', borderRadius: '6px', border: '1px solid #3498db' }}>
                   <label style={{ display: 'block', marginBottom: '5px', fontWeight: 'bold', fontSize: '14px', color: '#2980b9' }}>⚡ Quick Auto-Calculate End Date:</label>
                   <select 
