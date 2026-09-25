@@ -45,7 +45,6 @@ function Dashboard() {
   const [history, setHistory] = useState([]);
   const [loadingHistory, setLoadingHistory] = useState(true);
 
-  // ✨ NEW: Teacher Report Statuses Map
   const [reportStatuses, setReportStatuses] = useState({});
 
   const navigate = useNavigate();
@@ -90,7 +89,7 @@ function Dashboard() {
 
     if (parsedUser?.role?.toLowerCase() === 'teacher') {
       fetchEarnings(token);
-      fetchReportStatuses(token); // 👈 NEW STATUS FETCH TRIGGER
+      fetchReportStatuses(token);
     } else {
       fetchSubSummary(token);
     }
@@ -138,7 +137,6 @@ function Dashboard() {
     }
   };
 
-  // ✨ NEW: Fetch Report Statuses for Badges
   const fetchReportStatuses = async (token) => {
     try {
       const config = { headers: { Authorization: `Bearer ${token}` } };
@@ -183,7 +181,7 @@ function Dashboard() {
       }
     } catch (error) {
       console.error(error);
-      alert(error.response?.data?.message || '❌ Could not fetch the plan. We need to add the GET route to the backend!');
+      alert(error.response?.data?.message || '❌ Could not fetch the plan.');
     } finally {
       setIsLoadingPlan(false);
     }
@@ -316,10 +314,10 @@ function Dashboard() {
       await axios.post(`${API_URL}/api/student/reports`, payload, config);
       alert(planForm.isFinalized ? '✅ Phase 2 Graded Report submitted for Admin Approval!' : '✅ Phase 1 Draft Plan submitted for Admin Approval!');
       setIsPlanModalOpen(false);
-      fetchReportStatuses(token); // Refresh badges after submission
+      fetchReportStatuses(token);
     } catch (error) {
       console.error('Error saving plan:', error);
-      alert(error.response?.data?.message || '❌ Failed to save study plan. Ensure backend route is active.');
+      alert(error.response?.data?.message || '❌ Failed to save study plan.');
     } finally {
       setIsSubmitting(false);
     }
@@ -387,16 +385,18 @@ function Dashboard() {
 
   const selectedClass = classes.find(c => (c.id === currentClassId || c._id === currentClassId));
 
+  // ✨ FIND ANY CURRENTLY LIVE CLASS
+  const liveClass = classes.find(cls => cls.status !== 'completed' && isClassLive(cls.startTime));
+
   return (
     <div className="dashboard-container" style={{ maxWidth: '1000px', margin: '0 auto' }}>
       
-      {/* 👑 LUXURY STUDENT PORTAL HEADER */}
+      {/* 👑 STUDENT PORTAL HEADER */}
       {user?.role?.toLowerCase() !== 'teacher' ? (
         <>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', backgroundColor: '#fff', padding: '30px', borderRadius: '15px', boxShadow: '0 10px 25px rgba(0,0,0,0.04)', marginBottom: '30px' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: '25px' }}>
               
-              {/* ✨ OFFICIAL BRAND LOGO */}
               <div style={{ width: '80px', height: '80px', borderRadius: '12px', backgroundColor: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 4px 15px rgba(0,0,0,0.08)', overflow: 'hidden' }}>
                 <img src="/logo512.png" alt="Learn With Ayman Logo" style={{ width: '100%', height: '100%', objectFit: 'contain' }} />
               </div>
@@ -422,6 +422,58 @@ function Dashboard() {
         </div>
       )}
 
+      {/* 🟢 LIVE CLASS HERO BANNER (Active when a class is live) */}
+      {liveClass && (
+        <div style={{
+          backgroundColor: '#2ecc71',
+          color: 'white',
+          padding: '25px 30px',
+          borderRadius: '15px',
+          marginBottom: '30px',
+          display: 'flex',
+          justify: 'space-between',
+          alignItems: 'center',
+          boxShadow: '0 8px 25px rgba(46, 204, 113, 0.35)',
+          flexWrap: 'wrap',
+          gap: '15px'
+        }}>
+          <div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px' }}>
+              <span style={{ width: '12px', height: '12px', borderRadius: '50%', backgroundColor: 'white', display: 'inline-block', animation: 'pulse 1.5s infinite' }}></span>
+              <span style={{ fontSize: '12px', fontWeight: 'bold', letterSpacing: '1px', textTransform: 'uppercase' }}>CLASS IS LIVE NOW</span>
+            </div>
+            <h2 style={{ margin: '0 0 5px 0', fontSize: '24px' }}>📚 {liveClass.title || liveClass.subject}</h2>
+            <p style={{ margin: 0, opacity: 0.9, fontSize: '14px' }}>Started at {new Date(liveClass.startTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</p>
+          </div>
+
+          {(liveClass.zoomLink || liveClass.meetingLink) ? (
+            <button 
+              onClick={() => {
+                handleJoinClassClick(liveClass);
+                window.open(liveClass.zoomLink || liveClass.meetingLink, '_blank');
+              }}
+              style={{
+                backgroundColor: 'white',
+                color: '#27ae60',
+                border: 'none',
+                padding: '14px 28px',
+                borderRadius: '10px',
+                fontSize: '16px',
+                fontWeight: 'bold',
+                cursor: 'pointer',
+                boxShadow: '0 4px 12px rgba(0,0,0,0.15)',
+                transition: 'transform 0.2s'
+              }}>
+              🎥 Join Class Now
+            </button>
+          ) : (
+            <span style={{ backgroundColor: 'rgba(255,255,255,0.2)', padding: '10px 15px', borderRadius: '8px', fontSize: '14px' }}>
+              Check WhatsApp for Link
+            </span>
+          )}
+        </div>
+      )}
+
       {/* 🟢 TEACHER EARNINGS DASHBOARD */}
       {user?.role?.toLowerCase() === 'teacher' && earnings && (
         <div style={{ backgroundColor: '#d4edda', color: '#155724', padding: '20px', borderRadius: '8px', marginBottom: '20px', border: '1px solid #c3e6cb', display: 'flex', justifyContent: 'space-between', alignItems: 'center', boxShadow: '0 2px 5px rgba(0,0,0,0.1)' }}>
@@ -433,7 +485,7 @@ function Dashboard() {
         </div>
       )}
 
-      {/* 🔵 LUXURY STUDENT SUBSCRIPTION DASHBOARD */}
+      {/* 🔵 STUDENT SUBSCRIPTION DASHBOARD */}
       {user?.role?.toLowerCase() !== 'teacher' && subSummary && (
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: '25px', marginBottom: '40px' }}>
           
@@ -509,7 +561,7 @@ function Dashboard() {
         </div>
       )}
 
-      {/* ✨ NEW: STUDY PLANS & PROGRESS ANALYTICS (Parent View) */}
+      {/* ✨ STUDY PLANS & PROGRESS ANALYTICS */}
       {user?.role?.toLowerCase() !== 'teacher' && (
         <>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '2px solid #f1f2f6', paddingBottom: '10px', marginBottom: '20px' }}>
@@ -577,7 +629,7 @@ function Dashboard() {
         </>
       )}
 
-      {/* 🗓️ UPCOMING CLASSES SECTION */}
+      {/* 🗓️ UPCOMING CLASSES SCHEDULE */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
         <h2 style={{ margin: 0 }}>🗓️ Your Schedule</h2>
       </div>
@@ -590,19 +642,20 @@ function Dashboard() {
             const isLive = isClassLive(cls.startTime);
             const classIdentifier = cls._id || cls.id;
             
-            // ✨ MATCH THE STUDENT'S STATUS FOR THE BADGE
             const studentLookupKey = (cls.studentGroupName || cls.title || cls.studentGroupId || '').toLowerCase();
             const planStatus = reportStatuses[studentLookupKey] || '⚪ No Plan Yet';
 
             return (
-              <div key={classIdentifier} className="card" style={{ borderLeft: '5px solid #0984e3', borderRadius: '12px', boxShadow: '0 5px 15px rgba(0,0,0,0.03)' }}>
+              <div key={classIdentifier} className="card" style={{ borderLeft: isLive ? '5px solid #2ecc71' : '5px solid #0984e3', borderRadius: '12px', boxShadow: '0 5px 15px rgba(0,0,0,0.03)', backgroundColor: isLive ? '#f0fff4' : '#fff' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
                   <div>
-                    <h3 style={{ margin: '0 0 10px 0', color: '#2d3436' }}>📚 {cls.title || cls.subject}</h3>
+                    <h3 style={{ margin: '0 0 10px 0', color: '#2d3436' }}>
+                      📚 {cls.title || cls.subject}
+                      {isLive && <span style={{ marginLeft: '10px', backgroundColor: '#2ecc71', color: 'white', padding: '2px 8px', borderRadius: '10px', fontSize: '11px', fontWeight: 'bold' }}>LIVE NOW</span>}
+                    </h3>
                     <p style={{ margin: '0 0 15px 0', color: '#636e72' }}><strong>⏰ Time:</strong> {new Date(cls.startTime).toLocaleString(undefined, { weekday: 'long', month: 'long', day: 'numeric', hour: '2-digit', minute: '2-digit' })}</p>
                   </div>
                   
-                  {/* ✨ "Manage Plan" Button & Badge for Teachers */}
                   {user?.role?.toLowerCase() === 'teacher' && (
                     <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '8px' }}>
                       <span style={{ fontSize: '12px', padding: '4px 10px', borderRadius: '12px', backgroundColor: '#f1f2f6', color: '#2d3436', fontWeight: 'bold' }}>
@@ -625,7 +678,7 @@ function Dashboard() {
                     <button 
                       className={isLive ? "btn-blue" : "btn-disabled"}
                       disabled={!isLive}
-                      style={{ padding: '10px 20px', backgroundColor: isLive ? '#00b894' : '#b2bec3', cursor: isLive ? 'pointer' : 'not-allowed', border: 'none', color: 'white', borderRadius: '6px', fontWeight: 'bold' }}
+                      style={{ padding: '10px 20px', backgroundColor: isLive ? '#2ecc71' : '#b2bec3', cursor: isLive ? 'pointer' : 'not-allowed', border: 'none', color: 'white', borderRadius: '6px', fontWeight: 'bold', fontSize: '14px' }}
                       onClick={() => {
                         if (isLive) {
                           handleJoinClassClick(cls);
@@ -633,10 +686,10 @@ function Dashboard() {
                         }
                       }}
                     >
-                      🎥 {isLive ? "Join Class" : "Locked (Not Class Time)"}
+                      🎥 {isLive ? "Join Live Class Now" : "Locked (Not Class Time Yet)"}
                     </button>
                   ) : (
-                    <span style={{ color: 'grey', fontStyle: 'italic', fontSize: '14px' }}>No meeting link.</span>
+                    <span style={{ color: 'grey', fontStyle: 'italic', fontSize: '14px' }}>No meeting link attached.</span>
                   )}
 
                   {user?.role?.toLowerCase() === 'teacher' && (
@@ -696,7 +749,7 @@ function Dashboard() {
         )}
       </div>
 
-      {/* ✨ UPDATED: TEACHER STUDY PLAN MODAL (Checklist Workflow) */}
+      {/* TEACHER STUDY PLAN MODAL */}
       {isPlanModalOpen && (
         <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.6)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 }}>
           <div style={{ backgroundColor: 'white', padding: '30px', borderRadius: '15px', width: '600px', maxHeight: '90vh', overflowY: 'auto', color: '#2d3436' }}>
@@ -712,7 +765,6 @@ function Dashboard() {
             
             <form onSubmit={handleSavePlan} style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
               
-              {/* TWO-PHASE TOGGLE */}
               <div style={{ display: 'flex', gap: '10px', backgroundColor: '#f5f6fa', padding: '10px', borderRadius: '8px' }}>
                 <button type="button" onClick={() => setPlanForm({...planForm, isFinalized: false})} style={{ flex: 1, padding: '10px', border: 'none', borderRadius: '6px', fontWeight: 'bold', cursor: 'pointer', backgroundColor: !planForm.isFinalized ? '#0984e3' : 'transparent', color: !planForm.isFinalized ? 'white' : '#636e72' }}>
                   Phase 1: Draft Goals
@@ -722,7 +774,6 @@ function Dashboard() {
                 </button>
               </div>
 
-              {/* SUBJECT SELECTOR */}
               <div>
                 <label style={{ fontWeight: 'bold', fontSize: '14px' }}>Which subjects are they studying?</label>
                 <div style={{ display: 'flex', gap: '15px', marginTop: '10px' }}>
@@ -732,24 +783,19 @@ function Dashboard() {
                 </div>
               </div>
 
-              {/* QURAN FIELD */}
               {planForm.quranEnrolled && (
                 <div style={{ borderLeft: '4px solid #6c5ce7', paddingLeft: '15px' }}>
                   {planForm.isFinalized ? (
                     <div style={{ backgroundColor: '#f8f9fa', padding: '15px', borderRadius: '8px', marginBottom: '10px' }}>
                       <h4 style={{ margin: '0 0 10px 0', color: '#6c5ce7' }}>📖 Quran Assessment</h4>
-                      
                       <label style={{ fontWeight: 'bold', fontSize: '13px' }}>Target Plan:</label>
                       <input type="text" value={planForm.quranPlan} onChange={(e) => setPlanForm({...planForm, quranPlan: e.target.value})} placeholder="e.g., Memorize Surah An-Naba 1-10" style={{ width: '100%', padding: '8px', marginBottom: '10px', border: '1px solid #dfe6e9', borderRadius: '4px', backgroundColor: '#fff' }} />
-
                       <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', marginBottom: '10px' }}>
                         <input type="checkbox" checked={planForm.quranCompleted} onChange={(e) => setPlanForm({...planForm, quranCompleted: e.target.checked})} style={{ transform: 'scale(1.2)' }} />
                         <span style={{ fontWeight: 'bold', color: '#2d3436' }}>☑ All goals completed successfully</span>
                       </label>
-
                       <label style={{ fontWeight: 'bold', fontSize: '13px' }}>Subject Notes (Optional):</label>
                       <input type="text" placeholder="e.g., Struggled slightly with Tajweed rules..." value={planForm.quranComment} onChange={(e) => setPlanForm({...planForm, quranComment: e.target.value})} style={{ width: '100%', padding: '8px', marginBottom: '10px', border: '1px solid #dfe6e9', borderRadius: '4px' }} />
-
                       <label style={{ fontWeight: 'bold', fontSize: '13px' }}>Score (out of {maxScores.quran}):</label>
                       <input type="number" step="0.5" max={maxScores.quran} value={planForm.quranScore} onChange={(e) => setPlanForm({...planForm, quranScore: e.target.value})} style={{ width: '100%', padding: '8px', border: '1px solid #dfe6e9', borderRadius: '4px' }} />
                     </div>
@@ -762,24 +808,19 @@ function Dashboard() {
                 </div>
               )}
 
-              {/* ARABIC FIELD */}
               {planForm.arabicEnrolled && (
                 <div style={{ borderLeft: '4px solid #00b894', paddingLeft: '15px' }}>
                   {planForm.isFinalized ? (
                     <div style={{ backgroundColor: '#f8f9fa', padding: '15px', borderRadius: '8px', marginBottom: '10px' }}>
                       <h4 style={{ margin: '0 0 10px 0', color: '#00b894' }}>🗣️ Arabic Assessment</h4>
-                      
                       <label style={{ fontWeight: 'bold', fontSize: '13px' }}>Target Plan:</label>
                       <input type="text" value={planForm.arabicPlan} onChange={(e) => setPlanForm({...planForm, arabicPlan: e.target.value})} placeholder="e.g., Complete Lesson 10" style={{ width: '100%', padding: '8px', marginBottom: '10px', border: '1px solid #dfe6e9', borderRadius: '4px', backgroundColor: '#fff' }} />
-
                       <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', marginBottom: '10px' }}>
                         <input type="checkbox" checked={planForm.arabicCompleted} onChange={(e) => setPlanForm({...planForm, arabicCompleted: e.target.checked})} style={{ transform: 'scale(1.2)' }} />
                         <span style={{ fontWeight: 'bold', color: '#2d3436' }}>☑ All goals completed successfully</span>
                       </label>
-
                       <label style={{ fontWeight: 'bold', fontSize: '13px' }}>Subject Notes (Optional):</label>
                       <input type="text" placeholder="e.g., Needs to focus more on vocabulary..." value={planForm.arabicComment} onChange={(e) => setPlanForm({...planForm, arabicComment: e.target.value})} style={{ width: '100%', padding: '8px', marginBottom: '10px', border: '1px solid #dfe6e9', borderRadius: '4px' }} />
-
                       <label style={{ fontWeight: 'bold', fontSize: '13px' }}>Score (out of {maxScores.arabic}):</label>
                       <input type="number" step="0.5" max={maxScores.arabic} value={planForm.arabicScore} onChange={(e) => setPlanForm({...planForm, arabicScore: e.target.value})} style={{ width: '100%', padding: '8px', border: '1px solid #dfe6e9', borderRadius: '4px' }} />
                     </div>
@@ -792,24 +833,19 @@ function Dashboard() {
                 </div>
               )}
 
-              {/* ISLAMIC STUDIES FIELD */}
               {planForm.islamicEnrolled && (
                 <div style={{ borderLeft: '4px solid #fdcb6e', paddingLeft: '15px' }}>
                   {planForm.isFinalized ? (
                     <div style={{ backgroundColor: '#f8f9fa', padding: '15px', borderRadius: '8px', marginBottom: '10px' }}>
                       <h4 style={{ margin: '0 0 10px 0', color: '#fdcb6e' }}>🕌 Islamic Studies Assessment</h4>
-                      
                       <label style={{ fontWeight: 'bold', fontSize: '13px' }}>Target Plan:</label>
                       <input type="text" value={planForm.islamicPlan} onChange={(e) => setPlanForm({...planForm, islamicPlan: e.target.value})} placeholder="e.g., Pages 40-45" style={{ width: '100%', padding: '8px', marginBottom: '10px', border: '1px solid #dfe6e9', borderRadius: '4px', backgroundColor: '#fff' }} />
-
                       <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', marginBottom: '10px' }}>
                         <input type="checkbox" checked={planForm.islamicCompleted} onChange={(e) => setPlanForm({...planForm, islamicCompleted: e.target.checked})} style={{ transform: 'scale(1.2)' }} />
                         <span style={{ fontWeight: 'bold', color: '#2d3436' }}>☑ All goals completed successfully</span>
                       </label>
-
                       <label style={{ fontWeight: 'bold', fontSize: '13px' }}>Subject Notes (Optional):</label>
-                      <input type="text" placeholder="e.g., Excellent understanding of the stories..." value={planForm.islamicComment} onChange={(e) => setPlanForm({...planForm, islamicComment: e.target.value})} style={{ width: '100%', padding: '8px', marginBottom: '10px', border: '1px solid #dfe6e9', borderRadius: '4px' }} />
-
+                      <input type="text" placeholder="e.g., Excellent understanding..." value={planForm.islamicComment} onChange={(e) => setPlanForm({...planForm, islamicComment: e.target.value})} style={{ width: '100%', padding: '8px', marginBottom: '10px', border: '1px solid #dfe6e9', borderRadius: '4px' }} />
                       <label style={{ fontWeight: 'bold', fontSize: '13px' }}>Score (out of {maxScores.islamic}):</label>
                       <input type="number" step="0.5" max={maxScores.islamic} value={planForm.islamicScore} onChange={(e) => setPlanForm({...planForm, islamicScore: e.target.value})} style={{ width: '100%', padding: '8px', border: '1px solid #dfe6e9', borderRadius: '4px' }} />
                     </div>
@@ -822,7 +858,6 @@ function Dashboard() {
                 </div>
               )}
 
-              {/* ⚡ ONE-CLICK FEEDBACK ENGINE */}
               {planForm.isFinalized && (
                 <div style={{ backgroundColor: '#e8f4fd', padding: '15px', borderRadius: '8px' }}>
                   <label style={{ fontWeight: 'bold', fontSize: '14px', color: '#0984e3' }}>⚡ Quick-Insert General Feedback Template</label>
@@ -899,7 +934,6 @@ function Dashboard() {
             <h2 style={{ margin: '0 0 20px 0' }}>📅 Request Makeup Class</h2>
             
             <form onSubmit={handleRequestMakeup} style={{ display: 'flex', flexDirection: 'column', gap: '15px' }}>
-              
               <div>
                 <label style={{ fontWeight: 'bold', fontSize: '14px' }}>Which missed class are you replacing?</label>
                 <select required value={selectedOriginalDate} onChange={(e) => setSelectedOriginalDate(e.target.value)} style={{ width: '100%', padding: '10px', borderRadius: '5px', border: '1px solid #dfe6e9', marginTop: '5px', boxSizing: 'border-box' }}>
@@ -933,7 +967,7 @@ function Dashboard() {
         </div>
       )}
 
-      {/* 📞 SUPPORT & CONTACT FOOTER */}
+      {/* SUPPORT FOOTER */}
       <div style={{ backgroundColor: '#2d3436', color: 'white', padding: '30px', borderRadius: '15px', marginTop: '40px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '20px' }}>
         <div>
           <h3 style={{ margin: '0 0 10px 0', fontSize: '20px' }}>Need Assistance?</h3>
