@@ -14,8 +14,14 @@ const processQueue = async () => {
     while (messageQueue.length > 0) {
         const { remoteJid, text, resolve } = messageQueue.shift();
         
-        // Clean the target (Removes WhatsApp IDs but preserves exact Names, Numbers, and HTTP Links)
+        // 1. Clean out standard WhatsApp tags
         let cleanTarget = remoteJid ? remoteJid.replace(/@s\.whatsapp\.net/gi, '').replace(/@g\.us/gi, '').trim() : 'Unknown/Blank';
+        
+        // ✨ 2. SMART EXTRACTOR: If a full link is passed, extract JUST the invite code!
+        const inviteMatch = cleanTarget.match(/(?:chat\.whatsapp\.com\/)([a-zA-Z0-9_-]+)/i);
+        if (inviteMatch) {
+            cleanTarget = inviteMatch[1];
+        }
         
         if (!remoteJid || cleanTarget === '') {
             console.log(`⚠️ Aborted: No valid name, number, or link provided to MacroDroid.`);
