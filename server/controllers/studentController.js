@@ -1,7 +1,7 @@
 const asyncHandler = require('express-async-handler');
 const User = require('../models/User');
 const MakeupRequest = require('../models/MakeupRequest');
-const { sendMessage } = require('../utils/whatsappBot'); 
+const whatsappClient = require('../utils/whatsappBot'); // تم إصلاح الاستدعاء
 
 const getSubscriptionSummary = asyncHandler(async (req, res) => {
   const user = await User.findById(req.user._id);
@@ -55,13 +55,15 @@ const addOrUpdateReport = asyncHandler(async (req, res) => {
     throw new Error('No student identifier was found from the calendar event.');
   }
 
-  const searchName = studentIdentifier.trim();
+  // 🧠 SMART SEARCH FIX: Extract the actual name if it contains dashes (e.g. "Ahmed Hariri - Quran")
+  const searchName = studentIdentifier.split('-')[0].trim();
 
-  // 🧠 SMART SEARCH: Case-insensitive regex search to forgive minor typos
+  // Case-insensitive regex search to forgive minor typos
   const student = await User.findOne({
     $or: [ 
-      { name: { $regex: new RegExp(`^${searchName}$`, 'i') } }, 
-      { studentGroupId: searchName } 
+      { name: { $regex: new RegExp(searchName, 'i') } }, 
+      { studentGroupId: studentIdentifier.trim() },
+      { whatsappGroupId: studentIdentifier.trim() }
     ],
     role: 'student'
   });
@@ -69,6 +71,11 @@ const addOrUpdateReport = asyncHandler(async (req, res) => {
   if (!student) {
     res.status(404);
     throw new Error(`❌ Database Error: Could not find a student named "${searchName}". Please check the student's exact name in the Admin Users tab.`);
+  }
+
+  // Ensure the array exists
+  if (!student.monthlyReports) {
+    student.monthlyReports = [];
   }
 
   // Calculate total score if finalized
@@ -81,10 +88,9 @@ const addOrUpdateReport = asyncHandler(async (req, res) => {
   const reportData = { monthYear, isFinalized, teacherNote, quran, arabic, islamicStudies, totalScore, approvalStatus: 'pending' };
 
   if (existingReportIndex >= 0) {
-    student.monthlyReports[existingReportIndex] = { 
-        ...student.monthlyReports[existingReportIndex].toObject(), 
-        ...reportData 
-    };
+    // Force Mongoose to recognize the array update
+    student.monthlyReports[existingReportIndex] = Object.assign(student.monthlyReports[existingReportIndex], reportData);
+    student.markModified('monthlyReports');
   } else {
     student.monthlyReports.push(reportData);
   }
@@ -94,11 +100,11 @@ const addOrUpdateReport = asyncHandler(async (req, res) => {
   // 🤖 TRIGGER WHATSAPP ALERT TO ADMIN
   try {
     const adminPhone = process.env.ADMIN_WHATSAPP_NUMBER; 
-    if (adminPhone && sendMessage) {
+    if (adminPhone && whatsappClient && whatsappClient.sendMessage) {
       const phaseName = isFinalized ? "Phase 2 (Final Grades)" : "Phase 1 (Draft Plan)";
       const msg = `📝 *Pending Approval Alert*\n\n*Student:* ${student.name}\n*Month:* ${monthYear}\n*Submission:* ${phaseName}\n\nPlease log in to the Admin Dashboard to review and approve.`;
       
-      await sendMessage(`${adminPhone}@s.whatsapp.net`, msg).catch(err => console.log("Bot offline, skipping message."));
+      await whatsappClient.sendMessage(`${adminPhone}@s.whatsapp.net`, msg).catch(err => console.log("Bot offline, skipping message."));
     }
   } catch (err) {
     console.error("Failed to send WhatsApp alert for report:", err);
@@ -124,8 +130,8 @@ const appealReport = asyncHandler(async (req, res) => {
 
   try {
     const adminPhone = process.env.ADMIN_WHATSAPP_NUMBER;
-    if (adminPhone && sendMessage) {
-      await sendMessage(`${adminPhone}@s.whatsapp.net`, adminMessage).catch(err => console.log("Bot offline, skipping appeal message."));
+    if (adminPhone && whatsappClient && whatsappClient.sendMessage) {
+      await whatsappClient.sendMessage(`${adminPhone}@s.whatsapp.net`, adminMessage).catch(err => console.log("Bot offline, skipping appeal message."));
     }
   } catch (err) {
     console.error("Failed to send appeal WhatsApp alert:", err);
@@ -145,13 +151,14 @@ const getExistingReport = asyncHandler(async (req, res) => {
     throw new Error('No student identifier provided.');
   }
 
-  const searchName = studentIdentifier.trim();
+  const searchName = studentIdentifier.split('-')[0].trim();
 
   // Smart Search to find the student
   const student = await User.findOne({
     $or: [ 
-      { name: { $regex: new RegExp(`^${searchName}$`, 'i') } }, 
-      { studentGroupId: searchName } 
+      { name: { $regex: new RegExp(searchName, 'i') } }, 
+      { studentGroupId: studentIdentifier.trim() },
+      { whatsappGroupId: studentIdentifier.trim() }
     ],
     role: 'student'
   });
@@ -159,6 +166,10 @@ const getExistingReport = asyncHandler(async (req, res) => {
   if (!student) {
     res.status(404);
     throw new Error(`Could not find a student named "${searchName}".`);
+  }
+
+  if (!student.monthlyReports) {
+    return res.status(200).json(null); 
   }
 
   // Look for the specific month's report
@@ -196,7 +207,6 @@ const getStudentReportStatuses = asyncHandler(async (req, res) => {
       }
     }
 
-    // Map by both name and studentGroupId to ensure the frontend can match it perfectly
     if (student.name) statuses[student.name.toLowerCase()] = status;
     if (student.studentGroupId) statuses[student.studentGroupId.toLowerCase()] = status;
   });
