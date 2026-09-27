@@ -87,8 +87,6 @@ const scheduleClass = asyncHandler(async (req, res) => {
     const message = `⚠️ *Schedule Update Alert*\n\nالسلام عليكم / Assalamu Alaikum *${teacher.name}*,\n\nThere has been a change to your schedule regarding your class with *${student.name}*.\n\n📌 *Update Type:* 🔔 New Class Added\n🕒 *Class Time:* ${new Date(startTime).toLocaleString()}\n\nPlease check your Teacher Dashboard for full details. \n*Learn With Ayman Admin Team*`;
     const codes = await extractGroupCodes(subject);
     let targetPhone = codes.teacher || teacher.teacherGroupId || teacher.whatsappGroupId || teacherGroupName || teacher.name;
-    
-    // Globally Queued Send
     whatsappClient.sendMessage(targetPhone, message);
   }
   res.status(201).json(session);
@@ -116,8 +114,6 @@ const deleteClass = asyncHandler(async (req, res) => {
     const message = `⚠️ *Schedule Update Alert*\n\nالسلام عليكم / Assalamu Alaikum *${session.teacher.name}*,\n\nThere has been a change to your schedule regarding your class with *${session.student.name}*.\n\n📌 *Update Type:* ❌ Canceled\n\nThis class has been removed from your schedule.\n\nPlease check your Teacher Dashboard for full details. \n*Learn With Ayman Admin Team*`;
     const codes = await extractGroupCodes(session.subject);
     let targetPhone = codes.teacher || session.teacher.teacherGroupId || session.teacher.whatsappGroupId || session.teacherGroupName || session.teacher.name;
-    
-    // Globally Queued Send
     whatsappClient.sendMessage(targetPhone, message);
   }
   await session.deleteOne();
@@ -149,8 +145,6 @@ const updateClass = asyncHandler(async (req, res) => {
     const message = `⚠️ *Schedule Update Alert*\n\nالسلام عليكم / Assalamu Alaikum *${session.teacher.name}*,\n\nThere has been a change to your schedule regarding your class with *${session.student.name}*.\n\n📌 *Update Type:* 🔄 Rescheduled\n🕒 *New Class Time:* ${new Date(newStartTime).toLocaleString()}\n\nPlease check your Teacher Dashboard for full details. \n*Learn With Ayman Admin Team*`;
     const codes = await extractGroupCodes(session.subject);
     let targetPhone = codes.teacher || session.teacher.teacherGroupId || session.teacher.whatsappGroupId || session.teacherGroupName || session.teacher.name;
-    
-    // Globally Queued Send
     whatsappClient.sendMessage(targetPhone, message);
   }
   res.status(200).json(session);
@@ -176,7 +170,6 @@ const endClass = async (req, res) => {
     let targetPhone = codes.student || session?.student?.studentGroupId || session?.student?.whatsappGroupId || studentGroupId || whatsappGroupId || studentGroupName || studentName;
 
     if (targetPhone) {
-      // Globally Queued Send
       whatsappClient.sendMessage(targetPhone, messageText);
     }
 
@@ -261,7 +254,6 @@ const markAttendance = async (req, res) => {
       } else if (attendanceStatus === 'Absent') {
         message = `السلام عليكم / Assalamu Alaikum *${session.student.name || 'Student'}*,\n\nWe hope everything is proceeding smoothly on your end and that you are safe and well. 🌿\n\nWe noticed that you haven't joined the meeting today. Since the 15-minute waiting period has passed, the teacher has now closed the meeting room. \n\n⚠️ *Please note: As per our attendance policy, this session is marked as absent and is not eligible for a makeup class.*\n\nWe look forward to seeing you at your next scheduled time, Insha'Allah! \n\nWarm regards,\n*Learn With Ayman Support Team*`;
       }
-      // Globally Queued Send
       whatsappClient.sendMessage(targetGroup, message);
     }
 
@@ -433,9 +425,10 @@ const getTeacherSchedule = async (req, res) => {
 
     const isTeacher = databaseUser.role === 'teacher';
     
+    // Fallback exactly as originally written to catch all ID types
     let searchId = isTeacher 
-        ? (databaseUser.teacherGroupId || databaseUser.whatsappGroupId)
-        : (databaseUser.studentGroupId || databaseUser.whatsappGroupId);
+        ? (databaseUser.whatsappGroupId || databaseUser.teacherGroupId || databaseUser.groupId || databaseUser.whatsappGroup)
+        : (databaseUser.studentGroupId || databaseUser.whatsappGroupId || databaseUser.groupId || databaseUser.whatsappGroup);
 
     if (searchId) searchId = searchId.trim();
     if (!searchId) return res.status(200).json([]); 
@@ -461,11 +454,30 @@ const getTeacherSchedule = async (req, res) => {
       const end = event.end?.dateTime || event.end?.date; 
       const description = event.description || "";
       
-      const teacherMatch = description.match(/TeacherGroupID[\s*:-]*([0-9]+@g\.us)/i) || description.match(/chat\.whatsapp\.com\/([a-zA-Z0-9_-]+)/i);
-      let extractedTeacherId = teacherMatch ? (teacherMatch[1].includes('@') ? teacherMatch[1].trim() : `https://chat.whatsapp.com/${teacherMatch[1].trim()}`) : null;
+      // RESTORED: Full original extraction to catch old IDs, Alphas, and Links!
+      const teacherMatch = description.match(/TeacherGroupID[\s*:-]*([0-9]+@g\.us)/i) || description.match(/(?:teachergroup|teacher id|group id|id)[\s*:-]*([0-9]+@g\.us)/i) || description.match(/TeacherGroup[^\d]*([0-9]+@g\.us)/i);
+      let extractedTeacherId = teacherMatch ? teacherMatch[1].trim() : null;
 
-      const studentMatch = description.match(/StudentGroupID[\s*:-]*([0-9]+@g\.us)/i) || description.match(/chat\.whatsapp\.com\/([a-zA-Z0-9_-]+)/i);
-      let studentGroupId = studentMatch ? (studentMatch[1].includes('@') ? studentMatch[1].trim() : `https://chat.whatsapp.com/${studentMatch[1].trim()}`) : null;
+      const studentMatch = description.match(/StudentGroupID[\s*:-]*([0-9]+@g\.us)/i) || description.match(/(?:studentgroup|student id|id)[\s*:-]*([0-9]+@g\.us)/i) || description.match(/StudentGroup[^\d]*([0-9]+@g\.us)/i);
+      let studentGroupId = studentMatch ? studentMatch[1].trim() : null;
+
+      if (!extractedTeacherId || !studentGroupId) {
+          const cleanDesc = description.replace(/<[^>]*>?/gm, ' ').replace(/&nbsp;/g, ' ');
+          
+          if (!extractedTeacherId) {
+              const tLink = cleanDesc.match(/TeacherGroupLink[\s\S]*?chat\.whatsapp\.com\/([a-zA-Z0-9_-]+)/i);
+              const tAlpha = cleanDesc.match(/(?:TeacherGroupID|TeacherGroup|Teacher ID|Group ID)[\s*:-]*([a-zA-Z0-9_-]{10,})/i);
+              if (tLink && tLink[1] !== 'null') extractedTeacherId = tLink[1].trim();
+              else if (tAlpha && tAlpha[1] !== 'null') extractedTeacherId = tAlpha[1].trim();
+          }
+
+          if (!studentGroupId) {
+              const sLink = cleanDesc.match(/StudentGroupLink[\s\S]*?chat\.whatsapp\.com\/([a-zA-Z0-9_-]+)/i);
+              const sAlpha = cleanDesc.match(/(?:StudentGroupID|StudentGroup|Student ID)[\s*:-]*([a-zA-Z0-9_-]{10,})/i);
+              if (sLink && sLink[1] !== 'null') studentGroupId = sLink[1].trim();
+              else if (sAlpha && sAlpha[1] !== 'null') studentGroupId = sAlpha[1].trim();
+          }
+      }
 
       const studentNameMatch = description.match(/StudentGroupName[\s*:-]*([^\n<]+)/i);
       const studentGroupName = studentNameMatch ? studentNameMatch[1].trim() : null;
@@ -489,11 +501,16 @@ const getTeacherSchedule = async (req, res) => {
       };
     });
 
+    const cleanSearch = searchId.replace('https://chat.whatsapp.com/', '').trim();
+
     const userSpecificClasses = processedClasses.filter((cls) => {
       if (isTeacher) {
-        return cls.teacherGroupId === searchId || (cls.teacherGroupId && cls.teacherGroupId.includes(searchId));
+        if (!cls.teacherGroupId) return false;
+        return cls.teacherGroupId.includes(cleanSearch) || cleanSearch.includes(cls.teacherGroupId);
       } else {
-        return cls.studentGroupId === searchId || (cls.studentGroupId && cls.studentGroupId.includes(searchId)) || (cls.studentGroupName && cls.studentGroupName === databaseUser.name);
+        const sMatch = cls.studentGroupId && (cls.studentGroupId.includes(cleanSearch) || cleanSearch.includes(cls.studentGroupId));
+        const nMatch = cls.studentGroupName && (cls.studentGroupName === databaseUser.name || cls.studentGroupName === cleanSearch);
+        return sMatch || nMatch;
       }
     });
 
@@ -554,8 +571,18 @@ const getAdminLiveMonitor = async (req, res) => {
     const events = response.data.items || [];
     const processedClasses = events.map(event => {
       const description = event.description || "";
-      const tMatch = description.match(/chat\.whatsapp\.com\/([a-zA-Z0-9_-]+)/i);
-      let extractedTeacherId = tMatch ? `https://chat.whatsapp.com/${tMatch[1].trim()}` : null;
+      
+      // RESTORED: Full extraction for Live Monitor
+      const tOld = description.match(/TeacherGroupID[\s*:-]*([0-9]+@g\.us)/i) || description.match(/(?:teachergroup|teacher id|group id|id)[\s*:-]*([0-9]+@g\.us)/i) || description.match(/TeacherGroup[^\d]*([0-9]+@g\.us)/i);
+      let extractedTeacherId = tOld ? tOld[1].trim() : null;
+
+      if (!extractedTeacherId) {
+        const cleanDesc = description.replace(/<[^>]*>?/gm, ' ').replace(/&nbsp;/g, ' ');
+        const tLink = cleanDesc.match(/TeacherGroupLink[\s\S]*?chat\.whatsapp\.com\/([a-zA-Z0-9_-]+)/i);
+        const tAlpha = cleanDesc.match(/(?:TeacherGroupID|TeacherGroup|Teacher ID|Group ID)[\s*:-]*([a-zA-Z0-9_-]{10,})/i);
+        if (tLink && tLink[1] !== 'null') extractedTeacherId = tLink[1].trim();
+        else if (tAlpha && tAlpha[1] !== 'null') extractedTeacherId = tAlpha[1].trim();
+      }
 
       const studentNameMatch = description.match(/StudentGroupName[\s*:-]*([^\n<]+)/i);
       const zoomMatch = description.match(/(https:\/\/[^\s<"]*zoom\.us[^\s<"]*)/i);
@@ -576,8 +603,13 @@ const getAdminLiveMonitor = async (req, res) => {
     }).populate('teacher', 'name');
 
     const liveMonitorData = teachers.map(teacher => {
-      const teacherId = teacher.teacherGroupId || teacher.whatsappGroupId;
-      const teacherGcal = processedClasses.filter(cls => cls.teacherGroupId && teacherId && cls.teacherGroupId.includes(teacherId));
+      const teacherId = teacher.whatsappGroupId || teacher.teacherGroupId || teacher.groupId;
+      const cleanSearch = teacherId ? teacherId.replace('https://chat.whatsapp.com/', '').trim() : null;
+
+      const teacherGcal = processedClasses.filter(cls => {
+        if (!cls.teacherGroupId || !cleanSearch) return false;
+        return cls.teacherGroupId.includes(cleanSearch) || cleanSearch.includes(cls.teacherGroupId);
+      });
       const teacherDbClasses = dbClasses.filter(dbCls => dbCls.teacher && dbCls.teacher._id.toString() === teacher._id.toString());
 
       const teacherCompleted = teacherDbClasses.filter(cls => cls.status === 'completed');
