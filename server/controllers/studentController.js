@@ -1,7 +1,7 @@
 const asyncHandler = require('express-async-handler');
 const User = require('../models/User');
 const MakeupRequest = require('../models/MakeupRequest');
-const whatsappClient = require('../utils/whatsappBot'); // تم إصلاح الاستدعاء
+const whatsappClient = require('../utils/whatsappBot'); 
 
 const getSubscriptionSummary = asyncHandler(async (req, res) => {
   const user = await User.findById(req.user._id);
@@ -55,13 +55,13 @@ const addOrUpdateReport = asyncHandler(async (req, res) => {
     throw new Error('No student identifier was found from the calendar event.');
   }
 
-  // 🧠 SMART SEARCH FIX: Extract the actual name if it contains dashes (e.g. "Ahmed Hariri - Quran")
+  // 🧠 SMART SEARCH FIX
   const searchName = studentIdentifier.split('-')[0].trim();
+  const safeSearchName = searchName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
-  // Case-insensitive regex search to forgive minor typos
   const student = await User.findOne({
     $or: [ 
-      { name: { $regex: new RegExp(searchName, 'i') } }, 
+      { name: { $regex: new RegExp(safeSearchName, 'i') } }, 
       { studentGroupId: studentIdentifier.trim() },
       { whatsappGroupId: studentIdentifier.trim() }
     ],
@@ -73,12 +73,10 @@ const addOrUpdateReport = asyncHandler(async (req, res) => {
     throw new Error(`❌ Database Error: Could not find a student named "${searchName}". Please check the student's exact name in the Admin Users tab.`);
   }
 
-  // Ensure the array exists
   if (!student.monthlyReports) {
     student.monthlyReports = [];
   }
 
-  // Calculate total score if finalized
   let totalScore = null;
   if (isFinalized) {
     totalScore = (Number(quran?.score) || 0) + (Number(arabic?.score) || 0) + (Number(islamicStudies?.score) || 0);
@@ -88,7 +86,6 @@ const addOrUpdateReport = asyncHandler(async (req, res) => {
   const reportData = { monthYear, isFinalized, teacherNote, quran, arabic, islamicStudies, totalScore, approvalStatus: 'pending' };
 
   if (existingReportIndex >= 0) {
-    // Force Mongoose to recognize the array update
     student.monthlyReports[existingReportIndex] = Object.assign(student.monthlyReports[existingReportIndex], reportData);
     student.markModified('monthlyReports');
   } else {
@@ -99,12 +96,14 @@ const addOrUpdateReport = asyncHandler(async (req, res) => {
 
   // 🤖 TRIGGER WHATSAPP ALERT TO ADMIN
   try {
-    const adminPhone = process.env.ADMIN_WHATSAPP_NUMBER; 
+    // ✨ HARDCODED ADMIN LINK INSTEAD OF ENVIRONMENT VARIABLE
+    const adminPhone = process.env.ADMIN_WHATSAPP_NUMBER || 'https://chat.whatsapp.com/BYFE1IPRs2KGJNhGaxvpJd'; 
     if (adminPhone && whatsappClient && whatsappClient.sendMessage) {
       const phaseName = isFinalized ? "Phase 2 (Final Grades)" : "Phase 1 (Draft Plan)";
       const msg = `📝 *Pending Approval Alert*\n\n*Student:* ${student.name}\n*Month:* ${monthYear}\n*Submission:* ${phaseName}\n\nPlease log in to the Admin Dashboard to review and approve.`;
       
-      await whatsappClient.sendMessage(`${adminPhone}@s.whatsapp.net`, msg).catch(err => console.log("Bot offline, skipping message."));
+      // Removed the @s.whatsapp.net artifact so the link works perfectly!
+      await whatsappClient.sendMessage(adminPhone, msg).catch(err => console.log("Bot offline, skipping message."));
     }
   } catch (err) {
     console.error("Failed to send WhatsApp alert for report:", err);
@@ -129,9 +128,11 @@ const appealReport = asyncHandler(async (req, res) => {
   const adminMessage = `⚖️ *NEW GRADE APPEAL* \n\n*Student:* ${user.name}\n*Phone:* ${user.whatsappNumber || 'N/A'}\n*Report:* ${monthYear}\n*Reason:* "${reason}" \n\nPlease review this with the teacher and contact the parent.`;
 
   try {
-    const adminPhone = process.env.ADMIN_WHATSAPP_NUMBER;
+    // ✨ HARDCODED ADMIN LINK INSTEAD OF ENVIRONMENT VARIABLE
+    const adminPhone = process.env.ADMIN_WHATSAPP_NUMBER || 'https://chat.whatsapp.com/BYFE1IPRs2KGJNhGaxvpJd';
     if (adminPhone && whatsappClient && whatsappClient.sendMessage) {
-      await whatsappClient.sendMessage(`${adminPhone}@s.whatsapp.net`, adminMessage).catch(err => console.log("Bot offline, skipping appeal message."));
+      // Removed the @s.whatsapp.net artifact here too
+      await whatsappClient.sendMessage(adminPhone, adminMessage).catch(err => console.log("Bot offline, skipping appeal message."));
     }
   } catch (err) {
     console.error("Failed to send appeal WhatsApp alert:", err);
@@ -152,11 +153,11 @@ const getExistingReport = asyncHandler(async (req, res) => {
   }
 
   const searchName = studentIdentifier.split('-')[0].trim();
+  const safeSearchName = searchName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
-  // Smart Search to find the student
   const student = await User.findOne({
     $or: [ 
-      { name: { $regex: new RegExp(searchName, 'i') } }, 
+      { name: { $regex: new RegExp(safeSearchName, 'i') } }, 
       { studentGroupId: studentIdentifier.trim() },
       { whatsappGroupId: studentIdentifier.trim() }
     ],
@@ -172,7 +173,6 @@ const getExistingReport = asyncHandler(async (req, res) => {
     return res.status(200).json(null); 
   }
 
-  // Look for the specific month's report
   const report = student.monthlyReports.find(r => r.monthYear === monthYear);
 
   if (!report) {
