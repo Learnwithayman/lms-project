@@ -120,12 +120,12 @@ const approveReport = asyncHandler(async (req, res) => {
   }
 
   try {
-    // Attempt to grab the group ID first, fallback to standard number
-    const targetJid = user.studentGroupId || user.whatsappNumber;
+    // ✨ FIX: Grab the database string directly. Do NOT attach @g.us or @s.whatsapp.net. 
+    // Just pass the raw Invite Link directly to our global Smart Extractor.
+    const targetJid = user.studentGroupId || user.whatsappGroupId || user.whatsappNumber;
+    
     if (targetJid && sendMessage) {
-      // Format correctly based on whether it's a group or individual
-      const formattedJid = targetJid.includes('@') ? targetJid : (targetJid.length > 15 ? `${targetJid}@g.us` : `${targetJid}@s.whatsapp.net`);
-      await sendMessage(formattedJid, whatsappMessage).catch(err => console.log("Bot offline, skipping."));
+      await sendMessage(targetJid, whatsappMessage).catch(err => console.log("Bot offline, skipping."));
     }
   } catch (err) {
     console.error("Failed to queue WhatsApp approval message:", err);
