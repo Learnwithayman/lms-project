@@ -14,10 +14,11 @@ const processQueue = async () => {
     while (messageQueue.length > 0) {
         const { remoteJid, text, resolve } = messageQueue.shift();
         
+        // Clean the target (Removes WhatsApp IDs but preserves exact Names, Numbers, and HTTP Links)
         let cleanTarget = remoteJid ? remoteJid.replace(/@s\.whatsapp\.net/gi, '').replace(/@g\.us/gi, '').trim() : 'Unknown/Blank';
         
         if (!remoteJid || cleanTarget === '') {
-            console.log(`⚠️ Aborted: No valid name or number provided to MacroDroid.`);
+            console.log(`⚠️ Aborted: No valid name, number, or link provided to MacroDroid.`);
             try {
                 await MessageLog.create({
                     recipient: 'No Name/Number',
