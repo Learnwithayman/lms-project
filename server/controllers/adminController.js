@@ -19,13 +19,15 @@ const auth = new google.auth.GoogleAuth({
 });
 const calendar = google.calendar({ version: 'v3', auth });
 
-// Helper to pull the Student's exact invite link from Calendar
-const extractStudentLinkFromCalendar = async (searchQuery) => {
-  if (!searchQuery) return null;
+// 🧠 SMART STUDENT LINK EXTRACTOR
+const extractGroupCodes = async (searchQuery) => {
+  let codes = { teacher: null, student: null };
+  if (!searchQuery) return codes;
+  
   try {
     const now = new Date();
-    const past = new Date(now.getTime() - (60 * 24 * 60 * 60 * 1000)); 
-    const future = new Date(now.getTime() + (60 * 24 * 60 * 60 * 1000));
+    const past = new Date(now.getTime() - (30 * 24 * 60 * 60 * 1000));
+    const future = new Date(now.getTime() + (30 * 24 * 60 * 60 * 1000));
     
     const response = await calendar.events.list({
       calendarId: 'admin@learnwithayman.com',
@@ -37,26 +39,28 @@ const extractStudentLinkFromCalendar = async (searchQuery) => {
     
     for (const event of (response.data.items || [])) {
       const description = event.description || "";
-      const cleanDesc = description.replace(/<[^>]*>?/gm, ' ').replace(/&nbsp;/g, ' ');
-
-      // 1. Prioritize explicitly labeled Student Links
-      const explicitStudentLink = cleanDesc.match(/StudentGroupLink[\s\S]*?chat\.whatsapp\.com\/([a-zA-Z0-9_-]+)/i);
-      if (explicitStudentLink && explicitStudentLink[1] !== 'null') {
-          return `https://chat.whatsapp.com/${explicitStudentLink[1].trim()}`;
+      
+      // 1. Look specifically for a labeled student link
+      const explicitStudent = description.match(/StudentGroup[^\n]*?chat\.whatsapp\.com\/([a-zA-Z0-9_-]+)/i);
+      
+      if (explicitStudent) {
+          codes.student = `https://chat.whatsapp.com/${explicitStudent[1].trim()}`;
+      } else {
+          // 2. Fallback: Grab ALL links. If there are 2, the second is the student.
+          const allLinks = [...description.matchAll(/chat\.whatsapp\.com\/([a-zA-Z0-9_-]+)/gi)];
+          if (allLinks.length > 1) {
+              codes.student = `https://chat.whatsapp.com/${allLinks[1][1].trim()}`;
+          } else if (allLinks.length === 1) {
+              codes.student = `https://chat.whatsapp.com/${allLinks[0][1].trim()}`;
+          }
       }
-
-      // 2. Fallback: Find all links. If there are two, the second is usually the student. 
-      const allLinks = [...cleanDesc.matchAll(/chat\.whatsapp\.com\/([a-zA-Z0-9_-]+)/gi)];
-      if (allLinks.length > 1) {
-          return `https://chat.whatsapp.com/${allLinks[1][1].trim()}`;
-      } else if (allLinks.length === 1) {
-          return `https://chat.whatsapp.com/${allLinks[0][1].trim()}`;
-      }
+      
+      if (codes.student) break; // Stop searching once we find the student!
     }
   } catch (error) {
-    console.error('Admin Calendar Link Extraction Error:', error.message);
+    console.error('⚠️ Calendar Link Extraction Error:', error.message);
   }
-  return null;
+  return codes;
 };
 
 // @desc    Update a Teacher's Hourly Rate
@@ -64,7 +68,6 @@ const extractStudentLinkFromCalendar = async (searchQuery) => {
 // @access  Private/Admin
 const updateTeacherRate = asyncHandler(async (req, res) => {
   const { hourlyRate } = req.body;
-  
   const teacher = await User.findById(req.params.id);
 
   if (!teacher) {
@@ -169,13 +172,11 @@ const approveReport = asyncHandler(async (req, res) => {
   }
 
   try {
-    // ✨ FIX: Search Google Calendar FIRST for the dynamic Invite Link. 
-    // Fallback to the database profile only if the calendar search fails.
-    let targetJid = await extractStudentLinkFromCalendar(user.name);
+    // ✨ SEARCH CALENDAR FOR THE PERFECT STUDENT LINK
+    const codes = await extractGroupCodes(user.name);
     
-    if (!targetJid) {
-        targetJid = user.studentGroupId || user.whatsappGroupId || user.whatsappNumber;
-    }
+    // Prioritize Calendar Link -> Then DB Link -> Then DB Number
+    const targetJid = codes.student || user.studentGroupId || user.whatsappGroupId || user.whatsappNumber;
     
     if (targetJid && sendMessage) {
       await sendMessage(targetJid, whatsappMessage).catch(err => console.log("Bot offline, skipping."));
