@@ -20,7 +20,7 @@ const auth = new google.auth.GoogleAuth({
 const calendar = google.calendar({ version: 'v3', auth });
 
 // ==========================================
-// ✨ MACRODROID LINK EXTRACTOR HELPER 
+// ✨ FIXED: SMART CALENDAR LINK EXTRACTOR
 // ==========================================
 const extractGroupCodes = async (classTitle) => {
   let codes = { teacher: null, student: null };
@@ -43,14 +43,25 @@ const extractGroupCodes = async (classTitle) => {
     for (const event of events) {
       const description = event.description || "";
       
-      const tMatch = description.match(/chat\.whatsapp\.com\/([a-zA-Z0-9_-]+)/i);
-      if (tMatch && tMatch[1] !== 'null') codes.teacher = `https://chat.whatsapp.com/${tMatch[1].trim()}`;
+      // 1. Explicit Labels First
+      const explicitTeacher = description.match(/TeacherGroup[^\n]*?chat\.whatsapp\.com\/([a-zA-Z0-9_-]+)/i);
+      if (explicitTeacher) codes.teacher = `https://chat.whatsapp.com/${explicitTeacher[1].trim()}`;
 
-      const sMatch = description.match(/chat\.whatsapp\.com\/([a-zA-Z0-9_-]+)/i);
-      if (sMatch && sMatch[1] !== 'null' && (!codes.teacher || codes.teacher !== `https://chat.whatsapp.com/${sMatch[1].trim()}`)) {
-         codes.student = `https://chat.whatsapp.com/${sMatch[1].trim()}`;
+      const explicitStudent = description.match(/StudentGroup[^\n]*?chat\.whatsapp\.com\/([a-zA-Z0-9_-]+)/i);
+      if (explicitStudent) codes.student = `https://chat.whatsapp.com/${explicitStudent[1].trim()}`;
+
+      // 2. Fallback: Grab ALL links. First is usually teacher, second is usually student!
+      if (!codes.teacher || !codes.student) {
+          const allLinks = [...description.matchAll(/chat\.whatsapp\.com\/([a-zA-Z0-9_-]+)/gi)];
+          if (allLinks.length > 0 && !codes.teacher) {
+              codes.teacher = `https://chat.whatsapp.com/${allLinks[0][1].trim()}`;
+          }
+          if (allLinks.length > 1 && !codes.student) {
+              codes.student = `https://chat.whatsapp.com/${allLinks[1][1].trim()}`;
+          }
       }
 
+      // Stop searching if we found both or at least one
       if (codes.teacher || codes.student) break;
     }
   } catch (error) {
@@ -454,7 +465,6 @@ const getTeacherSchedule = async (req, res) => {
       const end = event.end?.dateTime || event.end?.date; 
       const description = event.description || "";
       
-      // RESTORED: Full original extraction to catch old IDs, Alphas, and Links!
       const teacherMatch = description.match(/TeacherGroupID[\s*:-]*([0-9]+@g\.us)/i) || description.match(/(?:teachergroup|teacher id|group id|id)[\s*:-]*([0-9]+@g\.us)/i) || description.match(/TeacherGroup[^\d]*([0-9]+@g\.us)/i);
       let extractedTeacherId = teacherMatch ? teacherMatch[1].trim() : null;
 
@@ -572,7 +582,6 @@ const getAdminLiveMonitor = async (req, res) => {
     const processedClasses = events.map(event => {
       const description = event.description || "";
       
-      // RESTORED: Full extraction for Live Monitor
       const tOld = description.match(/TeacherGroupID[\s*:-]*([0-9]+@g\.us)/i) || description.match(/(?:teachergroup|teacher id|group id|id)[\s*:-]*([0-9]+@g\.us)/i) || description.match(/TeacherGroup[^\d]*([0-9]+@g\.us)/i);
       let extractedTeacherId = tOld ? tOld[1].trim() : null;
 
