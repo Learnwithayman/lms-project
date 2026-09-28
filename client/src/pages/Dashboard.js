@@ -75,6 +75,19 @@ function Dashboard() {
     templateSeverity: 'Minor'
   });
 
+  // ✨ Helper to generate recent months for retroactive reporting (Current month + past 5 months)
+  const getRecentMonths = () => {
+    const months = [];
+    const date = new Date();
+    for (let i = 0; i < 6; i++) {
+      const monthName = date.toLocaleString('default', { month: 'long', year: 'numeric' });
+      months.push(monthName);
+      date.setMonth(date.getMonth() - 1);
+    }
+    return months;
+  };
+  const recentMonths = getRecentMonths();
+
   useEffect(() => {
     const token = localStorage.getItem('token');
     const userData = localStorage.getItem('user');
@@ -158,6 +171,7 @@ function Dashboard() {
         const r = res.data;
         setPlanForm(prev => ({
           ...prev,
+          isFinalized: r.isFinalized || false,
           quranEnrolled: r.quran?.enrolled || false,
           quranPlan: r.quran?.plan || '',
           quranScore: r.quran?.score || '',
@@ -177,7 +191,7 @@ function Dashboard() {
         }));
         alert(`✅ Found existing plan for ${planForm.monthYear}!`);
       } else {
-        alert('ℹ️ No existing plan found for this month.');
+        alert(`ℹ️ No existing plan found for ${planForm.monthYear}. You can create one now.`);
       }
     } catch (error) {
       console.error(error);
@@ -312,7 +326,7 @@ function Dashboard() {
       };
 
       await axios.post(`${API_URL}/api/student/reports`, payload, config);
-      alert(planForm.isFinalized ? '✅ Phase 2 Graded Report submitted for Admin Approval!' : '✅ Phase 1 Draft Plan submitted for Admin Approval!');
+      alert(planForm.isFinalized ? `✅ Phase 2 Graded Report for ${planForm.monthYear} submitted for Admin Approval!` : `✅ Phase 1 Draft Plan for ${planForm.monthYear} submitted for Admin Approval!`);
       setIsPlanModalOpen(false);
       fetchReportStatuses(token);
     } catch (error) {
@@ -384,23 +398,18 @@ function Dashboard() {
   }));
 
   const selectedClass = classes.find(c => (c.id === currentClassId || c._id === currentClassId));
-
-  // ✨ FIND ANY CURRENTLY LIVE CLASS
   const liveClass = classes.find(cls => cls.status !== 'completed' && isClassLive(cls.startTime));
 
   return (
     <div className="dashboard-container" style={{ maxWidth: '1000px', margin: '0 auto' }}>
       
-      {/* 👑 STUDENT PORTAL HEADER */}
       {user?.role?.toLowerCase() !== 'teacher' ? (
         <>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', backgroundColor: '#fff', padding: '30px', borderRadius: '15px', boxShadow: '0 10px 25px rgba(0,0,0,0.04)', marginBottom: '30px' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: '25px' }}>
-              
               <div style={{ width: '80px', height: '80px', borderRadius: '12px', backgroundColor: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 4px 15px rgba(0,0,0,0.08)', overflow: 'hidden' }}>
                 <img src="/logo512.png" alt="Learn With Ayman Logo" style={{ width: '100%', height: '100%', objectFit: 'contain' }} />
               </div>
-
               <div>
                 <h1 style={{ margin: '0 0 5px 0', color: '#2d3436', fontSize: '28px' }}>Hello, {user.name}</h1>
                 <span style={{ backgroundColor: '#e8f4fd', color: '#0984e3', padding: '5px 12px', borderRadius: '20px', fontSize: '12px', fontWeight: 'bold', letterSpacing: '0.5px', textTransform: 'uppercase' }}>Student Portal</span>
@@ -422,7 +431,6 @@ function Dashboard() {
         </div>
       )}
 
-      {/* 🟢 LIVE CLASS HERO BANNER (Active when a class is live) */}
       {liveClass && (
         <div style={{
           backgroundColor: '#2ecc71',
@@ -474,7 +482,6 @@ function Dashboard() {
         </div>
       )}
 
-      {/* 🟢 TEACHER EARNINGS DASHBOARD */}
       {user?.role?.toLowerCase() === 'teacher' && earnings && (
         <div style={{ backgroundColor: '#d4edda', color: '#155724', padding: '20px', borderRadius: '8px', marginBottom: '20px', border: '1px solid #c3e6cb', display: 'flex', justifyContent: 'space-between', alignItems: 'center', boxShadow: '0 2px 5px rgba(0,0,0,0.1)' }}>
           <div>
@@ -485,7 +492,6 @@ function Dashboard() {
         </div>
       )}
 
-      {/* 🔵 STUDENT SUBSCRIPTION DASHBOARD */}
       {user?.role?.toLowerCase() !== 'teacher' && subSummary && (
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: '25px', marginBottom: '40px' }}>
           
@@ -561,7 +567,6 @@ function Dashboard() {
         </div>
       )}
 
-      {/* ✨ STUDY PLANS & PROGRESS ANALYTICS */}
       {user?.role?.toLowerCase() !== 'teacher' && (
         <>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '2px solid #f1f2f6', paddingBottom: '10px', marginBottom: '20px' }}>
@@ -629,7 +634,6 @@ function Dashboard() {
         </>
       )}
 
-      {/* 🗓️ UPCOMING CLASSES SCHEDULE */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
         <h2 style={{ margin: 0 }}>🗓️ Your Schedule</h2>
       </div>
@@ -706,7 +710,6 @@ function Dashboard() {
         )}
       </div>
 
-      {/* CLASS HISTORY SECTION */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px', borderBottom: '2px solid #f1f2f6', paddingBottom: '10px' }}>
         <h2 style={{ margin: '0' }}>🕰️ Class History</h2>
         {user?.role?.toLowerCase() !== 'teacher' && (
@@ -765,6 +768,21 @@ function Dashboard() {
             
             <form onSubmit={handleSavePlan} style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
               
+              {/* ✨ RETROACTIVE MONTH SELECTOR */}
+              <div style={{ backgroundColor: '#f1f2f6', padding: '12px', borderRadius: '8px', display: 'flex', flexDirection: 'column', gap: '5px' }}>
+                <label style={{ fontWeight: 'bold', fontSize: '13px', color: '#2d3436' }}>📅 Select Report / Plan Month:</label>
+                <select 
+                  value={planForm.monthYear} 
+                  onChange={(e) => setPlanForm({...planForm, monthYear: e.target.value})}
+                  style={{ padding: '8px', borderRadius: '6px', border: '1px solid #dfe6e9', backgroundColor: 'white', fontWeight: 'bold', fontSize: '14px' }}
+                >
+                  {recentMonths.map(m => (
+                    <option key={m} value={m}>{m}</option>
+                  ))}
+                </select>
+                <span style={{ fontSize: '11px', color: '#636e72' }}>Select past months (e.g., September) to submit missed reports.</span>
+              </div>
+
               <div style={{ display: 'flex', gap: '10px', backgroundColor: '#f5f6fa', padding: '10px', borderRadius: '8px' }}>
                 <button type="button" onClick={() => setPlanForm({...planForm, isFinalized: false})} style={{ flex: 1, padding: '10px', border: 'none', borderRadius: '6px', fontWeight: 'bold', cursor: 'pointer', backgroundColor: !planForm.isFinalized ? '#0984e3' : 'transparent', color: !planForm.isFinalized ? 'white' : '#636e72' }}>
                   Phase 1: Draft Goals
