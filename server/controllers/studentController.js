@@ -13,7 +13,6 @@ const getSubscriptionSummary = asyncHandler(async (req, res) => {
 
   const now = new Date();
   
-  // Filter for valid, unused makeup credits
   const activeMakeups = user.makeupBank ? user.makeupBank.filter(
     (makeup) => !makeup.isUsed && new Date(makeup.expirationDate) > now
   ) : [];
@@ -55,7 +54,6 @@ const addOrUpdateReport = asyncHandler(async (req, res) => {
     throw new Error('No student identifier was found from the calendar event.');
   }
 
-  // 🧠 SMART SEARCH FIX
   const searchName = studentIdentifier.split('-')[0].trim();
   const safeSearchName = searchName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
@@ -86,7 +84,11 @@ const addOrUpdateReport = asyncHandler(async (req, res) => {
   const reportData = { monthYear, isFinalized, teacherNote, quran, arabic, islamicStudies, totalScore, approvalStatus: 'pending' };
 
   if (existingReportIndex >= 0) {
-    student.monthlyReports[existingReportIndex] = Object.assign(student.monthlyReports[existingReportIndex], reportData);
+    // ✨ FIX: Restored the original, safe Mongoose update method to prevent server crashes
+    student.monthlyReports[existingReportIndex] = { 
+        ...student.monthlyReports[existingReportIndex].toObject(), 
+        ...reportData 
+    };
     student.markModified('monthlyReports');
   } else {
     student.monthlyReports.push(reportData);
@@ -96,14 +98,13 @@ const addOrUpdateReport = asyncHandler(async (req, res) => {
 
   // 🤖 TRIGGER WHATSAPP ALERT TO ADMIN
   try {
-    // ✨ HARDCODED ADMIN LINK INSTEAD OF ENVIRONMENT VARIABLE
-    const adminPhone = process.env.ADMIN_WHATSAPP_NUMBER || 'https://chat.whatsapp.com/BYFE1IPRs2KGJNhGaxvpJd'; 
-    if (adminPhone && whatsappClient && whatsappClient.sendMessage) {
+    const adminGroupTarget = process.env.ADMIN_WHATSAPP_NUMBER || 'https://chat.whatsapp.com/BYFE1IPRs2KGJNhGaxvpJd'; 
+    
+    if (adminGroupTarget && whatsappClient && whatsappClient.sendMessage) {
       const phaseName = isFinalized ? "Phase 2 (Final Grades)" : "Phase 1 (Draft Plan)";
       const msg = `📝 *Pending Approval Alert*\n\n*Student:* ${student.name}\n*Month:* ${monthYear}\n*Submission:* ${phaseName}\n\nPlease log in to the Admin Dashboard to review and approve.`;
       
-      // Removed the @s.whatsapp.net artifact so the link works perfectly!
-      await whatsappClient.sendMessage(adminPhone, msg).catch(err => console.log("Bot offline, skipping message."));
+      await whatsappClient.sendMessage(adminGroupTarget, msg).catch(err => console.log("Bot offline, skipping message."));
     }
   } catch (err) {
     console.error("Failed to send WhatsApp alert for report:", err);
@@ -124,15 +125,13 @@ const appealReport = asyncHandler(async (req, res) => {
     throw new Error('User not found');
   }
 
-  // 🤖 WHATSAPP AUTOMATION LOGIC (To the Admin)
   const adminMessage = `⚖️ *NEW GRADE APPEAL* \n\n*Student:* ${user.name}\n*Phone:* ${user.whatsappNumber || 'N/A'}\n*Report:* ${monthYear}\n*Reason:* "${reason}" \n\nPlease review this with the teacher and contact the parent.`;
 
   try {
-    // ✨ HARDCODED ADMIN LINK INSTEAD OF ENVIRONMENT VARIABLE
-    const adminPhone = process.env.ADMIN_WHATSAPP_NUMBER || 'https://chat.whatsapp.com/BYFE1IPRs2KGJNhGaxvpJd';
-    if (adminPhone && whatsappClient && whatsappClient.sendMessage) {
-      // Removed the @s.whatsapp.net artifact here too
-      await whatsappClient.sendMessage(adminPhone, adminMessage).catch(err => console.log("Bot offline, skipping appeal message."));
+    const adminGroupTarget = process.env.ADMIN_WHATSAPP_NUMBER || 'https://chat.whatsapp.com/BYFE1IPRs2KGJNhGaxvpJd';
+    
+    if (adminGroupTarget && whatsappClient && whatsappClient.sendMessage) {
+      await whatsappClient.sendMessage(adminGroupTarget, adminMessage).catch(err => console.log("Bot offline, skipping appeal message."));
     }
   } catch (err) {
     console.error("Failed to send appeal WhatsApp alert:", err);
