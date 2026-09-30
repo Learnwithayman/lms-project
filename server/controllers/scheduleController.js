@@ -19,9 +19,6 @@ const auth = new google.auth.GoogleAuth({
 });
 const calendar = google.calendar({ version: 'v3', auth });
 
-// ==========================================
-// ✨ FIXED: SMART CALENDAR LINK EXTRACTOR
-// ==========================================
 const extractGroupCodes = async (classTitle) => {
   let codes = { teacher: null, student: null };
   if (!classTitle || classTitle === 'Google Calendar Lesson') return codes;
@@ -43,14 +40,12 @@ const extractGroupCodes = async (classTitle) => {
     for (const event of events) {
       const description = event.description || "";
       
-      // 1. Explicit Labels First
       const explicitTeacher = description.match(/TeacherGroup[^\n]*?chat\.whatsapp\.com\/([a-zA-Z0-9_-]+)/i);
       if (explicitTeacher) codes.teacher = `https://chat.whatsapp.com/${explicitTeacher[1].trim()}`;
 
       const explicitStudent = description.match(/StudentGroup[^\n]*?chat\.whatsapp\.com\/([a-zA-Z0-9_-]+)/i);
       if (explicitStudent) codes.student = `https://chat.whatsapp.com/${explicitStudent[1].trim()}`;
 
-      // 2. Fallback: Grab ALL links. First is usually teacher, second is usually student!
       if (!codes.teacher || !codes.student) {
           const allLinks = [...description.matchAll(/chat\.whatsapp\.com\/([a-zA-Z0-9_-]+)/gi)];
           if (allLinks.length > 0 && !codes.teacher) {
@@ -61,11 +56,10 @@ const extractGroupCodes = async (classTitle) => {
           }
       }
 
-      // Stop searching if we found both or at least one
       if (codes.teacher || codes.student) break;
     }
   } catch (error) {
-    console.error('⚠️ Calendar Link Extraction Error:', error.message);
+    console.error('⚠️️ Calendar Link Extraction Error:', error.message);
   }
   return codes;
 };
@@ -436,13 +430,14 @@ const getTeacherSchedule = async (req, res) => {
 
     const isTeacher = databaseUser.role === 'teacher';
     
-    // Fallback exactly as originally written to catch all ID types
     let searchId = isTeacher 
         ? (databaseUser.whatsappGroupId || databaseUser.teacherGroupId || databaseUser.groupId || databaseUser.whatsappGroup)
         : (databaseUser.studentGroupId || databaseUser.whatsappGroupId || databaseUser.groupId || databaseUser.whatsappGroup);
 
     if (searchId) searchId = searchId.trim();
-    if (!searchId) return res.status(200).json([]); 
+    
+    // We clean the URL, but if it becomes empty string (e.g. they only entered "https://chat.whatsapp.com/"), we must catch it!
+    const cleanSearch = searchId ? searchId.replace('https://chat.whatsapp.com/', '').trim() : '';
 
     const myCalendarId = 'admin@learnwithayman.com'; 
     const now = new Date();
@@ -471,22 +466,27 @@ const getTeacherSchedule = async (req, res) => {
       const studentMatch = description.match(/StudentGroupID[\s*:-]*([0-9]+@g\.us)/i) || description.match(/(?:studentgroup|student id|id)[\s*:-]*([0-9]+@g\.us)/i) || description.match(/StudentGroup[^\d]*([0-9]+@g\.us)/i);
       let studentGroupId = studentMatch ? studentMatch[1].trim() : null;
 
-      if (!extractedTeacherId || !studentGroupId) {
-          const cleanDesc = description.replace(/<[^>]*>?/gm, ' ').replace(/&nbsp;/g, ' ');
-          
-          if (!extractedTeacherId) {
-              const tLink = cleanDesc.match(/TeacherGroupLink[\s\S]*?chat\.whatsapp\.com\/([a-zA-Z0-9_-]+)/i);
-              const tAlpha = cleanDesc.match(/(?:TeacherGroupID|TeacherGroup|Teacher ID|Group ID)[\s*:-]*([a-zA-Z0-9_-]{10,})/i);
-              if (tLink && tLink[1] !== 'null') extractedTeacherId = tLink[1].trim();
-              else if (tAlpha && tAlpha[1] !== 'null') extractedTeacherId = tAlpha[1].trim();
-          }
+      const cleanDesc = description.replace(/<[^>]*>?/gm, ' ').replace(/&nbsp;/g, ' ');
+      
+      if (!extractedTeacherId) {
+          const tLink = cleanDesc.match(/TeacherGroupLink[\s\S]*?chat\.whatsapp\.com\/([a-zA-Z0-9_-]+)/i);
+          const tAlpha = cleanDesc.match(/(?:TeacherGroupID|TeacherGroup|Teacher ID|Group ID)[\s*:-]*([a-zA-Z0-9_-]{10,})/i);
+          if (tLink && tLink[1] !== 'null') extractedTeacherId = tLink[1].trim();
+          else if (tAlpha && tAlpha[1] !== 'null') extractedTeacherId = tAlpha[1].trim();
+      }
 
-          if (!studentGroupId) {
-              const sLink = cleanDesc.match(/StudentGroupLink[\s\S]*?chat\.whatsapp\.com\/([a-zA-Z0-9_-]+)/i);
-              const sAlpha = cleanDesc.match(/(?:StudentGroupID|StudentGroup|Student ID)[\s*:-]*([a-zA-Z0-9_-]{10,})/i);
-              if (sLink && sLink[1] !== 'null') studentGroupId = sLink[1].trim();
-              else if (sAlpha && sAlpha[1] !== 'null') studentGroupId = sAlpha[1].trim();
-          }
+      if (!studentGroupId) {
+          const sLink = cleanDesc.match(/StudentGroupLink[\s\S]*?chat\.whatsapp\.com\/([a-zA-Z0-9_-]+)/i);
+          const sAlpha = cleanDesc.match(/(?:StudentGroupID|StudentGroup|Student ID)[\s*:-]*([a-zA-Z0-9_-]{10,})/i);
+          if (sLink && sLink[1] !== 'null') studentGroupId = sLink[1].trim();
+          else if (sAlpha && sAlpha[1] !== 'null') studentGroupId = sAlpha[1].trim();
+      }
+
+      // Bulk Smart Extractor
+      if (!extractedTeacherId || !studentGroupId) {
+          const allLinks = [...cleanDesc.matchAll(/chat\.whatsapp\.com\/([a-zA-Z0-9_-]+)/gi)];
+          if (allLinks.length > 0 && !extractedTeacherId) extractedTeacherId = allLinks[0][1].trim();
+          if (allLinks.length > 1 && !studentGroupId) studentGroupId = allLinks[1][1].trim();
       }
 
       const studentNameMatch = description.match(/StudentGroupName[\s*:-]*([^\n<]+)/i);
@@ -511,15 +511,20 @@ const getTeacherSchedule = async (req, res) => {
       };
     });
 
-    const cleanSearch = searchId.replace('https://chat.whatsapp.com/', '').trim();
-
     const userSpecificClasses = processedClasses.filter((cls) => {
+      // 🛑 BUG FIX: Prevent empty string matching! If their ID is blank, rely strictly on their Name.
+      const isValidId = cleanSearch && cleanSearch.length > 5;
+
       if (isTeacher) {
         if (!cls.teacherGroupId) return false;
-        return cls.teacherGroupId.includes(cleanSearch) || cleanSearch.includes(cls.teacherGroupId);
+        return isValidId ? (cls.teacherGroupId.includes(cleanSearch) || cleanSearch.includes(cls.teacherGroupId)) : false;
       } else {
-        const sMatch = cls.studentGroupId && (cls.studentGroupId.includes(cleanSearch) || cleanSearch.includes(cls.studentGroupId));
-        const nMatch = cls.studentGroupName && (cls.studentGroupName === databaseUser.name || cls.studentGroupName === cleanSearch);
+        const sMatch = isValidId && cls.studentGroupId && (cls.studentGroupId.includes(cleanSearch) || cleanSearch.includes(cls.studentGroupId));
+        
+        const dbName = databaseUser.name ? databaseUser.name.toLowerCase().trim() : '';
+        const clsName = cls.studentGroupName ? cls.studentGroupName.toLowerCase().trim() : '';
+        const nMatch = clsName && dbName && (clsName === dbName || clsName.includes(dbName) || dbName.includes(clsName));
+        
         return sMatch || nMatch;
       }
     });
