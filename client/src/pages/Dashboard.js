@@ -75,7 +75,6 @@ function Dashboard() {
     templateSeverity: 'Minor'
   });
 
-  // ✨ Helper to generate recent months for retroactive reporting (Current month + past 5 months)
   const getRecentMonths = () => {
     const months = [];
     const date = new Date();
@@ -327,8 +326,16 @@ function Dashboard() {
 
       await axios.post(`${API_URL}/api/student/reports`, payload, config);
       alert(planForm.isFinalized ? `✅ Phase 2 Graded Report for ${planForm.monthYear} submitted for Admin Approval!` : `✅ Phase 1 Draft Plan for ${planForm.monthYear} submitted for Admin Approval!`);
+      
       setIsPlanModalOpen(false);
-      fetchReportStatuses(token);
+
+      // ✨ INSTANT UI UPDATE: Change the pill immediately on the frontend
+      setReportStatuses(prev => ({
+        ...prev,
+        [planStudentIdentifier.toLowerCase()]: '🟡 Pending Admin Approval'
+      }));
+
+      fetchReportStatuses(token); // Safely re-sync in the background
     } catch (error) {
       console.error('Error saving plan:', error);
       alert(error.response?.data?.message || '❌ Failed to save study plan.');
@@ -711,7 +718,7 @@ function Dashboard() {
       </div>
 
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px', borderBottom: '2px solid #f1f2f6', paddingBottom: '10px' }}>
-        <h2 style={{ margin: '0' }}>🕰️ Class History</h2>
+        <h2 style={{ margin: '0' }}>🕰️️ Class History</h2>
         {user?.role?.toLowerCase() !== 'teacher' && (
           <span style={{ fontSize: '14px', color: '#636e72', fontWeight: 'bold' }}>Showing Current Cycle Only</span>
         )}
@@ -768,7 +775,6 @@ function Dashboard() {
             
             <form onSubmit={handleSavePlan} style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
               
-              {/* ✨ RETROACTIVE MONTH SELECTOR */}
               <div style={{ backgroundColor: '#f1f2f6', padding: '12px', borderRadius: '8px', display: 'flex', flexDirection: 'column', gap: '5px' }}>
                 <label style={{ fontWeight: 'bold', fontSize: '13px', color: '#2d3436' }}>📅 Select Report / Plan Month:</label>
                 <select 
