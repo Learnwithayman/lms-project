@@ -166,9 +166,9 @@ const approveReport = asyncHandler(async (req, res) => {
 
   let whatsappMessage = '';
   if (report.isFinalized) {
-    whatsappMessage = `🏆 *Monthly Report Card Available!*\n\nAssalamu Alaikum ${user.name},\n\nYour final graded report and teacher feedback for ${monthYear} are now available.\n\nPlease log in to view your scores and notes:\n🔗 https://lms.learnwithayman.com/`;
+    whatsappMessage = `🏆 *Monthly Report Card Available!*\n\nAssalamu Alaikum ${user.name},\n\nYour final graded report and teacher feedback for ${monthYear} are now available.\n\nPlease log in to view your scores and notes:\n🔗 https://lms.learnwithayman.com`;
   } else {
-    whatsappMessage = `📚 *Monthly Study Plan Available!*\n\nAssalamu Alaikum ${user.name},\n\nYour study plan for ${monthYear} has been finalized by your teacher and approved.\n\nYou can view your goals for this month in your Progress Hub:\n🔗 https://lms.learnwithayman.com/`;
+    whatsappMessage = `📚 *Monthly Study Plan Available!*\n\nAssalamu Alaikum ${user.name},\n\nYour study plan for ${monthYear} has been finalized by your teacher and approved.\n\nYou can view your goals for this month in your Progress Hub:\n🔗 https://lms.learnwithayman.com`;
   }
 
   try {
@@ -236,7 +236,7 @@ const addLegacyReport = asyncHandler(async (req, res) => {
 });
 
 // ==========================================
-// ✨ NEW: HONOR LIST GENERATOR
+// ✨ HONOR LIST GENERATOR
 // ==========================================
 // @desc    Get Honor List (Students with 10/10 total score) for a specific month
 // @route   GET /api/admin/honor-list/:monthYear
