@@ -6,7 +6,8 @@ const {
   getPendingReports,
   approveReport,
   rejectReport,
-  addLegacyReport
+  addLegacyReport,
+  getHonorList // 👈 ADDED IMPORT
 } = require('../controllers/adminController');
 const { protect, admin } = require('../middleware/authMiddleware');
 
@@ -25,5 +26,10 @@ router.put('/reject-report', protect, admin, rejectReport);
 // ✨ LEGACY PDF VAULT ROUTE
 // ==========================================
 router.post('/legacy-report', protect, admin, addLegacyReport);
+
+// ==========================================
+// ✨ HONOR LIST ROUTE
+// ==========================================
+router.get('/honor-list/:monthYear', protect, admin, getHonorList); // 👈 ADDED ROUTE
 
 module.exports = router;

@@ -235,11 +235,51 @@ const addLegacyReport = asyncHandler(async (req, res) => {
   res.status(201).json({ message: 'Legacy report added successfully!', legacyReports: user.legacyReports });
 });
 
+// ==========================================
+// ✨ NEW: HONOR LIST GENERATOR
+// ==========================================
+// @desc    Get Honor List (Students with 10/10 total score) for a specific month
+// @route   GET /api/admin/honor-list/:monthYear
+// @access  Private/Admin
+const getHonorList = asyncHandler(async (req, res) => {
+  const { monthYear } = req.params;
+
+  const students = await User.find({ role: 'student' });
+  let honorList = [];
+
+  students.forEach(student => {
+    if (student.monthlyReports && student.monthlyReports.length > 0) {
+      const report = student.monthlyReports.find(r => r.monthYear === monthYear);
+      
+      // If the report exists, is finalized, and has a perfect score of 10
+      if (report && report.isFinalized && report.totalScore === 10) {
+        honorList.push({
+          studentName: student.name,
+          score: report.totalScore,
+          quranScore: report.quran?.score || 0,
+          arabicScore: report.arabic?.score || 0,
+          islamicScore: report.islamicStudies?.score || 0
+        });
+      }
+    }
+  });
+
+  // Sort alphabetically
+  honorList.sort((a, b) => a.studentName.localeCompare(b.studentName));
+
+  res.status(200).json({
+    month: monthYear,
+    totalHonored: honorList.length,
+    students: honorList
+  });
+});
+
 module.exports = {
   updateTeacherRate,
   createSubscription,
   getPendingReports,
   approveReport,
   rejectReport,
-  addLegacyReport
+  addLegacyReport,
+  getHonorList
 };
