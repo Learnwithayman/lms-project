@@ -1,6 +1,9 @@
 import React, { useEffect, useState } from 'react';
+import axios from 'axios';
 import { useNavigate } from 'react-router-dom';
 import '../App.css'; 
+
+const API_URL = process.env.REACT_APP_API_URL || 'https://lms-backend-02zs.onrender.com';
 
 function AdminDashboard() {
   const navigate = useNavigate();
@@ -26,7 +29,7 @@ function AdminDashboard() {
   const [adminNotes, setAdminNotes] = useState('');
   const [isSubmittingReport, setIsSubmittingReport] = useState(false);
 
-  // ✨ NEW: Edit & Approve Modal State
+  // Edit & Approve Modal State
   const [isEditApproveModalOpen, setIsEditApproveModalOpen] = useState(false);
   const [editedNote, setEditedNote] = useState('');
 
@@ -37,6 +40,11 @@ function AdminDashboard() {
 
   // State to handle the View Notes Modal
   const [viewNotesModal, setViewNotesModal] = useState({ isOpen: false, text: '', student: '' });
+
+  // ✨ NEW: Honor List Generator States
+  const [selectedHonorMonth, setSelectedHonorMonth] = useState('September 2026');
+  const [honorList, setHonorList] = useState([]);
+  const [loadingHonorList, setLoadingHonorList] = useState(false);
 
   useEffect(() => {
     const token = localStorage.getItem('token');
@@ -64,7 +72,7 @@ function AdminDashboard() {
 
   const fetchStudents = async (token) => {
     try {
-      const response = await fetch(`${process.env.REACT_APP_API_URL || 'https://lms-backend-02zs.onrender.com'}/api/users`, {
+      const response = await fetch(`${API_URL}/api/users`, {
         headers: { Authorization: `Bearer ${token}` }
       });
       if (response.ok) {
@@ -81,7 +89,7 @@ function AdminDashboard() {
     setIsSubmittingLegacy(true);
     try {
       const token = localStorage.getItem('token');
-      const response = await fetch(`${process.env.REACT_APP_API_URL || 'https://lms-backend-02zs.onrender.com'}/api/admin/legacy-report`, {
+      const response = await fetch(`${API_URL}/api/admin/legacy-report`, {
         method: 'POST',
         headers: { 
           'Content-Type': 'application/json',
@@ -105,7 +113,7 @@ function AdminDashboard() {
 
   const fetchPendingReports = async (token) => {
     try {
-      const response = await fetch(`${process.env.REACT_APP_API_URL || 'https://lms-backend-02zs.onrender.com'}/api/admin/pending-reports`, {
+      const response = await fetch(`${API_URL}/api/admin/pending-reports`, {
         headers: { Authorization: `Bearer ${token}` }
       });
       if (response.ok) {
@@ -119,20 +127,19 @@ function AdminDashboard() {
     }
   };
 
-  // ✨ UPDATED: Added editedNote parameter
   const handleApproveReport = async (studentId, monthYear, customNote = null) => {
     if (!customNote && !window.confirm('Approve this report exactly as the teacher wrote it?')) return;
     
     setIsSubmittingReport(true);
     try {
       const token = localStorage.getItem('token');
-      const response = await fetch(`${process.env.REACT_APP_API_URL || 'https://lms-backend-02zs.onrender.com'}/api/admin/approve-report`, {
+      const response = await fetch(`${API_URL}/api/admin/approve-report`, {
         method: 'PUT',
         headers: { 
           'Content-Type': 'application/json',
           Authorization: `Bearer ${token}` 
         },
-        body: JSON.stringify({ studentId, monthYear, editedNote: customNote }) // Passes the fixed note to backend
+        body: JSON.stringify({ studentId, monthYear, editedNote: customNote }) 
       });
       if (response.ok) {
         alert('✅ Report Approved! It is now live on the Student Portal.');
@@ -153,7 +160,7 @@ function AdminDashboard() {
     setIsSubmittingReport(true);
     try {
       const token = localStorage.getItem('token');
-      const response = await fetch(`${process.env.REACT_APP_API_URL || 'https://lms-backend-02zs.onrender.com'}/api/admin/reject-report`, {
+      const response = await fetch(`${API_URL}/api/admin/reject-report`, {
         method: 'PUT',
         headers: { 
           'Content-Type': 'application/json',
@@ -182,7 +189,7 @@ function AdminDashboard() {
 
   const fetchPendingMakeups = async (token) => {
     try {
-      const response = await fetch(`${process.env.REACT_APP_API_URL || 'https://lms-backend-02zs.onrender.com'}/api/schedule/admin/makeups`, {
+      const response = await fetch(`${API_URL}/api/schedule/admin/makeups`, {
         headers: { Authorization: `Bearer ${token}` }
       });
       if (response.ok) {
@@ -201,7 +208,7 @@ function AdminDashboard() {
     
     try {
       const token = localStorage.getItem('token');
-      const response = await fetch(`${process.env.REACT_APP_API_URL || 'https://lms-backend-02zs.onrender.com'}/api/schedule/admin/makeups/${id}/resolve`, {
+      const response = await fetch(`${API_URL}/api/schedule/admin/makeups/${id}/resolve`, {
         method: 'PUT',
         headers: { Authorization: `Bearer ${token}` }
       });
@@ -219,7 +226,7 @@ function AdminDashboard() {
 
   const fetchLiveClasses = async (token) => {
     try {
-      const response = await fetch(`${process.env.REACT_APP_API_URL || 'https://lms-backend-02zs.onrender.com'}/api/schedule/admin-live-monitor`, {
+      const response = await fetch(`${API_URL}/api/schedule/admin-live-monitor`, {
         headers: { Authorization: `Bearer ${token}` }
       });
       if (response.ok) {
@@ -235,7 +242,7 @@ function AdminDashboard() {
 
   const fetchMessageLogs = async (token) => {
     try {
-      const response = await fetch(`${process.env.REACT_APP_API_URL || 'https://lms-backend-02zs.onrender.com'}/api/schedule/message-logs`, {
+      const response = await fetch(`${API_URL}/api/schedule/message-logs`, {
         headers: { Authorization: `Bearer ${token}` }
       });
       if (response.ok) {
@@ -249,12 +256,40 @@ function AdminDashboard() {
     }
   };
 
+  // ✨ NEW: Fetch Honor List Function
+  const fetchHonorList = async () => {
+    if (!selectedHonorMonth) return alert('Please enter a month and year');
+    setLoadingHonorList(true);
+    try {
+      const token = localStorage.getItem('token');
+      const config = { headers: { Authorization: `Bearer ${token}` } };
+      const res = await axios.get(`${API_URL}/api/admin/honor-list/${selectedHonorMonth}`, config);
+      
+      setHonorList(res.data.students || []);
+      if (res.data.students.length === 0) {
+        alert(`ℹ️ No 10/10 students found for ${selectedHonorMonth}.`);
+      }
+    } catch (error) {
+      console.error('Failed to fetch honor list:', error);
+      alert('❌ Failed to fetch Honor List');
+    } finally {
+      setLoadingHonorList(false);
+    }
+  };
+
+  // ✨ NEW: Copy Honor List Names
+  const copyHonorNames = () => {
+    const namesText = honorList.map(s => s.studentName).join('\n');
+    navigator.clipboard.writeText(namesText);
+    alert('📋 Honor List names copied to clipboard!');
+  };
+
   const handleResendReminder = async (classData) => {
     if (!window.confirm(`Resend reminder for ${classData.title}?`)) return;
     
     try {
       const token = localStorage.getItem('token');
-      const response = await fetch(`${process.env.REACT_APP_API_URL || 'https://lms-backend-02zs.onrender.com'}/api/schedule/resend-reminder`, {
+      const response = await fetch(`${API_URL}/api/schedule/resend-reminder`, {
         method: 'POST',
         headers: { 
           'Content-Type': 'application/json',
@@ -277,7 +312,7 @@ function AdminDashboard() {
 
     try {
       const token = localStorage.getItem('token');
-      const response = await fetch(`${process.env.REACT_APP_API_URL || 'https://lms-backend-02zs.onrender.com'}/api/schedule/admin-cancel`, {
+      const response = await fetch(`${API_URL}/api/schedule/admin-cancel`, {
         method: 'POST',
         headers: { 
           'Content-Type': 'application/json',
@@ -309,7 +344,7 @@ function AdminDashboard() {
 
     try {
       const token = localStorage.getItem('token');
-      const response = await fetch(`${process.env.REACT_APP_API_URL || 'https://lms-backend-02zs.onrender.com'}/api/schedule/resend-notes`, {
+      const response = await fetch(`${API_URL}/api/schedule/resend-notes`, {
         method: 'POST',
         headers: { 
           'Content-Type': 'application/json',
@@ -332,7 +367,7 @@ function AdminDashboard() {
 
     try {
       const token = localStorage.getItem('token');
-      const response = await fetch(`${process.env.REACT_APP_API_URL || 'https://lms-backend-02zs.onrender.com'}/api/schedule/admin-force-end`, {
+      const response = await fetch(`${API_URL}/api/schedule/admin-force-end`, {
         method: 'PUT',
         headers: { 
           'Content-Type': 'application/json',
@@ -449,6 +484,58 @@ function AdminDashboard() {
       </div>
 
       {/* ========================================== */}
+      {/* 🏆 HONOR LIST GENERATOR CARD */}
+      {/* ========================================== */}
+      <div style={{ backgroundColor: '#fff', padding: '25px', borderRadius: '15px', boxShadow: '0 10px 25px rgba(0,0,0,0.04)', marginTop: '40px', borderTop: '5px solid #fdcb6e' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '15px' }}>
+          <div>
+            <h2 style={{ margin: 0, color: '#2d3436', fontSize: '20px' }}>🏆 Honor List Generator</h2>
+            <p style={{ margin: '5px 0 0 0', color: '#636e72', fontSize: '13px' }}>Automatically grab all students who achieved 10/10 perfect scores for any month.</p>
+          </div>
+        </div>
+
+        <div style={{ display: 'flex', gap: '15px', alignItems: 'center', marginBottom: '20px' }}>
+          <input 
+            type="text" 
+            placeholder="e.g. September 2026" 
+            value={selectedHonorMonth} 
+            onChange={(e) => setSelectedHonorMonth(e.target.value)} 
+            style={{ padding: '10px 15px', borderRadius: '8px', border: '1px solid #dfe6e9', fontSize: '14px', width: '220px' }}
+          />
+          <button 
+            onClick={fetchHonorList} 
+            disabled={loadingHonorList} 
+            style={{ padding: '10px 20px', backgroundColor: '#fdcb6e', color: '#2d3436', border: 'none', borderRadius: '8px', fontWeight: 'bold', cursor: 'pointer' }}
+          >
+            {loadingHonorList ? 'Fetching...' : '🔍 Generate List'}
+          </button>
+        </div>
+
+        {honorList.length > 0 && (
+          <div style={{ backgroundColor: '#fdf9ec', padding: '20px', borderRadius: '10px', border: '1px solid #ffeaa7' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '15px' }}>
+              <h3 style={{ margin: 0, color: '#d35400', fontSize: '16px' }}>🌟 {honorList.length} Students Qualified for {selectedHonorMonth}</h3>
+              <button 
+                onClick={copyHonorNames} 
+                style={{ backgroundColor: '#e67e22', color: 'white', border: 'none', padding: '8px 15px', borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold', fontSize: '12px' }}
+              >
+                📋 Copy All Names
+              </button>
+            </div>
+            
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: '10px' }}>
+              {honorList.map((st, i) => (
+                <div key={i} style={{ backgroundColor: 'white', padding: '10px 15px', borderRadius: '8px', border: '1px solid #f1f2f6', fontWeight: 'bold', color: '#2d3436', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <span>{st.studentName}</span>
+                  <span style={{ fontSize: '12px', backgroundColor: '#2ecc71', color: 'white', padding: '2px 8px', borderRadius: '10px' }}>10/10</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* ========================================== */}
       {/* PENDING STUDY PLANS & REPORTS INBOX */}
       {/* ========================================== */}
       <div style={{ marginTop: '40px', backgroundColor: '#e8f4fd', padding: '20px', borderRadius: '8px', border: '1px solid #b6d4fe', color: '#004085' }}>
@@ -489,7 +576,6 @@ function AdminDashboard() {
                       Reject & Edit
                     </button>
 
-                    {/* ✨ NEW: Edit & Approve Button */}
                     <button 
                       onClick={() => { 
                         setSelectedReport(report); 
@@ -746,7 +832,7 @@ function AdminDashboard() {
         </div>
       )}
 
-      {/* ✨ NEW: EDIT & APPROVE MODAL */}
+      {/* EDIT & APPROVE MODAL */}
       {isEditApproveModalOpen && (
         <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.6)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 }}>
           <div style={{ backgroundColor: 'white', padding: '30px', borderRadius: '15px', width: '500px', color: '#2d3436' }}>
