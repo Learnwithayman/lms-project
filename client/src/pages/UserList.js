@@ -219,7 +219,7 @@ function UserList() {
       await axios.put(`${API_URL}/api/users/${assignStudent._id}/assign`, {
         assignedTeachers: selectedTeachers
       }, config);
-      alert(`✅ Teacher linked successfully to ${assignStudent.name}!`);
+      alert(`✅ Teacher(s) linked successfully to ${assignStudent.name}!`);
       setIsAssignModalOpen(false);
       fetchUsers();
     } catch (error) {
@@ -227,6 +227,15 @@ function UserList() {
       alert('❌ Failed to update assigned teachers.');
     } finally {
       setIsAssigning(false);
+    }
+  };
+
+  // ✨ HELPER: Toggle Checkbox Selection
+  const toggleTeacherSelection = (teacherId) => {
+    if (selectedTeachers.includes(teacherId)) {
+      setSelectedTeachers(selectedTeachers.filter(id => id !== teacherId));
+    } else {
+      setSelectedTeachers([...selectedTeachers, teacherId]);
     }
   };
 
@@ -489,32 +498,32 @@ function UserList() {
         </div>
       )}
 
-      {/* ASSIGN MODAL */}
+      {/* ✨ UPDATED ASSIGN MODAL (CHECKBOXES INSTEAD OF DROPDOWN) */}
       {isAssignModalOpen && assignStudent && (
         <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.6)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, padding: '20px' }}>
           <div style={{ backgroundColor: 'white', padding: '30px', borderRadius: '8px', width: '400px', color: 'black' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '2px solid #eee', paddingBottom: '10px', marginBottom: '20px' }}>
-              <h2 style={{ margin: 0 }}>🧑‍🏫 Assign Teacher</h2>
+              <h2 style={{ margin: 0 }}>🧑‍🏫 Assign Teachers</h2>
               <button onClick={() => setIsAssignModalOpen(false)} style={{ background: 'none', border: 'none', fontSize: '20px', cursor: 'pointer' }}>✖</button>
             </div>
-            <p style={{ color: '#555', marginBottom: '15px', fontSize: '14px' }}>Select the primary teacher for <strong>{assignStudent.name}</strong>.</p>
+            <p style={{ color: '#555', marginBottom: '15px', fontSize: '14px' }}>Select all teachers who instruct <strong>{assignStudent.name}</strong>.</p>
             
-            <div style={{ marginBottom: '25px' }}>
-              <select 
-                value={selectedTeachers.length > 0 ? selectedTeachers[0] : ''} 
-                onChange={(e) => setSelectedTeachers([e.target.value])} 
-                style={{ width: '100%', padding: '12px', borderRadius: '6px', border: '1px solid #ccc', fontSize: '15px' }}>
-                <option value="">-- Unassigned (Select a Teacher) --</option>
-                {allTeachers.map(teacher => (
-                  <option key={teacher._id} value={teacher._id}>
-                    {teacher.name}
-                  </option>
-                ))}
-              </select>
+            <div style={{ marginBottom: '25px', maxHeight: '250px', overflowY: 'auto', border: '1px solid #dfe6e9', borderRadius: '6px', padding: '10px' }}>
+              {allTeachers.map(teacher => (
+                <label key={teacher._id} style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '8px 5px', cursor: 'pointer', borderBottom: '1px solid #f1f2f6' }}>
+                  <input 
+                    type="checkbox" 
+                    checked={selectedTeachers.includes(teacher._id)}
+                    onChange={() => toggleTeacherSelection(teacher._id)}
+                    style={{ transform: 'scale(1.2)' }}
+                  />
+                  <span style={{ fontSize: '15px', color: '#2d3436' }}>{teacher.name}</span>
+                </label>
+              ))}
             </div>
 
             <button onClick={handleSaveAssignments} disabled={isAssigning} style={{ width: '100%', padding: '12px', backgroundColor: isAssigning ? '#95a5a6' : '#9b59b6', color: 'white', border: 'none', borderRadius: '5px', cursor: isAssigning ? 'not-allowed' : 'pointer', fontWeight: 'bold' }}>
-              {isAssigning ? 'Saving...' : 'Save Assignment'}
+              {isAssigning ? 'Saving...' : 'Save Assignments'}
             </button>
           </div>
         </div>
@@ -550,9 +559,8 @@ function UserList() {
             </div>
 
             <div style={{ backgroundColor: '#eef2f5', padding: '20px', borderRadius: '8px', marginBottom: '20px' }}>
-              <h3 style={{ margin: '0 0 15px 0', color: '#2c3e50', borderBottom: '1px solid #ccc', paddingBottom: '10px' }}>⚙️ Manage Subscription</h3>
+              <h3 style={{ margin: '0 0 15px 0', color: '#2c3e50', borderBottom: '1px solid #ccc', paddingBottom: '10px' }}>⚙️️ Manage Subscription</h3>
               
-              {/* ✨ 2 ACTION BUTTONS */}
               <div style={{ display: 'flex', gap: '10px', marginBottom: '15px' }}>
                 <button 
                   type="button" 
@@ -570,7 +578,6 @@ function UserList() {
                 </button>
               </div>
 
-              {/* ✨ 2-PHASE VISUAL BREAKDOWN */}
               <div style={{ display: 'flex', gap: '10px', marginBottom: '15px' }}>
                 <div style={{ flex: 1, backgroundColor: '#e8f8f5', padding: '10px', borderRadius: '6px', border: '1px solid #2ecc71', textAlign: 'center' }}>
                   <div style={{ fontSize: '11px', fontWeight: 'bold', color: '#27ae60' }}>PHASE 1: CLASSES DONE</div>
@@ -586,7 +593,6 @@ function UserList() {
 
               <form onSubmit={handleUpdateSubscription} style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '15px' }}>
                 
-                {/* PLAN PRESET SELECTOR */}
                 <div style={{ gridColumn: '1 / -1', backgroundColor: '#fff', padding: '12px', borderRadius: '6px', border: '1px solid #3498db' }}>
                   <label style={{ display: 'block', marginBottom: '5px', fontWeight: 'bold', fontSize: '14px', color: '#2980b9' }}>⚡ Quick Auto-Calculate End Date:</label>
                   <select 
