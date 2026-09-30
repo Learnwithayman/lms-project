@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 import axios from 'axios';
 import { useNavigate } from 'react-router-dom';
 import '../App.css'; 
@@ -41,10 +41,37 @@ function AdminDashboard() {
   // State to handle the View Notes Modal
   const [viewNotesModal, setViewNotesModal] = useState({ isOpen: false, text: '', student: '' });
 
-  // ✨ NEW: Honor List Generator States
-  const [selectedHonorMonth, setSelectedHonorMonth] = useState('September 2026');
+  // Honor List Generator States
+  const [selectedHonorMonth, setSelectedHonorMonth] = useState('');
   const [honorList, setHonorList] = useState([]);
   const [loadingHonorList, setLoadingHonorList] = useState(false);
+
+  // ✨ NEW: Canvas Graphic Generator States
+  const [isGraphicModalOpen, setIsGraphicModalOpen] = useState(false);
+  const [templateImage, setTemplateImage] = useState(null);
+  const canvasRef = useRef(null);
+  
+  // These sliders let you align the text perfectly with the golden plaques
+  const [graphicSettings, setGraphicSettings] = useState({
+    startX: 300,      // Left Column X alignment
+    startY: 450,      // Top Row Y alignment
+    colSpacing: 450,  // Distance between Left and Right columns
+    rowSpacing: 95,   // Distance between each row downwards
+    fontSize: 34,
+    fontColor: '#4a2311' // Dark brownish-gold color
+  });
+
+  const getRecentMonths = () => {
+    const months = [];
+    const date = new Date();
+    date.setMonth(date.getMonth() + 1); 
+    for (let i = 0; i < 12; i++) {
+      months.push(date.toLocaleString('default', { month: 'long', year: 'numeric' }));
+      date.setMonth(date.getMonth() - 1);
+    }
+    return months;
+  };
+  const recentMonths = getRecentMonths();
 
   useEffect(() => {
     const token = localStorage.getItem('token');
@@ -57,6 +84,8 @@ function AdminDashboard() {
 
     const parsedUser = JSON.parse(userData);
     setUser(parsedUser);
+    
+    setSelectedHonorMonth(new Date().toLocaleString('default', { month: 'long', year: 'numeric' }));
 
     if (parsedUser.role !== 'admin') {
       alert('Access Denied');
@@ -69,6 +98,65 @@ function AdminDashboard() {
       fetchStudents(token);
     }
   }, [navigate]);
+
+  // ✨ NEW: The Canvas Drawing Engine
+  useEffect(() => {
+    if (isGraphicModalOpen && templateImage && canvasRef.current) {
+      const canvas = canvasRef.current;
+      const ctx = canvas.getContext('2d');
+      const img = new Image();
+      
+      img.onload = () => {
+        // Set canvas to match the exact resolution of the uploaded image
+        canvas.width = img.width;
+        canvas.height = img.height;
+        
+        // Draw the background template
+        ctx.drawImage(img, 0, 0);
+
+        // Setup the Text Styling
+        ctx.font = `bold ${graphicSettings.fontSize}px 'Times New Roman', serif`;
+        ctx.fillStyle = graphicSettings.fontColor;
+        ctx.textAlign = "center"; // Centers the text on the X coordinate
+
+        // Loop through the honor list and draw each name
+        honorList.forEach((st, index) => {
+          // Assume 2 columns of names
+          const isLeftColumn = index % 2 === 0;
+          const rowIndex = Math.floor(index / 2);
+          
+          const x = graphicSettings.startX + (isLeftColumn ? 0 : graphicSettings.colSpacing);
+          const y = graphicSettings.startY + (rowIndex * graphicSettings.rowSpacing);
+
+          // Standardize name formatting (e.g., uppercase)
+          const displayName = st.studentName.toUpperCase();
+          
+          ctx.fillText(displayName, x, y);
+        });
+      };
+      img.src = templateImage;
+    }
+  }, [templateImage, graphicSettings, honorList, isGraphicModalOpen]);
+
+  const handleTemplateUpload = (e) => {
+    const file = e.target.files[0];
+    if (file) {
+      const reader = new FileReader();
+      reader.onload = (event) => {
+        setTemplateImage(event.target.result);
+      };
+      reader.readAsDataURL(file);
+    }
+  };
+
+  const handleDownloadGraphic = () => {
+    if (canvasRef.current) {
+      const link = document.createElement('a');
+      link.download = `Honor_List_${selectedHonorMonth.replace(' ', '_')}.jpg`;
+      link.href = canvasRef.current.toDataURL('image/jpeg', 0.9);
+      link.click();
+    }
+  };
 
   const fetchStudents = async (token) => {
     try {
@@ -256,9 +344,8 @@ function AdminDashboard() {
     }
   };
 
-  // ✨ NEW: Fetch Honor List Function
   const fetchHonorList = async () => {
-    if (!selectedHonorMonth) return alert('Please enter a month and year');
+    if (!selectedHonorMonth) return alert('Please select a month and year');
     setLoadingHonorList(true);
     try {
       const token = localStorage.getItem('token');
@@ -277,7 +364,6 @@ function AdminDashboard() {
     }
   };
 
-  // ✨ NEW: Copy Honor List Names
   const copyHonorNames = () => {
     const namesText = honorList.map(s => s.studentName).join('\n');
     navigator.clipboard.writeText(namesText);
@@ -486,7 +572,7 @@ function AdminDashboard() {
       {/* ========================================== */}
       {/* 🏆 HONOR LIST GENERATOR CARD */}
       {/* ========================================== */}
-      <div style={{ backgroundColor: '#fff', padding: '25px', borderRadius: '15px', boxShadow: '0 10px 25px rgba(0,0,0,0.04)', marginTop: '40px', borderTop: '5px solid #fdcb6e' }}>
+      <div style={{ backgroundColor: '#fff', padding: '25px', borderRadius: '15px', boxShadow: '0 10px 25px rgba(0,0,0,0.04)', marginTop: '40px', borderTop: '5px solid #f3b431' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '15px' }}>
           <div>
             <h2 style={{ margin: 0, color: '#2d3436', fontSize: '20px' }}>🏆 Honor List Generator</h2>
@@ -495,17 +581,19 @@ function AdminDashboard() {
         </div>
 
         <div style={{ display: 'flex', gap: '15px', alignItems: 'center', marginBottom: '20px' }}>
-          <input 
-            type="text" 
-            placeholder="e.g. September 2026" 
+          <select 
             value={selectedHonorMonth} 
             onChange={(e) => setSelectedHonorMonth(e.target.value)} 
-            style={{ padding: '10px 15px', borderRadius: '8px', border: '1px solid #dfe6e9', fontSize: '14px', width: '220px' }}
-          />
+            style={{ padding: '10px 15px', borderRadius: '8px', border: '1px solid #dfe6e9', fontSize: '14px', width: '220px', backgroundColor: 'white', cursor: 'pointer', fontWeight: 'bold', color: '#2d3436' }}
+          >
+            {recentMonths.map(m => (
+              <option key={m} value={m}>{m}</option>
+            ))}
+          </select>
           <button 
             onClick={fetchHonorList} 
             disabled={loadingHonorList} 
-            style={{ padding: '10px 20px', backgroundColor: '#fdcb6e', color: '#2d3436', border: 'none', borderRadius: '8px', fontWeight: 'bold', cursor: 'pointer' }}
+            style={{ padding: '10px 20px', backgroundColor: '#f3b431', color: '#2d3436', border: 'none', borderRadius: '8px', fontWeight: 'bold', cursor: 'pointer' }}
           >
             {loadingHonorList ? 'Fetching...' : '🔍 Generate List'}
           </button>
@@ -513,21 +601,29 @@ function AdminDashboard() {
 
         {honorList.length > 0 && (
           <div style={{ backgroundColor: '#fdf9ec', padding: '20px', borderRadius: '10px', border: '1px solid #ffeaa7' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '15px' }}>
-              <h3 style={{ margin: 0, color: '#d35400', fontSize: '16px' }}>🌟 {honorList.length} Students Qualified for {selectedHonorMonth}</h3>
-              <button 
-                onClick={copyHonorNames} 
-                style={{ backgroundColor: '#e67e22', color: 'white', border: 'none', padding: '8px 15px', borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold', fontSize: '12px' }}
-              >
-                📋 Copy All Names
-              </button>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '15px', flexWrap: 'wrap', gap: '10px' }}>
+              <h3 style={{ margin: 0, color: '#e67e22', fontSize: '16px' }}>🌟 {honorList.length} Students Qualified for {selectedHonorMonth}</h3>
+              <div style={{ display: 'flex', gap: '10px' }}>
+                <button 
+                  onClick={copyHonorNames} 
+                  style={{ backgroundColor: '#e67e22', color: 'white', border: 'none', padding: '8px 15px', borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold', fontSize: '12px' }}
+                >
+                  📋 Copy Text
+                </button>
+                <button 
+                  onClick={() => setIsGraphicModalOpen(true)} 
+                  style={{ backgroundColor: '#8e44ad', color: 'white', border: 'none', padding: '8px 15px', borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold', fontSize: '12px' }}
+                >
+                  🎨 Create Graphic
+                </button>
+              </div>
             </div>
             
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: '10px' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: '15px' }}>
               {honorList.map((st, i) => (
-                <div key={i} style={{ backgroundColor: 'white', padding: '10px 15px', borderRadius: '8px', border: '1px solid #f1f2f6', fontWeight: 'bold', color: '#2d3436', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <div key={i} style={{ backgroundColor: 'white', padding: '12px 15px', borderRadius: '8px', border: '1px solid #dfe6e9', fontWeight: 'bold', color: '#2d3436', display: 'flex', justifyContent: 'space-between', alignItems: 'center', boxShadow: '0 2px 5px rgba(0,0,0,0.02)' }}>
                   <span>{st.studentName}</span>
-                  <span style={{ fontSize: '12px', backgroundColor: '#2ecc71', color: 'white', padding: '2px 8px', borderRadius: '10px' }}>10/10</span>
+                  <span style={{ fontSize: '12px', backgroundColor: '#2ecc71', color: 'white', padding: '4px 10px', borderRadius: '12px', fontWeight: 'bold' }}>10/10</span>
                 </div>
               ))}
             </div>
@@ -881,6 +977,60 @@ function AdminDashboard() {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* ✨ NEW: CANVAS GRAPHIC GENERATOR MODAL */}
+      {isGraphicModalOpen && (
+        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.85)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1100, padding: '20px' }}>
+          <div style={{ backgroundColor: 'white', padding: '30px', borderRadius: '15px', width: '900px', maxHeight: '90vh', overflowY: 'auto', display: 'flex', gap: '30px' }}>
+            
+            {/* Left Side: Controls */}
+            <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '15px' }}>
+              <h2 style={{ margin: 0, color: '#8e44ad' }}>🎨 Graphic Creator</h2>
+              <p style={{ margin: 0, fontSize: '13px', color: '#636e72' }}>1. Upload a blank gold template.<br/>2. Use sliders to align the names to the plaques.</p>
+              
+              <input type="file" accept="image/*" onChange={handleTemplateUpload} style={{ padding: '10px', border: '2px dashed #bdc3c7', borderRadius: '8px', cursor: 'pointer' }} />
+              
+              {templateImage && (
+                <div style={{ backgroundColor: '#f1f2f6', padding: '15px', borderRadius: '8px', display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                  <label style={{ fontSize: '13px', fontWeight: 'bold' }}>Left Column X-Position: {graphicSettings.startX}</label>
+                  <input type="range" min="50" max="800" value={graphicSettings.startX} onChange={(e) => setGraphicSettings({...graphicSettings, startX: Number(e.target.value)})} />
+                  
+                  <label style={{ fontSize: '13px', fontWeight: 'bold' }}>Right Column Spacing: {graphicSettings.colSpacing}</label>
+                  <input type="range" min="200" max="800" value={graphicSettings.colSpacing} onChange={(e) => setGraphicSettings({...graphicSettings, colSpacing: Number(e.target.value)})} />
+                  
+                  <label style={{ fontSize: '13px', fontWeight: 'bold' }}>Top Row Y-Position: {graphicSettings.startY}</label>
+                  <input type="range" min="100" max="800" value={graphicSettings.startY} onChange={(e) => setGraphicSettings({...graphicSettings, startY: Number(e.target.value)})} />
+                  
+                  <label style={{ fontSize: '13px', fontWeight: 'bold' }}>Vertical Row Spacing: {graphicSettings.rowSpacing}</label>
+                  <input type="range" min="40" max="200" value={graphicSettings.rowSpacing} onChange={(e) => setGraphicSettings({...graphicSettings, rowSpacing: Number(e.target.value)})} />
+                  
+                  <label style={{ fontSize: '13px', fontWeight: 'bold' }}>Font Size: {graphicSettings.fontSize}</label>
+                  <input type="range" min="16" max="72" value={graphicSettings.fontSize} onChange={(e) => setGraphicSettings({...graphicSettings, fontSize: Number(e.target.value)})} />
+                </div>
+              )}
+
+              <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 'auto' }}>
+                <button onClick={() => { setIsGraphicModalOpen(false); setTemplateImage(null); }} style={{ padding: '10px 15px', cursor: 'pointer', border: '1px solid #b2bec3', borderRadius: '6px', backgroundColor: 'transparent', fontWeight: 'bold', color: '#636e72' }}>Close</button>
+                {templateImage && (
+                  <button onClick={handleDownloadGraphic} style={{ padding: '10px 15px', cursor: 'pointer', backgroundColor: '#2ecc71', color: 'white', border: 'none', borderRadius: '6px', fontWeight: 'bold' }}>
+                    💾 Download Image
+                  </button>
+                )}
+              </div>
+            </div>
+
+            {/* Right Side: Canvas Preview */}
+            <div style={{ flex: 1, backgroundColor: '#dfe6e9', borderRadius: '8px', display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden', minHeight: '400px' }}>
+              {!templateImage ? (
+                <p style={{ color: '#b2bec3', fontWeight: 'bold' }}>Upload an image to see preview</p>
+              ) : (
+                <canvas ref={canvasRef} style={{ maxWidth: '100%', maxHeight: '600px', objectFit: 'contain', boxShadow: '0 4px 15px rgba(0,0,0,0.1)' }} />
+              )}
+            </div>
+
           </div>
         </div>
       )}
