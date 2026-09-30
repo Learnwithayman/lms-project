@@ -41,10 +41,15 @@ function AdminDashboard() {
   // State to handle the View Notes Modal
   const [viewNotesModal, setViewNotesModal] = useState({ isOpen: false, text: '', student: '' });
 
-  // ✨ Honor List Generator States
+  // Honor List Generator States
   const [selectedHonorMonth, setSelectedHonorMonth] = useState('');
   const [honorList, setHonorList] = useState([]);
   const [loadingHonorList, setLoadingHonorList] = useState(false);
+
+  // ✨ NEW: School-Wide Tracker States
+  const [trackMonth, setTrackMonth] = useState('');
+  const [trackData, setTrackData] = useState({ summary: null, trackingData: [] });
+  const [loadingTrack, setLoadingTrack] = useState(false);
 
   // Helper to generate recent months for the dropdown
   const getRecentMonths = () => {
@@ -71,8 +76,10 @@ function AdminDashboard() {
     const parsedUser = JSON.parse(userData);
     setUser(parsedUser);
     
-    // Set default month to current month
-    setSelectedHonorMonth(new Date().toLocaleString('default', { month: 'long', year: 'numeric' }));
+    // Set defaults
+    const currentMonth = new Date().toLocaleString('default', { month: 'long', year: 'numeric' });
+    setSelectedHonorMonth(currentMonth);
+    setTrackMonth(currentMonth);
 
     if (parsedUser.role !== 'admin') {
       alert('Access Denied');
@@ -97,6 +104,24 @@ function AdminDashboard() {
       }
     } catch (error) {
       console.error('Error fetching students:', error);
+    }
+  };
+
+  // ✨ NEW: Fetch Tracking Data
+  const fetchTrackingData = async () => {
+    if (!trackMonth) return;
+    setLoadingTrack(true);
+    try {
+      const token = localStorage.getItem('token');
+      const res = await axios.get(`${API_URL}/api/admin/report-tracking/${trackMonth}`, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      setTrackData(res.data);
+    } catch (error) {
+      console.error('Error fetching tracker:', error);
+      alert('Failed to load tracking data.');
+    } finally {
+      setLoadingTrack(false);
     }
   };
 
@@ -161,6 +186,8 @@ function AdminDashboard() {
         alert('✅ Report Approved! It is now live on the Student Portal.');
         setIsEditApproveModalOpen(false);
         fetchPendingReports(token);
+        // Refresh tracker if open
+        if (trackData.summary) fetchTrackingData();
       } else {
         alert('❌ Failed to approve report.');
       }
@@ -193,6 +220,7 @@ function AdminDashboard() {
         setIsRejectModalOpen(false);
         setAdminNotes('');
         fetchPendingReports(token);
+        if (trackData.summary) fetchTrackingData();
       } else {
         alert('❌ Failed to reject report.');
       }
@@ -452,7 +480,7 @@ function AdminDashboard() {
           👥 Manage Users
         </button>
         <button onClick={() => navigate('/all-classes')} className="action-btn btn-grey" style={{width: 'auto', padding: '10px 20px'}}>
-          🗓️ Manage Classes
+          🗓️️ Manage Classes
         </button>
         <button onClick={() => navigate('/admin-payroll')} className="action-btn btn-grey" style={{width: 'auto', padding: '10px 20px', backgroundColor: '#ffc107', color: '#333', fontWeight: 'bold', border: 'none'}}>
           💰 Manage Payroll
@@ -531,12 +559,14 @@ function AdminDashboard() {
           <div style={{ backgroundColor: '#fdf9ec', padding: '20px', borderRadius: '10px', border: '1px solid #ffeaa7' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '15px', flexWrap: 'wrap', gap: '10px' }}>
               <h3 style={{ margin: 0, color: '#e67e22', fontSize: '16px' }}>🌟 {honorList.length} Students Qualified for {selectedHonorMonth}</h3>
-              <button 
-                onClick={copyHonorNames} 
-                style={{ backgroundColor: '#e67e22', color: 'white', border: 'none', padding: '8px 15px', borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold', fontSize: '12px' }}
-              >
-                📋 Copy All Names
-              </button>
+              <div style={{ display: 'flex', gap: '10px' }}>
+                <button 
+                  onClick={copyHonorNames} 
+                  style={{ backgroundColor: '#e67e22', color: 'white', border: 'none', padding: '8px 15px', borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold', fontSize: '12px' }}
+                >
+                  📋 Copy All Names
+                </button>
+              </div>
             </div>
             
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: '15px' }}>
@@ -552,7 +582,7 @@ function AdminDashboard() {
       </div>
 
       {/* ========================================== */}
-      {/* PENDING STUDY PLANS & REPORTS INBOX */}
+      {/* 📑 STUDY PLANS APPROVAL GATE */}
       {/* ========================================== */}
       <div style={{ marginTop: '40px', backgroundColor: '#e8f4fd', padding: '20px', borderRadius: '8px', border: '1px solid #b6d4fe', color: '#004085' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
@@ -624,6 +654,90 @@ function AdminDashboard() {
               </div>
             ))}
           </div>
+        )}
+      </div>
+
+      {/* ========================================== */}
+      {/* 📊 NEW: SCHOOL-WIDE MONTHLY TRACKER */}
+      {/* ========================================== */}
+      <div style={{ backgroundColor: '#fff', padding: '25px', borderRadius: '15px', boxShadow: '0 10px 25px rgba(0,0,0,0.04)', marginTop: '40px', borderTop: '5px solid #9b59b6' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '15px' }}>
+          <div>
+            <h2 style={{ margin: 0, color: '#2d3436', fontSize: '20px' }}>📊 School-Wide Monthly Tracker</h2>
+            <p style={{ margin: '5px 0 0 0', color: '#636e72', fontSize: '13px' }}>Track exactly which teachers are missing reports and which are finalized.</p>
+          </div>
+        </div>
+
+        <div style={{ display: 'flex', gap: '15px', alignItems: 'center', marginBottom: '25px' }}>
+          <select 
+            value={trackMonth} 
+            onChange={(e) => setTrackMonth(e.target.value)} 
+            style={{ padding: '10px 15px', borderRadius: '8px', border: '1px solid #dfe6e9', fontSize: '14px', width: '220px', backgroundColor: 'white', cursor: 'pointer', fontWeight: 'bold', color: '#2d3436' }}
+          >
+            {recentMonths.map(m => (
+              <option key={m} value={m}>{m}</option>
+            ))}
+          </select>
+          <button 
+            onClick={fetchTrackingData} 
+            disabled={loadingTrack} 
+            style={{ padding: '10px 20px', backgroundColor: '#9b59b6', color: 'white', border: 'none', borderRadius: '8px', fontWeight: 'bold', cursor: 'pointer' }}
+          >
+            {loadingTrack ? 'Scanning...' : '🔍 Fetch Tracking Data'}
+          </button>
+        </div>
+
+        {trackData.summary && (
+          <>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: '15px', marginBottom: '20px' }}>
+              <div style={{ backgroundColor: '#f1f2f6', padding: '15px', borderRadius: '8px', textAlign: 'center', borderLeft: '4px solid #b2bec3' }}>
+                <h4 style={{ margin: '0 0 5px 0', color: '#636e72', fontSize: '12px', textTransform: 'uppercase' }}>Total Students</h4>
+                <p style={{ margin: 0, fontSize: '24px', fontWeight: 'bold', color: '#2d3436' }}>{trackData.summary.total}</p>
+              </div>
+              <div style={{ backgroundColor: '#fff5f5', padding: '15px', borderRadius: '8px', textAlign: 'center', borderLeft: '4px solid #ff7675' }}>
+                <h4 style={{ margin: '0 0 5px 0', color: '#636e72', fontSize: '12px', textTransform: 'uppercase' }}>Missing (No Action)</h4>
+                <p style={{ margin: 0, fontSize: '24px', fontWeight: 'bold', color: '#d63031' }}>{trackData.summary.missing}</p>
+              </div>
+              <div style={{ backgroundColor: '#e8f4fd', padding: '15px', borderRadius: '8px', textAlign: 'center', borderLeft: '4px solid #74b9ff' }}>
+                <h4 style={{ margin: '0 0 5px 0', color: '#636e72', fontSize: '12px', textTransform: 'uppercase' }}>Draft Plans</h4>
+                <p style={{ margin: 0, fontSize: '24px', fontWeight: 'bold', color: '#0984e3' }}>{trackData.summary.draft}</p>
+              </div>
+              <div style={{ backgroundColor: '#f0fff4', padding: '15px', borderRadius: '8px', textAlign: 'center', borderLeft: '4px solid #55efc4' }}>
+                <h4 style={{ margin: '0 0 5px 0', color: '#636e72', fontSize: '12px', textTransform: 'uppercase' }}>Final Reports</h4>
+                <p style={{ margin: 0, fontSize: '24px', fontWeight: 'bold', color: '#00b894' }}>{trackData.summary.final}</p>
+              </div>
+            </div>
+
+            <div style={{ overflowX: 'auto', border: '1px solid #dfe6e9', borderRadius: '8px' }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: '14px' }}>
+                <thead>
+                  <tr style={{ backgroundColor: '#f8f9fa', color: '#2d3436', borderBottom: '2px solid #dfe6e9' }}>
+                    <th style={{ padding: '12px 15px' }}>Student Name</th>
+                    <th style={{ padding: '12px 15px' }}>Plan Status</th>
+                    <th style={{ padding: '12px 15px' }}>Approval Status</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {trackData.trackingData.map((row, idx) => (
+                    <tr key={idx} style={{ borderBottom: '1px solid #f1f2f6', backgroundColor: row.status === 'Missing' ? '#fff9f9' : 'white' }}>
+                      <td style={{ padding: '12px 15px', fontWeight: 'bold', color: '#2d3436' }}>{row.studentName}</td>
+                      <td style={{ padding: '12px 15px' }}>
+                        {row.status === 'Missing' && <span style={{ color: '#d63031', fontWeight: 'bold' }}>❌ Missing</span>}
+                        {row.status === 'Draft Plan' && <span style={{ color: '#0984e3', fontWeight: 'bold' }}>📝 Draft Plan</span>}
+                        {row.status === 'Final Report' && <span style={{ color: '#00b894', fontWeight: 'bold' }}>🏁 Final Report</span>}
+                      </td>
+                      <td style={{ padding: '12px 15px' }}>
+                        {row.approvalStatus === 'N/A' && <span style={{ color: '#b2bec3' }}>N/A</span>}
+                        {row.approvalStatus === 'pending' && <span style={{ backgroundColor: '#fdcb6e', padding: '3px 8px', borderRadius: '10px', fontSize: '11px', fontWeight: 'bold' }}>Pending</span>}
+                        {row.approvalStatus === 'approved' && <span style={{ backgroundColor: '#55efc4', color: '#00b894', padding: '3px 8px', borderRadius: '10px', fontSize: '11px', fontWeight: 'bold' }}>Approved</span>}
+                        {row.approvalStatus === 'rejected' && <span style={{ backgroundColor: '#ff7675', color: 'white', padding: '3px 8px', borderRadius: '10px', fontSize: '11px', fontWeight: 'bold' }}>Rejected</span>}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </>
         )}
       </div>
 

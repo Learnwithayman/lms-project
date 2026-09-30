@@ -7,7 +7,8 @@ const {
   approveReport,
   rejectReport,
   addLegacyReport,
-  getHonorList // 👈 ADDED IMPORT
+  getHonorList,
+  getMonthlyReportTracking // ✨ NEW: Tracker Import
 } = require('../controllers/adminController');
 const { protect, admin } = require('../middleware/authMiddleware');
 
@@ -30,6 +31,11 @@ router.post('/legacy-report', protect, admin, addLegacyReport);
 // ==========================================
 // ✨ HONOR LIST ROUTE
 // ==========================================
-router.get('/honor-list/:monthYear', protect, admin, getHonorList); // 👈 ADDED ROUTE
+router.get('/honor-list/:monthYear', protect, admin, getHonorList);
+
+// ==========================================
+// ✨ SCHOOL-WIDE REPORT TRACKER ROUTE
+// ==========================================
+router.get('/report-tracking/:monthYear', protect, admin, getMonthlyReportTracking); // ✨ NEW: Tracker Route
 
 module.exports = router;

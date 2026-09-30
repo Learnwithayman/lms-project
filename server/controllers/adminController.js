@@ -274,6 +274,53 @@ const getHonorList = asyncHandler(async (req, res) => {
   });
 });
 
+// ==========================================
+// ✨ SCHOOL-WIDE REPORT TRACKER
+// ==========================================
+// @desc    Get tracking status of all students for a specific month
+// @route   GET /api/admin/report-tracking/:monthYear
+// @access  Private/Admin
+const getMonthlyReportTracking = asyncHandler(async (req, res) => {
+  const { monthYear } = req.params;
+  
+  // Fetch all students
+  const students = await User.find({ role: 'student' }).select('name email monthlyReports');
+
+  let trackingData = [];
+
+  students.forEach(student => {
+    const report = student.monthlyReports.find(r => r.monthYear === monthYear);
+    
+    let status = 'Missing'; // Default: No plan created at all
+    let approvalStatus = 'N/A';
+    
+    if (report) {
+      status = report.isFinalized ? 'Final Report' : 'Draft Plan';
+      approvalStatus = report.approvalStatus || 'pending';
+    }
+
+    trackingData.push({
+      studentId: student._id,
+      studentName: student.name,
+      status: status,
+      approvalStatus: approvalStatus 
+    });
+  });
+
+  // Sort alphabetically
+  trackingData.sort((a, b) => a.studentName.localeCompare(b.studentName));
+
+  // Calculate summary stats
+  const summary = {
+    total: trackingData.length,
+    missing: trackingData.filter(t => t.status === 'Missing').length,
+    draft: trackingData.filter(t => t.status === 'Draft Plan').length,
+    final: trackingData.filter(t => t.status === 'Final Report').length,
+  };
+
+  res.status(200).json({ summary, trackingData });
+});
+
 module.exports = {
   updateTeacherRate,
   createSubscription,
@@ -281,5 +328,6 @@ module.exports = {
   approveReport,
   rejectReport,
   addLegacyReport,
-  getHonorList
+  getHonorList,
+  getMonthlyReportTracking
 };
