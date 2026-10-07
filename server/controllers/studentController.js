@@ -216,26 +216,26 @@ const getExistingReport = asyncHandler(async (req, res) => {
 // @access  Private (Teacher)
 const getStudentReportStatuses = asyncHandler(async (req, res) => {
   const students = await User.find({ role: 'student' });
-  
-  // ✨ FIX: Force Render's Linux server to strictly output "October 2026" instead of "10/2026"
-  // We also accept a requested month from the frontend if provided.
-  const targetMonth = req.query.monthYear || new Date().toLocaleString('en-US', { month: 'long', year: 'numeric' });
-
   const statuses = {};
 
   students.forEach(student => {
-    const report = student.monthlyReports?.find(r => r.monthYear === targetMonth);
     let status = '⚪ No Plan Yet';
 
-    if (report) {
-      if (report.isFinalized && report.approvalStatus === 'approved') {
-        status = '🏆 Phase 2 Finalized';
-      } else if (report.isFinalized && report.approvalStatus !== 'approved') {
-        status = '🟡 Phase 2 Pending Admin';
-      } else if (!report.isFinalized && report.approvalStatus === 'approved') {
-        status = '🟢 Phase 1 Active';
+    // ✨ NEW: Dynamically grab the most recently added report instead of hardcoding the current month
+    if (student.monthlyReports && student.monthlyReports.length > 0) {
+      const latestReport = student.monthlyReports[student.monthlyReports.length - 1];
+      
+      // Grab just the 3-letter month (e.g., "Sep", "Oct") to fit nicely on the dashboard pill
+      const shortMonth = latestReport.monthYear ? latestReport.monthYear.split(' ')[0].substring(0, 3) : '';
+
+      if (latestReport.isFinalized && latestReport.approvalStatus === 'approved') {
+        status = `🏆 Phase 2 Finalized (${shortMonth})`;
+      } else if (latestReport.isFinalized && latestReport.approvalStatus !== 'approved') {
+        status = `🟡 Phase 2 Pending (${shortMonth})`;
+      } else if (!latestReport.isFinalized && latestReport.approvalStatus === 'approved') {
+        status = `🟢 Phase 1 Active (${shortMonth})`;
       } else {
-        status = '🔵 Phase 1 Drafted (Pending Admin)';
+        status = `🔵 Phase 1 Drafted (${shortMonth})`;
       }
     }
 
