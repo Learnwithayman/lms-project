@@ -162,12 +162,15 @@ const approveReport = asyncHandler(async (req, res) => {
   report.approvalStatus = 'approved';
   await user.save();
 
+  // ✨ YOUR STANDARD PASSWORD GOES HERE
+  const commonPassword = "Lwa@123#"; 
+
   let whatsappMessage = '';
-  // ✨ FIX: Added a protective space and newline after the URL to block MacroDroid from attaching words to it
+  // ✨ FIX: Appended the email directly from the user profile, and the hardcoded password
   if (report.isFinalized) {
-    whatsappMessage = `🏆 *Monthly Report Card Available!*\n\nAssalamu Alaikum ${user.name},\n\nYour final graded report and teacher feedback for ${monthYear} are now available.\n\nPlease log in to view your scores and notes:\n🔗 https://lms.learnwithayman.com \n`;
+    whatsappMessage = `🏆 *Monthly Report Card Available!*\n\nAssalamu Alaikum ${user.name},\n\nYour final graded report and teacher feedback for ${monthYear} are now available.\n\nPlease log in to view your scores and notes:\n🔗 https://lms.learnwithayman.com \n\n🔐 *Your Login Details:*\n*Email:* ${user.email}\n*Password:* ${commonPassword}\n`;
   } else {
-    whatsappMessage = `📚 *Monthly Study Plan Available!*\n\nAssalamu Alaikum ${user.name},\n\nYour study plan for ${monthYear} has been finalized by your teacher and approved.\n\nYou can view your goals for this month in your Progress Hub:\n🔗 https://lms.learnwithayman.com \n`;
+    whatsappMessage = `📚 *Monthly Study Plan Available!*\n\nAssalamu Alaikum ${user.name},\n\nYour study plan for ${monthYear} has been finalized by your teacher and approved.\n\nYou can view your goals for this month in your Progress Hub:\n🔗 https://lms.learnwithayman.com \n\n🔐 *Your Login Details:*\n*Email:* ${user.email}\n*Password:* ${commonPassword}\n`;
   }
 
   try {
