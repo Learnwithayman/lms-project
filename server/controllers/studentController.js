@@ -75,23 +75,47 @@ const addOrUpdateReport = asyncHandler(async (req, res) => {
     student.monthlyReports = [];
   }
 
+  // ✨ FIX 1: Sanitize incoming data to prevent Mongoose validation crashes
+  const sanitizeSub = (sub) => ({
+    enrolled: sub?.enrolled || false,
+    plan: sub?.plan || '',
+    score: sub?.score === '' ? 0 : Number(sub?.score) || 0, // Forces valid Number
+    completed: sub?.completed || false,
+    comment: sub?.comment || ''
+  });
+
+  const safeQuran = sanitizeSub(quran);
+  const safeArabic = sanitizeSub(arabic);
+  const safeIslamic = sanitizeSub(islamicStudies);
+
   let totalScore = null;
   if (isFinalized) {
-    totalScore = (Number(quran?.score) || 0) + (Number(arabic?.score) || 0) + (Number(islamicStudies?.score) || 0);
+    totalScore = safeQuran.score + safeArabic.score + safeIslamic.score;
   }
 
   const existingReportIndex = student.monthlyReports.findIndex(r => r.monthYear === monthYear);
-  const reportData = { monthYear, isFinalized, teacherNote, quran, arabic, islamicStudies, totalScore, approvalStatus: 'pending' };
 
+  // ✨ FIX 2: Safely mutate properties directly so Mongoose ALWAYS detects the change
   if (existingReportIndex >= 0) {
-    // ✨ FIX: Restored the original, safe Mongoose update method to prevent server crashes
-    student.monthlyReports[existingReportIndex] = { 
-        ...student.monthlyReports[existingReportIndex].toObject(), 
-        ...reportData 
-    };
-    student.markModified('monthlyReports');
+    const existing = student.monthlyReports[existingReportIndex];
+    existing.isFinalized = isFinalized;
+    existing.teacherNote = teacherNote || '';
+    existing.quran = safeQuran;
+    existing.arabic = safeArabic;
+    existing.islamicStudies = safeIslamic;
+    existing.totalScore = totalScore;
+    existing.approvalStatus = 'pending';
   } else {
-    student.monthlyReports.push(reportData);
+    student.monthlyReports.push({ 
+        monthYear, 
+        isFinalized, 
+        teacherNote: teacherNote || '', 
+        quran: safeQuran, 
+        arabic: safeArabic, 
+        islamicStudies: safeIslamic, 
+        totalScore, 
+        approvalStatus: 'pending' 
+    });
   }
 
   await student.save();
@@ -104,7 +128,7 @@ const addOrUpdateReport = asyncHandler(async (req, res) => {
       const phaseName = isFinalized ? "Phase 2 (Final Grades)" : "Phase 1 (Draft Plan)";
       const msg = `📝 *Pending Approval Alert*\n\n*Student:* ${student.name}\n*Month:* ${monthYear}\n*Submission:* ${phaseName}\n\nPlease log in to the Admin Dashboard to review and approve.`;
       
-      await whatsappClient.sendMessage(adminGroupTarget, msg).catch(err => console.log("Bot offline, skipping message."));
+      whatsappClient.sendMessage(adminGroupTarget, msg).catch(err => console.log("Bot offline, skipping message."));
     }
   } catch (err) {
     console.error("Failed to send WhatsApp alert for report:", err);
@@ -131,7 +155,7 @@ const appealReport = asyncHandler(async (req, res) => {
     const adminGroupTarget = process.env.ADMIN_WHATSAPP_NUMBER || 'https://chat.whatsapp.com/BYFE1IPRs2KGJNhGaxvpJd';
     
     if (adminGroupTarget && whatsappClient && whatsappClient.sendMessage) {
-      await whatsappClient.sendMessage(adminGroupTarget, adminMessage).catch(err => console.log("Bot offline, skipping appeal message."));
+      whatsappClient.sendMessage(adminGroupTarget, adminMessage).catch(err => console.log("Bot offline, skipping appeal message."));
     }
   } catch (err) {
     console.error("Failed to send appeal WhatsApp alert:", err);

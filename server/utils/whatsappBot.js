@@ -14,23 +14,26 @@ const processQueue = async () => {
     while (messageQueue.length > 0) {
         const { remoteJid, text, resolve } = messageQueue.shift();
         
-        // 1. Clean out standard WhatsApp tags
-        let cleanTarget = remoteJid ? remoteJid.replace(/@s\.whatsapp\.net/gi, '').replace(/@g\.us/gi, '').trim() : 'Unknown/Blank';
+        let cleanTarget = remoteJid ? remoteJid.replace(/@s\.whatsapp\.net/gi, '').replace(/@g\.us/gi, '').trim() : '';
         
-        // ✨ 2. SMART EXTRACTOR: If a full link is passed, extract JUST the invite code!
-        const inviteMatch = cleanTarget.match(/(?:chat\.whatsapp\.com\/)([a-zA-Z0-9_-]+)/i);
-        if (inviteMatch) {
-            cleanTarget = inviteMatch[1];
+        // ✨ SMART URL BUILDER: Ensure MacroDroid always gets a full HTTP link
+        if (cleanTarget && !cleanTarget.startsWith('http')) {
+            if (/^[a-zA-Z0-9_-]{10,30}$/.test(cleanTarget)) {
+                cleanTarget = `https://chat.whatsapp.com/${cleanTarget}`;
+            } else if (/^\d+$/.test(cleanTarget)) {
+                cleanTarget = `https://wa.me/${cleanTarget}`;
+            }
         }
-        
-        if (!remoteJid || cleanTarget === '') {
-            console.log(`⚠️ Aborted: No valid name, number, or link provided to MacroDroid.`);
+
+        // 🛑 SAFETY CHECK: Prevent Android intent crashes
+        if (!cleanTarget.startsWith('http') || cleanTarget.includes(' ') || cleanTarget === '') {
+            console.log(`⚠️ Aborted: Invalid URL target (${cleanTarget}).`);
             try {
                 await MessageLog.create({
-                    recipient: 'No Name/Number',
+                    recipient: cleanTarget || 'Unknown',
                     messageBody: text || 'No text provided',
                     status: 'failed',
-                    errorMessage: 'Aborted by System: Missing or invalid recipient.'
+                    errorMessage: `Aborted by System: '${cleanTarget}' is not a valid web link.`
                 });
             } catch (dbError) {}
             resolve(false);
@@ -61,7 +64,6 @@ const processQueue = async () => {
 
         } catch (error) {
             console.error('❌ Failed to trigger physical phone automation:', error.message);
-            
             try {
                 await MessageLog.create({
                     recipient: cleanTarget,
@@ -70,24 +72,31 @@ const processQueue = async () => {
                     errorMessage: `Phone Error: ${error.message}`
                 });
             } catch (dbError) {}
-
             resolve(false);
         }
 
-        // 🛑 The strict 20-second delay before releasing the next webhook
+        // 🛑 DELAY: 25 seconds before the next message to allow UI automation to finish
         if (messageQueue.length > 0) {
-            console.log('⏳ Queue pause: Waiting 20 seconds for MacroDroid to finish UI automation...');
-            await new Promise(r => setTimeout(r, 20000));
+            console.log('⏳ Queue pause: Waiting 25 seconds for MacroDroid to finish UI automation...');
+            await new Promise(r => setTimeout(r, 25000));
         }
     }
 
     isProcessing = false;
 };
 
-// Wraps the sendMessage request in a Promise and pushes it to the queue
+// ✨ VIP PRIORITY QUEUE SYSTEM
 const sendMessage = (remoteJid, text) => {
     return new Promise((resolve) => {
-        messageQueue.push({ remoteJid, text, resolve });
+        const isUrgent = text.includes('Late') || text.includes('Absent') || text.includes('Reminder') || text.includes('Alert');
+
+        if (isUrgent) {
+            console.log('🚨 URGENT MESSAGE DETECTED: Jumping to the front of the queue.');
+            messageQueue.unshift({ remoteJid, text, resolve });
+        } else {
+            messageQueue.push({ remoteJid, text, resolve });
+        }
+        
         processQueue(); 
     });
 };
