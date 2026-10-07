@@ -46,67 +46,57 @@ const requestMakeup = asyncHandler(async (req, res) => {
 // @desc    Add or update a monthly report (Phase 1 or Phase 2)
 // @route   POST /api/student/reports
 // @access  Private (Teacher)
-const addOrUpdateReport = asyncHandler(async (req, res) => {
-  const { studentIdentifier, monthYear, isFinalized, teacherNote, quran, arabic, islamicStudies } = req.body;
+const addOrUpdateReport = async (req, res) => {
+  try {
+    const { studentIdentifier, monthYear, isFinalized, teacherNote, quran, arabic, islamicStudies } = req.body;
 
-  if (!studentIdentifier) {
-    res.status(400);
-    throw new Error('No student identifier was found from the calendar event.');
-  }
+    if (!studentIdentifier) {
+      return res.status(400).json({ message: 'No student identifier was found from the calendar event.' });
+    }
 
-  const searchName = studentIdentifier.split('-')[0].trim();
-  const safeSearchName = searchName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const searchName = studentIdentifier.split('-')[0].trim();
+    const safeSearchName = searchName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
-  const student = await User.findOne({
-    $or: [ 
-      { name: { $regex: new RegExp(safeSearchName, 'i') } }, 
-      { studentGroupId: studentIdentifier.trim() },
-      { whatsappGroupId: studentIdentifier.trim() }
-    ],
-    role: 'student'
-  });
+    const student = await User.findOne({
+      $or: [ 
+        { name: { $regex: new RegExp(safeSearchName, 'i') } }, 
+        { studentGroupId: studentIdentifier.trim() },
+        { whatsappGroupId: studentIdentifier.trim() }
+      ],
+      role: 'student'
+    });
 
-  if (!student) {
-    res.status(404);
-    throw new Error(`❌ Database Error: Could not find a student named "${searchName}". Please check the student's exact name in the Admin Users tab.`);
-  }
+    if (!student) {
+      return res.status(404).json({ message: `❌ Could not find a student named "${searchName}". Please check the Admin Users tab.` });
+    }
 
-  if (!student.monthlyReports) {
-    student.monthlyReports = [];
-  }
+    if (!student.monthlyReports) {
+      student.monthlyReports = [];
+    }
 
-  // ✨ FIX 1: Sanitize incoming data to prevent Mongoose validation crashes
-  const sanitizeSub = (sub) => ({
-    enrolled: sub?.enrolled || false,
-    plan: sub?.plan || '',
-    score: sub?.score === '' ? 0 : Number(sub?.score) || 0, // Forces valid Number
-    completed: sub?.completed || false,
-    comment: sub?.comment || ''
-  });
+    // ✨ FIX 1: Safely sanitize incoming data AND include maxPossible!
+    const sanitizeSub = (sub) => ({
+      enrolled: sub?.enrolled || false,
+      plan: sub?.plan || '',
+      score: sub?.score === '' ? 0 : Number(sub?.score) || 0,
+      maxPossible: sub?.maxPossible === '' ? 0 : Number(sub?.maxPossible) || 0,
+      completed: sub?.completed || false,
+      comment: sub?.comment || ''
+    });
 
-  const safeQuran = sanitizeSub(quran);
-  const safeArabic = sanitizeSub(arabic);
-  const safeIslamic = sanitizeSub(islamicStudies);
+    const safeQuran = sanitizeSub(quran);
+    const safeArabic = sanitizeSub(arabic);
+    const safeIslamic = sanitizeSub(islamicStudies);
 
-  let totalScore = null;
-  if (isFinalized) {
-    totalScore = safeQuran.score + safeArabic.score + safeIslamic.score;
-  }
+    // ✨ FIX 2: Default totalScore to 0 instead of null to prevent schema crashes
+    let totalScore = 0; 
+    if (isFinalized) {
+      totalScore = safeQuran.score + safeArabic.score + safeIslamic.score;
+    }
 
-  const existingReportIndex = student.monthlyReports.findIndex(r => r.monthYear === monthYear);
-
-  // ✨ FIX 2: Safely mutate properties directly so Mongoose ALWAYS detects the change
-  if (existingReportIndex >= 0) {
-    const existing = student.monthlyReports[existingReportIndex];
-    existing.isFinalized = isFinalized;
-    existing.teacherNote = teacherNote || '';
-    existing.quran = safeQuran;
-    existing.arabic = safeArabic;
-    existing.islamicStudies = safeIslamic;
-    existing.totalScore = totalScore;
-    existing.approvalStatus = 'pending';
-  } else {
-    student.monthlyReports.push({ 
+    const existingReportIndex = student.monthlyReports.findIndex(r => r.monthYear === monthYear);
+    
+    const reportData = { 
         monthYear, 
         isFinalized, 
         teacherNote: teacherNote || '', 
@@ -115,27 +105,48 @@ const addOrUpdateReport = asyncHandler(async (req, res) => {
         islamicStudies: safeIslamic, 
         totalScore, 
         approvalStatus: 'pending' 
-    });
-  }
+    };
 
-  await student.save();
-
-  // 🤖 TRIGGER WHATSAPP ALERT TO ADMIN
-  try {
-    const adminGroupTarget = process.env.ADMIN_WHATSAPP_NUMBER || 'https://chat.whatsapp.com/BYFE1IPRs2KGJNhGaxvpJd'; 
-    
-    if (adminGroupTarget && whatsappClient && whatsappClient.sendMessage) {
-      const phaseName = isFinalized ? "Phase 2 (Final Grades)" : "Phase 1 (Draft Plan)";
-      const msg = `📝 *Pending Approval Alert*\n\n*Student:* ${student.name}\n*Month:* ${monthYear}\n*Submission:* ${phaseName}\n\nPlease log in to the Admin Dashboard to review and approve.`;
-      
-      whatsappClient.sendMessage(adminGroupTarget, msg).catch(err => console.log("Bot offline, skipping message."));
+    // ✨ FIX 3: Safely replace the whole object and force Mongoose to mark it as modified
+    if (existingReportIndex >= 0) {
+      student.monthlyReports[existingReportIndex] = {
+        ...student.monthlyReports[existingReportIndex].toObject(),
+        ...reportData
+      };
+      student.markModified('monthlyReports');
+    } else {
+      student.monthlyReports.push(reportData);
     }
-  } catch (err) {
-    console.error("Failed to send WhatsApp alert for report:", err);
-  }
 
-  res.status(200).json({ message: 'Report saved successfully', reports: student.monthlyReports });
-});
+    // ✨ FIX 4: Strict Try/Catch specifically for the Database Save
+    try {
+      await student.save();
+    } catch (dbError) {
+      console.error("Mongoose Validation Error:", dbError);
+      return res.status(400).json({ message: `Database Rejected Save: ${dbError.message}` });
+    }
+
+    // 🤖 TRIGGER WHATSAPP ALERT TO ADMIN
+    try {
+      const adminGroupTarget = process.env.ADMIN_WHATSAPP_NUMBER || 'https://chat.whatsapp.com/BYFE1IPRs2KGJNhGaxvpJd'; 
+      
+      if (adminGroupTarget && whatsappClient && whatsappClient.sendMessage) {
+        const phaseName = isFinalized ? "Phase 2 (Final Grades)" : "Phase 1 (Draft Plan)";
+        const msg = `📝 *Pending Approval Alert*\n\n*Student:* ${student.name}\n*Month:* ${monthYear}\n*Submission:* ${phaseName}\n\nPlease log in to the Admin Dashboard to review and approve.`;
+        
+        whatsappClient.sendMessage(adminGroupTarget, msg).catch(err => console.log("Bot offline, skipping message."));
+      }
+    } catch (err) {
+      console.error("Failed to send WhatsApp alert for report:", err);
+    }
+
+    return res.status(200).json({ message: 'Report saved successfully', reports: student.monthlyReports });
+
+  } catch (serverError) {
+    console.error("Server Error:", serverError);
+    return res.status(500).json({ message: `Server Crash: ${serverError.message}` });
+  }
+};
 
 // @desc    Submit a grade appeal
 // @route   POST /api/student/appeal-report
