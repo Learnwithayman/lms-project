@@ -74,7 +74,6 @@ const addOrUpdateReport = async (req, res) => {
       student.monthlyReports = [];
     }
 
-    // ✨ FIX 1: Safely sanitize incoming data AND include maxPossible!
     const sanitizeSub = (sub) => ({
       enrolled: sub?.enrolled || false,
       plan: sub?.plan || '',
@@ -88,7 +87,6 @@ const addOrUpdateReport = async (req, res) => {
     const safeArabic = sanitizeSub(arabic);
     const safeIslamic = sanitizeSub(islamicStudies);
 
-    // ✨ FIX 2: Default totalScore to 0 instead of null to prevent schema crashes
     let totalScore = 0; 
     if (isFinalized) {
       totalScore = safeQuran.score + safeArabic.score + safeIslamic.score;
@@ -107,7 +105,6 @@ const addOrUpdateReport = async (req, res) => {
         approvalStatus: 'pending' 
     };
 
-    // ✨ FIX 3: Safely replace the whole object and force Mongoose to mark it as modified
     if (existingReportIndex >= 0) {
       student.monthlyReports[existingReportIndex] = {
         ...student.monthlyReports[existingReportIndex].toObject(),
@@ -118,7 +115,6 @@ const addOrUpdateReport = async (req, res) => {
       student.monthlyReports.push(reportData);
     }
 
-    // ✨ FIX 4: Strict Try/Catch specifically for the Database Save
     try {
       await student.save();
     } catch (dbError) {
@@ -126,7 +122,6 @@ const addOrUpdateReport = async (req, res) => {
       return res.status(400).json({ message: `Database Rejected Save: ${dbError.message}` });
     }
 
-    // 🤖 TRIGGER WHATSAPP ALERT TO ADMIN
     try {
       const adminGroupTarget = process.env.ADMIN_WHATSAPP_NUMBER || 'https://chat.whatsapp.com/BYFE1IPRs2KGJNhGaxvpJd'; 
       
@@ -221,12 +216,15 @@ const getExistingReport = asyncHandler(async (req, res) => {
 // @access  Private (Teacher)
 const getStudentReportStatuses = asyncHandler(async (req, res) => {
   const students = await User.find({ role: 'student' });
-  const currentMonth = new Date().toLocaleString('default', { month: 'long', year: 'numeric' });
+  
+  // ✨ FIX: Force Render's Linux server to strictly output "October 2026" instead of "10/2026"
+  // We also accept a requested month from the frontend if provided.
+  const targetMonth = req.query.monthYear || new Date().toLocaleString('en-US', { month: 'long', year: 'numeric' });
 
   const statuses = {};
 
   students.forEach(student => {
-    const report = student.monthlyReports?.find(r => r.monthYear === currentMonth);
+    const report = student.monthlyReports?.find(r => r.monthYear === targetMonth);
     let status = '⚪ No Plan Yet';
 
     if (report) {
