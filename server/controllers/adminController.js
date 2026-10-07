@@ -40,13 +40,11 @@ const extractGroupCodes = async (searchQuery) => {
     for (const event of (response.data.items || [])) {
       const description = event.description || "";
       
-      // 1. Look specifically for a labeled student link
       const explicitStudent = description.match(/StudentGroup[^\n]*?chat\.whatsapp\.com\/([a-zA-Z0-9_-]+)/i);
       
       if (explicitStudent) {
           codes.student = `https://chat.whatsapp.com/${explicitStudent[1].trim()}`;
       } else {
-          // 2. Fallback: Grab ALL links. If there are 2, the second is the student.
           const allLinks = [...description.matchAll(/chat\.whatsapp\.com\/([a-zA-Z0-9_-]+)/gi)];
           if (allLinks.length > 1) {
               codes.student = `https://chat.whatsapp.com/${allLinks[1][1].trim()}`;
@@ -55,7 +53,7 @@ const extractGroupCodes = async (searchQuery) => {
           }
       }
       
-      if (codes.student) break; // Stop searching once we find the student!
+      if (codes.student) break; 
     }
   } catch (error) {
     console.error('⚠️ Calendar Link Extraction Error:', error.message);
@@ -165,17 +163,15 @@ const approveReport = asyncHandler(async (req, res) => {
   await user.save();
 
   let whatsappMessage = '';
+  // ✨ FIX: Added a protective space and newline after the URL to block MacroDroid from attaching words to it
   if (report.isFinalized) {
-    whatsappMessage = `🏆 *Monthly Report Card Available!*\n\nAssalamu Alaikum ${user.name},\n\nYour final graded report and teacher feedback for ${monthYear} are now available.\n\nPlease log in to view your scores and notes:\n🔗 https://lms.learnwithayman.com`;
+    whatsappMessage = `🏆 *Monthly Report Card Available!*\n\nAssalamu Alaikum ${user.name},\n\nYour final graded report and teacher feedback for ${monthYear} are now available.\n\nPlease log in to view your scores and notes:\n🔗 https://lms.learnwithayman.com \n`;
   } else {
-    whatsappMessage = `📚 *Monthly Study Plan Available!*\n\nAssalamu Alaikum ${user.name},\n\nYour study plan for ${monthYear} has been finalized by your teacher and approved.\n\nYou can view your goals for this month in your Progress Hub:\n🔗 https://lms.learnwithayman.com`;
+    whatsappMessage = `📚 *Monthly Study Plan Available!*\n\nAssalamu Alaikum ${user.name},\n\nYour study plan for ${monthYear} has been finalized by your teacher and approved.\n\nYou can view your goals for this month in your Progress Hub:\n🔗 https://lms.learnwithayman.com \n`;
   }
 
   try {
-    // ✨ SEARCH CALENDAR FOR THE PERFECT STUDENT LINK
     const codes = await extractGroupCodes(user.name);
-    
-    // Prioritize Calendar Link -> Then DB Link -> Then DB Number
     const targetJid = codes.student || user.studentGroupId || user.whatsappGroupId || user.whatsappNumber;
     
     if (targetJid && sendMessage) {
@@ -215,11 +211,8 @@ const rejectReport = asyncHandler(async (req, res) => {
 });
 
 // ==========================================
-// ✨ NEW: LEGACY PDF VAULT FUNCTION
+// ✨ LEGACY PDF VAULT FUNCTION
 // ==========================================
-// @desc    Add a Legacy PDF link to a student's vault
-// @route   POST /api/admin/legacy-report
-// @access  Private/Admin
 const addLegacyReport = asyncHandler(async (req, res) => {
   const { studentId, monthYear, pdfLink } = req.body;
 
@@ -238,9 +231,6 @@ const addLegacyReport = asyncHandler(async (req, res) => {
 // ==========================================
 // ✨ HONOR LIST GENERATOR
 // ==========================================
-// @desc    Get Honor List (Students with 10/10 total score) for a specific month
-// @route   GET /api/admin/honor-list/:monthYear
-// @access  Private/Admin
 const getHonorList = asyncHandler(async (req, res) => {
   const { monthYear } = req.params;
 
@@ -250,8 +240,6 @@ const getHonorList = asyncHandler(async (req, res) => {
   students.forEach(student => {
     if (student.monthlyReports && student.monthlyReports.length > 0) {
       const report = student.monthlyReports.find(r => r.monthYear === monthYear);
-      
-      // If the report exists, is finalized, and has a perfect score of 10
       if (report && report.isFinalized && report.totalScore === 10) {
         honorList.push({
           studentName: student.name,
@@ -264,7 +252,6 @@ const getHonorList = asyncHandler(async (req, res) => {
     }
   });
 
-  // Sort alphabetically
   honorList.sort((a, b) => a.studentName.localeCompare(b.studentName));
 
   res.status(200).json({
@@ -277,21 +264,16 @@ const getHonorList = asyncHandler(async (req, res) => {
 // ==========================================
 // ✨ SCHOOL-WIDE REPORT TRACKER
 // ==========================================
-// @desc    Get tracking status of all students for a specific month
-// @route   GET /api/admin/report-tracking/:monthYear
-// @access  Private/Admin
 const getMonthlyReportTracking = asyncHandler(async (req, res) => {
   const { monthYear } = req.params;
   
-  // Fetch all students
   const students = await User.find({ role: 'student' }).select('name email monthlyReports');
-
   let trackingData = [];
 
   students.forEach(student => {
     const report = student.monthlyReports.find(r => r.monthYear === monthYear);
     
-    let status = 'Missing'; // Default: No plan created at all
+    let status = 'Missing'; 
     let approvalStatus = 'N/A';
     
     if (report) {
@@ -307,10 +289,8 @@ const getMonthlyReportTracking = asyncHandler(async (req, res) => {
     });
   });
 
-  // Sort alphabetically
   trackingData.sort((a, b) => a.studentName.localeCompare(b.studentName));
 
-  // Calculate summary stats
   const summary = {
     total: trackingData.length,
     missing: trackingData.filter(t => t.status === 'Missing').length,
