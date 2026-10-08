@@ -127,7 +127,9 @@ const addOrUpdateReport = async (req, res) => {
       
       if (adminGroupTarget && whatsappClient && whatsappClient.sendMessage) {
         const phaseName = isFinalized ? "Phase 2 (Final Grades)" : "Phase 1 (Draft Plan)";
-        const msg = `📝 *Pending Approval Alert*\n\n*Student:* ${student.name}\n*Month:* ${monthYear}\n*Submission:* ${phaseName}\n\nPlease log in to the Admin Dashboard to review and approve.`;
+        
+        // ✨ FIX: Added trailing spaces and newlines to prevent MacroDroid's "Message" bug!
+        const msg = `📝 *Pending Approval Alert*\n\n*Student:* ${student.name}\n*Month:* ${monthYear}\n*Submission:* ${phaseName}\n\nPlease log in to the Admin Dashboard to review and approve. \n\n `;
         
         whatsappClient.sendMessage(adminGroupTarget, msg).catch(err => console.log("Bot offline, skipping message."));
       }
@@ -221,11 +223,9 @@ const getStudentReportStatuses = asyncHandler(async (req, res) => {
   students.forEach(student => {
     let status = '⚪ No Plan Yet';
 
-    // ✨ NEW: Dynamically grab the most recently added report instead of hardcoding the current month
     if (student.monthlyReports && student.monthlyReports.length > 0) {
       const latestReport = student.monthlyReports[student.monthlyReports.length - 1];
       
-      // Grab just the 3-letter month (e.g., "Sep", "Oct") to fit nicely on the dashboard pill
       const shortMonth = latestReport.monthYear ? latestReport.monthYear.split(' ')[0].substring(0, 3) : '';
 
       if (latestReport.isFinalized && latestReport.approvalStatus === 'approved') {
