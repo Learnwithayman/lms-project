@@ -117,25 +117,29 @@ const createSubscription = asyncHandler(async (req, res) => {
 // @route   GET /api/admin/pending-reports
 // @access  Private/Admin
 const getPendingReports = asyncHandler(async (req, res) => {
-  const users = await User.find({ "monthlyReports.approvalStatus": { $ne: "approved" } });
+  // ✨ FIX: Fetch ALL students and filter their reports manually to prevent MongoDB array query bugs
+  const users = await User.find({ role: 'student' });
   
   let pending = [];
   users.forEach(user => {
-    user.monthlyReports.forEach(report => {
-      if (report.approvalStatus !== 'approved') {
-        pending.push({
-          studentId: user._id,
-          studentName: user.name,
-          monthYear: report.monthYear,
-          isFinalized: report.isFinalized,
-          quran: report.quran,
-          arabic: report.arabic,
-          islamicStudies: report.islamicStudies,
-          totalScore: report.totalScore,
-          teacherNote: report.teacherNote
-        });
-      }
-    });
+    if (user.monthlyReports && user.monthlyReports.length > 0) {
+      user.monthlyReports.forEach(report => {
+        // Find every single report across all months that is not marked as 'approved'
+        if (report.approvalStatus !== 'approved') {
+          pending.push({
+            studentId: user._id,
+            studentName: user.name,
+            monthYear: report.monthYear,
+            isFinalized: report.isFinalized,
+            quran: report.quran,
+            arabic: report.arabic,
+            islamicStudies: report.islamicStudies,
+            totalScore: report.totalScore,
+            teacherNote: report.teacherNote
+          });
+        }
+      });
+    }
   });
   
   res.status(200).json(pending);
@@ -162,11 +166,9 @@ const approveReport = asyncHandler(async (req, res) => {
   report.approvalStatus = 'approved';
   await user.save();
 
-  // ✨ YOUR STANDARD PASSWORD GOES HERE
-  const commonPassword = "Lwa@123#"; 
+  const commonPassword = "YOUR_COMMON_PASSWORD"; 
 
   let whatsappMessage = '';
-  // ✨ FIX: Appended the email directly from the user profile, and the hardcoded password
   if (report.isFinalized) {
     whatsappMessage = `🏆 *Monthly Report Card Available!*\n\nAssalamu Alaikum ${user.name},\n\nYour final graded report and teacher feedback for ${monthYear} are now available.\n\nPlease log in to view your scores and notes:\n🔗 https://lms.learnwithayman.com \n\n🔐 *Your Login Details:*\n*Email:* ${user.email}\n*Password:* ${commonPassword}\n`;
   } else {
