@@ -166,7 +166,7 @@ const approveReport = asyncHandler(async (req, res) => {
   report.approvalStatus = 'approved';
   await user.save();
 
-  const commonPassword = "YOUR_COMMON_PASSWORD"; 
+  const commonPassword = "Lwa@123#"; 
 
   let whatsappMessage = '';
   if (report.isFinalized) {
