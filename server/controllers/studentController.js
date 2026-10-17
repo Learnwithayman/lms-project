@@ -128,7 +128,6 @@ const addOrUpdateReport = async (req, res) => {
       if (adminGroupTarget && whatsappClient && whatsappClient.sendMessage) {
         const phaseName = isFinalized ? "Phase 2 (Final Grades)" : "Phase 1 (Draft Plan)";
         
-        // ✨ FIX: Added trailing spaces and newlines to prevent MacroDroid's "Message" bug!
         const msg = `📝 *Pending Approval Alert*\n\n*Student:* ${student.name}\n*Month:* ${monthYear}\n*Submission:* ${phaseName}\n\nPlease log in to the Admin Dashboard to review and approve. \n\n `;
         
         whatsappClient.sendMessage(adminGroupTarget, msg).catch(err => console.log("Bot offline, skipping message."));
@@ -232,11 +231,11 @@ const getStudentReportStatuses = asyncHandler(async (req, res) => {
       if (latestReport.isFinalized && latestReport.approvalStatus === 'approved') {
         status = '🏆 Phase 2 Finalized';
       } else if (latestReport.isFinalized && latestReport.approvalStatus !== 'approved') {
-        status = '🟡 Phase 2 Pending Admin';
+        status = '🟡 Phase 2 Pending';
       } else if (!latestReport.isFinalized && latestReport.approvalStatus === 'approved') {
         status = '🟢 Phase 1 Active';
       } else {
-        status = '🔵 Phase 1 Drafted (Pending Admin)';
+        status = '🔵 Phase 1 Drafted';
       }
     }
 
