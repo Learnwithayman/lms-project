@@ -218,29 +218,36 @@ const getExistingReport = asyncHandler(async (req, res) => {
 // @access  Private (Teacher)
 const getStudentReportStatuses = asyncHandler(async (req, res) => {
   const students = await User.find({ role: 'student' });
+  const targetMonth = req.query.monthYear || new Date().toLocaleString('en-US', { month: 'long', year: 'numeric' });
+
   const statuses = {};
 
   students.forEach(student => {
     let status = '⚪ No Plan Yet';
 
-    if (student.monthlyReports && student.monthlyReports.length > 0) {
-      const latestReport = student.monthlyReports[student.monthlyReports.length - 1];
-      
-      const shortMonth = latestReport.monthYear ? latestReport.monthYear.split(' ')[0].substring(0, 3) : '';
+    const currentReport = student.monthlyReports?.find(r => r.monthYear === targetMonth);
+    const latestReport = currentReport || (student.monthlyReports && student.monthlyReports.length > 0 ? student.monthlyReports[student.monthlyReports.length - 1] : null);
 
+    if (latestReport) {
       if (latestReport.isFinalized && latestReport.approvalStatus === 'approved') {
-        status = `🏆 Phase 2 Finalized (${shortMonth})`;
+        status = '🏆 Phase 2 Finalized';
       } else if (latestReport.isFinalized && latestReport.approvalStatus !== 'approved') {
-        status = `🟡 Phase 2 Pending (${shortMonth})`;
+        status = '🟡 Phase 2 Pending Admin';
       } else if (!latestReport.isFinalized && latestReport.approvalStatus === 'approved') {
-        status = `🟢 Phase 1 Active (${shortMonth})`;
+        status = '🟢 Phase 1 Active';
       } else {
-        status = `🔵 Phase 1 Drafted (${shortMonth})`;
+        status = '🔵 Phase 1 Drafted (Pending Admin)';
       }
     }
 
-    if (student.name) statuses[student.name.toLowerCase()] = status;
-    if (student.studentGroupId) statuses[student.studentGroupId.toLowerCase()] = status;
+    if (student.name) {
+      statuses[student.name] = status; 
+      statuses[student.name.toLowerCase()] = status;
+    }
+    if (student.studentGroupId) {
+      statuses[student.studentGroupId] = status;
+      statuses[student.studentGroupId.toLowerCase()] = status;
+    }
   });
 
   res.status(200).json(statuses);
