@@ -75,6 +75,62 @@ function Dashboard() {
     templateSeverity: 'Minor'
   });
 
+  // ✨ FRONTEND AUTO-LOAD: Automatically load the existing plan when the modal opens or month changes!
+  useEffect(() => {
+    const loadPlanSilently = async () => {
+      setIsLoadingPlan(true);
+      try {
+        const token = localStorage.getItem('token');
+        const config = { headers: { Authorization: `Bearer ${token}` } };
+        const res = await axios.get(`${API_URL}/api/student/reports/${planStudentIdentifier}/${planForm.monthYear}`, config);
+        
+        if (res.data) {
+          const r = res.data;
+          setPlanForm(prev => ({
+            ...prev,
+            isFinalized: r.isFinalized || false,
+            quranEnrolled: r.quran?.enrolled || false,
+            quranPlan: r.quran?.plan || '',
+            quranScore: r.quran?.score || '',
+            quranCompleted: r.quran?.completed || false,
+            quranComment: r.quran?.comment || '',
+            arabicEnrolled: r.arabic?.enrolled || false,
+            arabicPlan: r.arabic?.plan || '',
+            arabicScore: r.arabic?.score || '',
+            arabicCompleted: r.arabic?.completed || false,
+            arabicComment: r.arabic?.comment || '',
+            islamicEnrolled: r.islamicStudies?.enrolled || false,
+            islamicPlan: r.islamicStudies?.plan || '',
+            islamicScore: r.islamicStudies?.score || '',
+            islamicCompleted: r.islamicStudies?.completed || false,
+            islamicComment: r.islamicStudies?.comment || '',
+            teacherNote: r.teacherNote || '',
+          }));
+        } else {
+          // Reset to blank if changing to a month that has no data
+          setPlanForm(prev => ({
+            ...prev,
+            isFinalized: false,
+            quranEnrolled: false, quranPlan: '', quranScore: '', quranCompleted: false, quranComment: '',
+            arabicEnrolled: false, arabicPlan: '', arabicScore: '', arabicCompleted: false, arabicComment: '',
+            islamicEnrolled: false, islamicPlan: '', islamicScore: '', islamicCompleted: false, islamicComment: '',
+            teacherNote: '',
+            templateCategory: '',
+            templateSeverity: 'Minor'
+          }));
+        }
+      } catch (error) {
+        console.error("Silent auto-load failed:", error);
+      } finally {
+        setIsLoadingPlan(false);
+      }
+    };
+
+    if (isPlanModalOpen && planStudentIdentifier) {
+      loadPlanSilently();
+    }
+  }, [isPlanModalOpen, planForm.monthYear, planStudentIdentifier]);
+
   const getRecentMonths = () => {
     const months = [];
     const date = new Date();
@@ -329,7 +385,6 @@ function Dashboard() {
       
       setIsPlanModalOpen(false);
 
-      // ✨ INSTANT UI UPDATE FIX: Strip the hyphens to ensure the new status renders immediately!
       const cleanPlanName = planStudentIdentifier.split('-')[0].trim().toLowerCase();
       setReportStatuses(prev => ({
         ...prev,
@@ -655,7 +710,6 @@ function Dashboard() {
             const isLive = isClassLive(cls.startTime);
             const classIdentifier = cls._id || cls.id;
             
-            // ✨ FIX: Strip out the " - Arabic" part to perfectly match the backend dictionary keys!
             const rawIdentifier = cls.studentGroupName || cls.title || cls.studentGroupId || '';
             const studentLookupKey = rawIdentifier.split('-')[0].trim().toLowerCase();
             const fallbackKey = rawIdentifier.toLowerCase();
@@ -775,7 +829,7 @@ function Dashboard() {
                 onClick={fetchExistingPlan} 
                 disabled={isLoadingPlan}
                 style={{ backgroundColor: '#3498db', color: 'white', border: 'none', padding: '6px 12px', borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold' }}>
-                {isLoadingPlan ? 'Loading...' : '🔄 Load Existing Plan'}
+                {isLoadingPlan ? 'Loading...' : '🔄 Refresh Plan'}
               </button>
             </div>
             

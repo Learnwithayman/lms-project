@@ -87,20 +87,46 @@ const addOrUpdateReport = async (req, res) => {
     const safeArabic = sanitizeSub(arabic);
     const safeIslamic = sanitizeSub(islamicStudies);
 
-    let totalScore = 0; 
-    if (isFinalized) {
-      totalScore = safeQuran.score + safeArabic.score + safeIslamic.score;
-    }
-
     const existingReportIndex = student.monthlyReports.findIndex(r => r.monthYear === monthYear);
     
+    // ✨ SMART MERGE LOGIC (Database Protection)
+    let finalQuran = safeQuran;
+    let finalArabic = safeArabic;
+    let finalIslamic = safeIslamic;
+    let finalTeacherNote = teacherNote || '';
+
+    if (existingReportIndex >= 0) {
+      const existing = student.monthlyReports[existingReportIndex];
+      
+      // If incoming payload says NOT enrolled, but database has data, preserve the database!
+      if (!safeQuran.enrolled && existing.quran && existing.quran.enrolled) {
+        finalQuran = existing.quran;
+      }
+      if (!safeArabic.enrolled && existing.arabic && existing.arabic.enrolled) {
+        finalArabic = existing.arabic;
+      }
+      if (!safeIslamic.enrolled && existing.islamicStudies && existing.islamicStudies.enrolled) {
+        finalIslamic = existing.islamicStudies;
+      }
+
+      // Merge teacher notes instead of overriding
+      if (existing.teacherNote && !finalTeacherNote.includes(existing.teacherNote)) {
+        finalTeacherNote = finalTeacherNote ? `${existing.teacherNote}\n\n---\n\n${finalTeacherNote}` : existing.teacherNote;
+      }
+    }
+
+    let totalScore = 0; 
+    if (isFinalized) {
+      totalScore = (finalQuran.score || 0) + (finalArabic.score || 0) + (finalIslamic.score || 0);
+    }
+
     const reportData = { 
         monthYear, 
         isFinalized, 
-        teacherNote: teacherNote || '', 
-        quran: safeQuran, 
-        arabic: safeArabic, 
-        islamicStudies: safeIslamic, 
+        teacherNote: finalTeacherNote, 
+        quran: finalQuran, 
+        arabic: finalArabic, 
+        islamicStudies: finalIslamic, 
         totalScore, 
         approvalStatus: 'pending' 
     };
@@ -127,7 +153,6 @@ const addOrUpdateReport = async (req, res) => {
       
       if (adminGroupTarget && whatsappClient && whatsappClient.sendMessage) {
         const phaseName = isFinalized ? "Phase 2 (Final Grades)" : "Phase 1 (Draft Plan)";
-        
         const msg = `📝 *Pending Approval Alert*\n\n*Student:* ${student.name}\n*Month:* ${monthYear}\n*Submission:* ${phaseName}\n\nPlease log in to the Admin Dashboard to review and approve. \n\n `;
         
         whatsappClient.sendMessage(adminGroupTarget, msg).catch(err => console.log("Bot offline, skipping message."));
