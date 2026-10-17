@@ -329,13 +329,15 @@ function Dashboard() {
       
       setIsPlanModalOpen(false);
 
-      // ✨ INSTANT UI UPDATE: Change the pill immediately on the frontend
+      // ✨ INSTANT UI UPDATE FIX: Strip the hyphens to ensure the new status renders immediately!
+      const cleanPlanName = planStudentIdentifier.split('-')[0].trim().toLowerCase();
       setReportStatuses(prev => ({
         ...prev,
-        [planStudentIdentifier.toLowerCase()]: '🟡 Pending Admin Approval'
+        [cleanPlanName]: planForm.isFinalized ? '🟡 Phase 2 Pending' : '🔵 Phase 1 Drafted',
+        [planStudentIdentifier.toLowerCase()]: planForm.isFinalized ? '🟡 Phase 2 Pending' : '🔵 Phase 1 Drafted'
       }));
 
-      fetchReportStatuses(token); // Safely re-sync in the background
+      fetchReportStatuses(token); 
     } catch (error) {
       console.error('Error saving plan:', error);
       alert(error.response?.data?.message || '❌ Failed to save study plan.');
@@ -653,8 +655,12 @@ function Dashboard() {
             const isLive = isClassLive(cls.startTime);
             const classIdentifier = cls._id || cls.id;
             
-            const studentLookupKey = (cls.studentGroupName || cls.title || cls.studentGroupId || '').toLowerCase();
-            const planStatus = reportStatuses[studentLookupKey] || '⚪ No Plan Yet';
+            // ✨ FIX: Strip out the " - Arabic" part to perfectly match the backend dictionary keys!
+            const rawIdentifier = cls.studentGroupName || cls.title || cls.studentGroupId || '';
+            const studentLookupKey = rawIdentifier.split('-')[0].trim().toLowerCase();
+            const fallbackKey = rawIdentifier.toLowerCase();
+            
+            const planStatus = reportStatuses[studentLookupKey] || reportStatuses[fallbackKey] || '⚪ No Plan Yet';
 
             return (
               <div key={classIdentifier} className="card" style={{ borderLeft: isLive ? '5px solid #2ecc71' : '5px solid #0984e3', borderRadius: '12px', boxShadow: '0 5px 15px rgba(0,0,0,0.03)', backgroundColor: isLive ? '#f0fff4' : '#fff' }}>
@@ -718,7 +724,7 @@ function Dashboard() {
       </div>
 
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px', borderBottom: '2px solid #f1f2f6', paddingBottom: '10px' }}>
-        <h2 style={{ margin: '0' }}>🕰️️ Class History</h2>
+        <h2 style={{ margin: '0' }}>🕰 Class History</h2>
         {user?.role?.toLowerCase() !== 'teacher' && (
           <span style={{ fontSize: '14px', color: '#636e72', fontWeight: 'bold' }}>Showing Current Cycle Only</span>
         )}
