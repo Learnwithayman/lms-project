@@ -242,17 +242,15 @@ const getExistingReport = asyncHandler(async (req, res) => {
 // @access  Private (Teacher)
 const getStudentReportStatuses = asyncHandler(async (req, res) => {
   const students = await User.find({ role: 'student' });
-  const targetMonth = req.query.monthYear || new Date().toLocaleString('en-US', { month: 'long', year: 'numeric' });
-
   const statuses = {};
 
   students.forEach(student => {
     let status = '⚪ No Plan Yet';
 
-    const currentReport = student.monthlyReports?.find(r => r.monthYear === targetMonth);
-    const latestReport = currentReport || (student.monthlyReports && student.monthlyReports.length > 0 ? student.monthlyReports[student.monthlyReports.length - 1] : null);
+    // ✨ FIX: Simply grab the absolute latest report array item to avoid Render server timezone/date-string formatting bugs
+    if (student.monthlyReports && student.monthlyReports.length > 0) {
+      const latestReport = student.monthlyReports[student.monthlyReports.length - 1];
 
-    if (latestReport) {
       if (latestReport.isFinalized && latestReport.approvalStatus === 'approved') {
         status = '🏆 Phase 2 Finalized';
       } else if (latestReport.isFinalized && latestReport.approvalStatus !== 'approved') {
@@ -264,13 +262,12 @@ const getStudentReportStatuses = asyncHandler(async (req, res) => {
       }
     }
 
+    // ✨ FIX: Add .trim() to ensure clean keys
     if (student.name) {
-      statuses[student.name] = status; 
-      statuses[student.name.toLowerCase()] = status;
+      statuses[student.name.toLowerCase().trim()] = status; 
     }
     if (student.studentGroupId) {
-      statuses[student.studentGroupId] = status;
-      statuses[student.studentGroupId.toLowerCase()] = status;
+      statuses[student.studentGroupId.toLowerCase().trim()] = status;
     }
   });
 

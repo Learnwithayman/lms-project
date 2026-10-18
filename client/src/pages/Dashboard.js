@@ -75,7 +75,7 @@ function Dashboard() {
     templateSeverity: 'Minor'
   });
 
-  // ✨ FRONTEND AUTO-LOAD: Automatically load the existing plan when the modal opens or month changes!
+  // ✨ FRONTEND AUTO-LOAD
   useEffect(() => {
     const loadPlanSilently = async () => {
       setIsLoadingPlan(true);
@@ -107,7 +107,6 @@ function Dashboard() {
             teacherNote: r.teacherNote || '',
           }));
         } else {
-          // Reset to blank if changing to a month that has no data
           setPlanForm(prev => ({
             ...prev,
             isFinalized: false,
@@ -710,11 +709,25 @@ function Dashboard() {
             const isLive = isClassLive(cls.startTime);
             const classIdentifier = cls._id || cls.id;
             
-            const rawIdentifier = cls.studentGroupName || cls.title || cls.studentGroupId || '';
-            const studentLookupKey = rawIdentifier.split('-')[0].trim().toLowerCase();
-            const fallbackKey = rawIdentifier.toLowerCase();
+            // ✨ THE CORRECTED FUZZY MATCHER
+            const rawIdentifier = (cls.studentGroupName || cls.title || cls.studentGroupId || '').toLowerCase();
+            const cleanKey = rawIdentifier.split('-')[0].trim();
             
-            const planStatus = reportStatuses[studentLookupKey] || reportStatuses[fallbackKey] || '⚪ No Plan Yet';
+            let planStatus = reportStatuses[cleanKey] || reportStatuses[rawIdentifier];
+            
+            if (!planStatus && Object.keys(reportStatuses).length > 0) {
+              const matchedDbName = Object.keys(reportStatuses).find(dbName => 
+                // We check if the DB Name contains the Calendar name
+                cleanKey.length > 2 && dbName.includes(cleanKey)
+              );
+              if (matchedDbName) {
+                planStatus = reportStatuses[matchedDbName];
+              } else {
+                planStatus = '⚪ No Plan Yet';
+              }
+            } else if (!planStatus) {
+              planStatus = '⚪ No Plan Yet';
+            }
 
             return (
               <div key={classIdentifier} className="card" style={{ borderLeft: isLive ? '5px solid #2ecc71' : '5px solid #0984e3', borderRadius: '12px', boxShadow: '0 5px 15px rgba(0,0,0,0.03)', backgroundColor: isLive ? '#f0fff4' : '#fff' }}>
