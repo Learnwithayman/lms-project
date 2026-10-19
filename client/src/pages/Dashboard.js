@@ -316,10 +316,9 @@ function Dashboard() {
   };
 
   const handleAttendance = async (cls, status) => {
-    // ✨ 1. Add confirmation popup for the "Absent" button
-    if (status === 'Absent') {
-      const confirmAbsent = window.confirm(`Are you sure you want to record ${cls.title || 'this student'} as ABSENT?`);
-      if (!confirmAbsent) return; // Stop the function if the teacher clicks "Cancel"
+    if (status === 'Absent' || status === 'Late') {
+      const confirmAction = window.confirm(`Are you sure you want to record ${cls.title || 'this student'} as ${status.toUpperCase()}?`);
+      if (!confirmAction) return; 
     }
 
     try {
@@ -334,12 +333,10 @@ function Dashboard() {
         startTime: cls.startTime,
         zoomLink: cls.zoomLink || cls.meetingLink
       }, config);
-      
       alert(`✅ Student marked as ${status}. WhatsApp message sent!`);
       fetchHistory(token); 
 
-      // ✨ 2. Instantly remove the class card from the screen without a refresh
-      if (status === 'Absent') {
+      if (status === 'Absent' || status === 'Late') {
         setClasses(prevClasses => prevClasses.filter(c => (c.id || c._id) !== (cls.id || cls._id)));
       }
       
@@ -711,7 +708,7 @@ function Dashboard() {
       )}
 
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
-        <h2 style={{ margin: 0 }}>🗓️ Your Schedule</h2>
+        <h2 style={{ margin: '0' }}>🗓️ Your Schedule</h2>
       </div>
       
       <div style={{ display: 'grid', gap: '20px', marginBottom: '40px' }}>
@@ -722,7 +719,6 @@ function Dashboard() {
             const isLive = isClassLive(cls.startTime);
             const classIdentifier = cls._id || cls.id;
             
-            // ✨ THE CORRECTED FUZZY MATCHER
             const rawIdentifier = (cls.studentGroupName || cls.title || cls.studentGroupId || '').toLowerCase();
             const cleanKey = rawIdentifier.split('-')[0].trim();
             
@@ -730,7 +726,6 @@ function Dashboard() {
             
             if (!planStatus && Object.keys(reportStatuses).length > 0) {
               const matchedDbName = Object.keys(reportStatuses).find(dbName => 
-                // We check if the DB Name contains the Calendar name
                 cleanKey.length > 2 && dbName.includes(cleanKey)
               );
               if (matchedDbName) {
@@ -899,20 +894,20 @@ function Dashboard() {
                     <div style={{ backgroundColor: '#f8f9fa', padding: '15px', borderRadius: '8px', marginBottom: '10px' }}>
                       <h4 style={{ margin: '0 0 10px 0', color: '#6c5ce7' }}>📖 Quran Assessment</h4>
                       <label style={{ fontWeight: 'bold', fontSize: '13px' }}>Target Plan:</label>
-                      <input type="text" value={planForm.quranPlan} onChange={(e) => setPlanForm({...planForm, quranPlan: e.target.value})} placeholder="e.g., Memorize Surah An-Naba 1-10" style={{ width: '100%', padding: '8px', marginBottom: '10px', border: '1px solid #dfe6e9', borderRadius: '4px', backgroundColor: '#fff' }} />
+                      <textarea value={planForm.quranPlan} onChange={(e) => setPlanForm({...planForm, quranPlan: e.target.value})} placeholder="e.g., Memorize Surah An-Naba 1-10" style={{ width: '100%', padding: '8px', marginBottom: '10px', border: '1px solid #dfe6e9', borderRadius: '4px', backgroundColor: '#fff', minHeight: '60px', resize: 'vertical', fontFamily: 'inherit' }} />
                       <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', marginBottom: '10px' }}>
                         <input type="checkbox" checked={planForm.quranCompleted} onChange={(e) => setPlanForm({...planForm, quranCompleted: e.target.checked})} style={{ transform: 'scale(1.2)' }} />
                         <span style={{ fontWeight: 'bold', color: '#2d3436' }}>☑ All goals completed successfully</span>
                       </label>
                       <label style={{ fontWeight: 'bold', fontSize: '13px' }}>Subject Notes (Optional):</label>
-                      <input type="text" placeholder="e.g., Struggled slightly with Tajweed rules..." value={planForm.quranComment} onChange={(e) => setPlanForm({...planForm, quranComment: e.target.value})} style={{ width: '100%', padding: '8px', marginBottom: '10px', border: '1px solid #dfe6e9', borderRadius: '4px' }} />
+                      <textarea placeholder="e.g., Struggled slightly with Tajweed rules..." value={planForm.quranComment} onChange={(e) => setPlanForm({...planForm, quranComment: e.target.value})} style={{ width: '100%', padding: '8px', marginBottom: '10px', border: '1px solid #dfe6e9', borderRadius: '4px', minHeight: '60px', resize: 'vertical', fontFamily: 'inherit' }} />
                       <label style={{ fontWeight: 'bold', fontSize: '13px' }}>Score (out of {maxScores.quran}):</label>
                       <input type="number" step="0.5" max={maxScores.quran} value={planForm.quranScore} onChange={(e) => setPlanForm({...planForm, quranScore: e.target.value})} style={{ width: '100%', padding: '8px', border: '1px solid #dfe6e9', borderRadius: '4px' }} />
                     </div>
                   ) : (
                     <>
                       <label style={{ fontWeight: 'bold' }}>Quran Draft Plan:</label>
-                      <input type="text" value={planForm.quranPlan} onChange={(e) => setPlanForm({...planForm, quranPlan: e.target.value})} placeholder="e.g., Memorize Surah An-Naba 1-10" style={{ width: '100%', padding: '8px', marginBottom: '10px', border: '1px solid #dfe6e9', borderRadius: '4px' }} />
+                      <textarea value={planForm.quranPlan} onChange={(e) => setPlanForm({...planForm, quranPlan: e.target.value})} placeholder="e.g., Memorize Surah An-Naba 1-10" style={{ width: '100%', padding: '8px', marginBottom: '10px', border: '1px solid #dfe6e9', borderRadius: '4px', minHeight: '60px', resize: 'vertical', fontFamily: 'inherit' }} />
                     </>
                   )}
                 </div>
@@ -924,20 +919,20 @@ function Dashboard() {
                     <div style={{ backgroundColor: '#f8f9fa', padding: '15px', borderRadius: '8px', marginBottom: '10px' }}>
                       <h4 style={{ margin: '0 0 10px 0', color: '#00b894' }}>🗣️ Arabic Assessment</h4>
                       <label style={{ fontWeight: 'bold', fontSize: '13px' }}>Target Plan:</label>
-                      <input type="text" value={planForm.arabicPlan} onChange={(e) => setPlanForm({...planForm, arabicPlan: e.target.value})} placeholder="e.g., Complete Lesson 10" style={{ width: '100%', padding: '8px', marginBottom: '10px', border: '1px solid #dfe6e9', borderRadius: '4px', backgroundColor: '#fff' }} />
+                      <textarea value={planForm.arabicPlan} onChange={(e) => setPlanForm({...planForm, arabicPlan: e.target.value})} placeholder="e.g., Complete Lesson 10" style={{ width: '100%', padding: '8px', marginBottom: '10px', border: '1px solid #dfe6e9', borderRadius: '4px', backgroundColor: '#fff', minHeight: '60px', resize: 'vertical', fontFamily: 'inherit' }} />
                       <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', marginBottom: '10px' }}>
                         <input type="checkbox" checked={planForm.arabicCompleted} onChange={(e) => setPlanForm({...planForm, arabicCompleted: e.target.checked})} style={{ transform: 'scale(1.2)' }} />
                         <span style={{ fontWeight: 'bold', color: '#2d3436' }}>☑ All goals completed successfully</span>
                       </label>
                       <label style={{ fontWeight: 'bold', fontSize: '13px' }}>Subject Notes (Optional):</label>
-                      <input type="text" placeholder="e.g., Needs to focus more on vocabulary..." value={planForm.arabicComment} onChange={(e) => setPlanForm({...planForm, arabicComment: e.target.value})} style={{ width: '100%', padding: '8px', marginBottom: '10px', border: '1px solid #dfe6e9', borderRadius: '4px' }} />
+                      <textarea placeholder="e.g., Needs to focus more on vocabulary..." value={planForm.arabicComment} onChange={(e) => setPlanForm({...planForm, arabicComment: e.target.value})} style={{ width: '100%', padding: '8px', marginBottom: '10px', border: '1px solid #dfe6e9', borderRadius: '4px', minHeight: '60px', resize: 'vertical', fontFamily: 'inherit' }} />
                       <label style={{ fontWeight: 'bold', fontSize: '13px' }}>Score (out of {maxScores.arabic}):</label>
                       <input type="number" step="0.5" max={maxScores.arabic} value={planForm.arabicScore} onChange={(e) => setPlanForm({...planForm, arabicScore: e.target.value})} style={{ width: '100%', padding: '8px', border: '1px solid #dfe6e9', borderRadius: '4px' }} />
                     </div>
                   ) : (
                     <>
                       <label style={{ fontWeight: 'bold' }}>Arabic Draft Plan:</label>
-                      <input type="text" value={planForm.arabicPlan} onChange={(e) => setPlanForm({...planForm, arabicPlan: e.target.value})} placeholder="e.g., Complete Lesson 10" style={{ width: '100%', padding: '8px', marginBottom: '10px', border: '1px solid #dfe6e9', borderRadius: '4px' }} />
+                      <textarea value={planForm.arabicPlan} onChange={(e) => setPlanForm({...planForm, arabicPlan: e.target.value})} placeholder="e.g., Complete Lesson 10" style={{ width: '100%', padding: '8px', marginBottom: '10px', border: '1px solid #dfe6e9', borderRadius: '4px', minHeight: '60px', resize: 'vertical', fontFamily: 'inherit' }} />
                     </>
                   )}
                 </div>
@@ -949,20 +944,20 @@ function Dashboard() {
                     <div style={{ backgroundColor: '#f8f9fa', padding: '15px', borderRadius: '8px', marginBottom: '10px' }}>
                       <h4 style={{ margin: '0 0 10px 0', color: '#fdcb6e' }}>🕌 Islamic Studies Assessment</h4>
                       <label style={{ fontWeight: 'bold', fontSize: '13px' }}>Target Plan:</label>
-                      <input type="text" value={planForm.islamicPlan} onChange={(e) => setPlanForm({...planForm, islamicPlan: e.target.value})} placeholder="e.g., Pages 40-45" style={{ width: '100%', padding: '8px', marginBottom: '10px', border: '1px solid #dfe6e9', borderRadius: '4px', backgroundColor: '#fff' }} />
+                      <textarea value={planForm.islamicPlan} onChange={(e) => setPlanForm({...planForm, islamicPlan: e.target.value})} placeholder="e.g., Pages 40-45" style={{ width: '100%', padding: '8px', marginBottom: '10px', border: '1px solid #dfe6e9', borderRadius: '4px', backgroundColor: '#fff', minHeight: '60px', resize: 'vertical', fontFamily: 'inherit' }} />
                       <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', marginBottom: '10px' }}>
                         <input type="checkbox" checked={planForm.islamicCompleted} onChange={(e) => setPlanForm({...planForm, islamicCompleted: e.target.checked})} style={{ transform: 'scale(1.2)' }} />
                         <span style={{ fontWeight: 'bold', color: '#2d3436' }}>☑ All goals completed successfully</span>
                       </label>
                       <label style={{ fontWeight: 'bold', fontSize: '13px' }}>Subject Notes (Optional):</label>
-                      <input type="text" placeholder="e.g., Excellent understanding..." value={planForm.islamicComment} onChange={(e) => setPlanForm({...planForm, islamicComment: e.target.value})} style={{ width: '100%', padding: '8px', marginBottom: '10px', border: '1px solid #dfe6e9', borderRadius: '4px' }} />
+                      <textarea placeholder="e.g., Excellent understanding..." value={planForm.islamicComment} onChange={(e) => setPlanForm({...planForm, islamicComment: e.target.value})} style={{ width: '100%', padding: '8px', marginBottom: '10px', border: '1px solid #dfe6e9', borderRadius: '4px', minHeight: '60px', resize: 'vertical', fontFamily: 'inherit' }} />
                       <label style={{ fontWeight: 'bold', fontSize: '13px' }}>Score (out of {maxScores.islamic}):</label>
                       <input type="number" step="0.5" max={maxScores.islamic} value={planForm.islamicScore} onChange={(e) => setPlanForm({...planForm, islamicScore: e.target.value})} style={{ width: '100%', padding: '8px', border: '1px solid #dfe6e9', borderRadius: '4px' }} />
                     </div>
                   ) : (
                     <>
                       <label style={{ fontWeight: 'bold' }}>Islamic Studies Draft Plan:</label>
-                      <input type="text" value={planForm.islamicPlan} onChange={(e) => setPlanForm({...planForm, islamicPlan: e.target.value})} placeholder="e.g., Pages 40-45" style={{ width: '100%', padding: '8px', marginBottom: '10px', border: '1px solid #dfe6e9', borderRadius: '4px' }} />
+                      <textarea value={planForm.islamicPlan} onChange={(e) => setPlanForm({...planForm, islamicPlan: e.target.value})} placeholder="e.g., Pages 40-45" style={{ width: '100%', padding: '8px', marginBottom: '10px', border: '1px solid #dfe6e9', borderRadius: '4px', minHeight: '60px', resize: 'vertical', fontFamily: 'inherit' }} />
                     </>
                   )}
                 </div>
@@ -991,7 +986,7 @@ function Dashboard() {
                     value={planForm.teacherNote} 
                     onChange={(e) => setPlanForm({...planForm, teacherNote: e.target.value})} 
                     placeholder="Final Overall Teacher Report..." 
-                    style={{ width: '100%', height: '120px', marginTop: '15px', padding: '10px', boxSizing: 'border-box', borderRadius: '4px', border: '1px solid #dfe6e9' }} 
+                    style={{ width: '100%', minHeight: '120px', marginTop: '15px', padding: '10px', boxSizing: 'border-box', borderRadius: '4px', border: '1px solid #dfe6e9', resize: 'vertical', fontFamily: 'inherit' }} 
                   />
                 </div>
               )}
@@ -1014,7 +1009,7 @@ function Dashboard() {
             <h2 style={{ margin: '0 0 20px 0' }}>🛑 End Class</h2>
             
             <label style={{ fontWeight: 'bold' }}>Class Notes:</label>
-            <textarea value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Write a brief summary of today's class..." style={{ width: '100%', height: '80px', margin: '10px 0', padding: '10px', boxSizing: 'border-box', borderRadius: '8px', border: '1px solid #dfe6e9' }} />
+            <textarea value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Write a brief summary of today's class..." style={{ width: '100%', height: '80px', margin: '10px 0', padding: '10px', boxSizing: 'border-box', borderRadius: '8px', border: '1px solid #dfe6e9', resize: 'vertical', fontFamily: 'inherit' }} />
 
             <div style={{ marginTop: '20px', padding: '15px', background: '#f5f6fa', borderRadius: '10px', border: '1px solid #dfe6e9' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
