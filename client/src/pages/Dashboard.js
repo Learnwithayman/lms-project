@@ -316,6 +316,12 @@ function Dashboard() {
   };
 
   const handleAttendance = async (cls, status) => {
+    // ✨ 1. Add confirmation popup for the "Absent" button
+    if (status === 'Absent') {
+      const confirmAbsent = window.confirm(`Are you sure you want to record ${cls.title || 'this student'} as ABSENT?`);
+      if (!confirmAbsent) return; // Stop the function if the teacher clicks "Cancel"
+    }
+
     try {
       const token = localStorage.getItem('token');
       const config = { headers: { Authorization: `Bearer ${token}` } };
@@ -328,8 +334,15 @@ function Dashboard() {
         startTime: cls.startTime,
         zoomLink: cls.zoomLink || cls.meetingLink
       }, config);
+      
       alert(`✅ Student marked as ${status}. WhatsApp message sent!`);
       fetchHistory(token); 
+
+      // ✨ 2. Instantly remove the class card from the screen without a refresh
+      if (status === 'Absent') {
+        setClasses(prevClasses => prevClasses.filter(c => (c.id || c._id) !== (cls.id || cls._id)));
+      }
+      
     } catch (error) {
       console.error('Error marking attendance:', error);
       alert('Failed to mark attendance.');
