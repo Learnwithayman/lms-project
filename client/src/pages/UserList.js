@@ -22,7 +22,8 @@ function UserList() {
     password: '',
     role: 'student',
     whatsappNumber: '',
-    studentGroupId: ''
+    studentGroupId: '',
+    timezone: 'America/New_York' // ✨ Default to Eastern Time
   });
 
   // Existing Modal States
@@ -51,6 +52,7 @@ function UserList() {
   const [newSlotEnd, setNewSlotEnd] = useState('');
 
   const [isSubUpdating, setIsSubUpdating] = useState(false);
+  const [isSyncingTZ, setIsSyncingTZ] = useState(false); // ✨ Timezone Sync State
 
   const [isAssignModalOpen, setIsAssignModalOpen] = useState(false);
   const [assignStudent, setAssignStudent] = useState(null);
@@ -60,6 +62,20 @@ function UserList() {
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [editForm, setEditForm] = useState({});
   const [isEditing, setIsEditing] = useState(false);
+
+  // ✨ Common Timezones List
+  const commonTimezones = [
+    { label: "US Eastern (New York)", value: "America/New_York" },
+    { label: "US Central (Chicago)", value: "America/Chicago" },
+    { label: "US Mountain (Denver)", value: "America/Denver" },
+    { label: "US Pacific (Los Angeles)", value: "America/Los_Angeles" },
+    { label: "Canada (Toronto)", value: "America/Toronto" },
+    { label: "UK (London)", value: "Europe/London" },
+    { label: "Egypt (Cairo)", value: "Africa/Cairo" },
+    { label: "Saudi Arabia (Riyadh)", value: "Asia/Riyadh" },
+    { label: "UAE (Dubai)", value: "Asia/Dubai" },
+    { label: "Australia (Sydney)", value: "Australia/Sydney" }
+  ];
 
   useEffect(() => {
     fetchUsers();
@@ -88,7 +104,7 @@ function UserList() {
       alert(`✅ ${newUser.role.toUpperCase()} "${newUser.name}" created successfully!`);
       
       setIsCreateModalOpen(false);
-      setNewUser({ name: '', email: '', password: '', role: 'student', whatsappNumber: '', studentGroupId: '' });
+      setNewUser({ name: '', email: '', password: '', role: 'student', whatsappNumber: '', studentGroupId: '', timezone: 'America/New_York' });
       fetchUsers();
     } catch (error) {
       console.error('Error creating user:', error);
@@ -147,7 +163,7 @@ function UserList() {
       const token = localStorage.getItem('token');
       const config = { headers: { Authorization: `Bearer ${token}` } };
       
-      // ✨ Build unified payload with PayPal & Scheduling Info
+      // Build unified payload with PayPal & Scheduling Info
       const payload = {
         status: subStatus,
         totalClassesBought: subTotal,
@@ -235,6 +251,27 @@ function UserList() {
     }
   };
 
+  // ✨ BUTTON 3: Sync Timezone to Google Calendar
+  const handleSyncTimezone = async () => {
+    if (!window.confirm(`Are you sure you want to sync all calendar events for this student to: ${selectedStudent.timezone || 'Africa/Cairo'}?`)) return;
+    setIsSyncingTZ(true);
+    try {
+      const token = localStorage.getItem('token');
+      const config = { headers: { Authorization: `Bearer ${token}` } };
+      
+      await axios.post(`${API_URL}/api/schedule/sync-timezone`, { 
+        studentId: selectedStudent._id 
+      }, config);
+      
+      alert('✅ All Google Calendar events successfully anchored to student timezone!');
+    } catch (error) {
+      console.error(error);
+      alert('❌ Failed to sync timezone to Google Calendar.');
+    } finally {
+      setIsSyncingTZ(false);
+    }
+  };
+
   const handleSaveAssignments = async () => {
     setIsAssigning(true);
     try {
@@ -303,13 +340,13 @@ function UserList() {
     setSubStart(student.subscription?.startDate ? student.subscription.startDate.split('T')[0] : '');
     setSubEnd(student.subscription?.endDate ? student.subscription.endDate.split('T')[0] : '');
     
-    // ✨ PayPal fields
+    // PayPal fields
     setBillingType(student.paypal?.billingType || 'none');
     setSubscriptionId(student.paypal?.subscriptionId || '');
     setInvoiceId(student.paypal?.invoiceId || '');
     setRecurringSeriesId(student.paypal?.recurringSeriesId || '');
     
-    // ✨ Scheduling Fields
+    // Scheduling Fields
     setRecurringSlots(student.recurringSlots || []);
     
     setIsWalletOpen(true);
@@ -329,7 +366,8 @@ function UserList() {
       role: user.role || 'student',
       studentGroupId: user.studentGroupId || '',
       teacherGroupId: user.teacherGroupId || '',
-      hourlyRate: user.hourlyRate || 3.0
+      hourlyRate: user.hourlyRate || 3.0,
+      timezone: user.timezone || 'Africa/Cairo' // ✨ Added timezone to edit
     });
     setIsEditModalOpen(true);
   };
@@ -446,7 +484,7 @@ function UserList() {
                     {user.role === 'student' && (
                       <>
                         <button onClick={() => openAssignModal(user)} style={{ fontSize: '12px', padding: '5px 10px', backgroundColor: '#9b59b6', color: 'white', border: 'none', borderRadius: '5px', cursor: 'pointer' }}>🧑‍🏫 Assign</button>
-                        <button onClick={() => openWallet(user)} style={{ fontSize: '12px', padding: '5px 10px', backgroundColor: '#f39c12', color: 'white', border: 'none', borderRadius: '5px', cursor: 'pointer' }}>💳 Wallet & PayPal</button>
+                        <button onClick={() => openWallet(user)} style={{ fontSize: '12px', padding: '5px 10px', backgroundColor: '#f39c12', color: 'white', border: 'none', borderRadius: '5px', cursor: 'pointer' }}>💳 Wallet & Sync</button>
                       </>
                     )}
                     <button onClick={() => handleDelete(user._id)} className="role-admin" style={{ fontSize: '12px', padding: '5px 10px', border: 'none', cursor: 'pointer', color: 'white', borderRadius: '5px' }}>Delete</button>
@@ -480,13 +518,25 @@ function UserList() {
                 <input type="password" required value={newUser.password} onChange={(e) => setNewUser({ ...newUser, password: e.target.value })} style={{ width: '100%', padding: '8px', borderRadius: '4px', border: '1px solid #dfe6e9', marginTop: '4px', boxSizing: 'border-box' }} />
               </div>
 
-              <div>
-                <label style={{ fontWeight: 'bold', fontSize: '13px' }}>User Role:</label>
-                <select value={newUser.role} onChange={(e) => setNewUser({ ...newUser, role: e.target.value })} style={{ width: '100%', padding: '8px', borderRadius: '4px', border: '1px solid #dfe6e9', marginTop: '4px', boxSizing: 'border-box' }}>
-                  <option value="student">Student</option>
-                  <option value="teacher">Teacher</option>
-                  <option value="admin">Admin</option>
-                </select>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
+                <div>
+                  <label style={{ fontWeight: 'bold', fontSize: '13px' }}>User Role:</label>
+                  <select value={newUser.role} onChange={(e) => setNewUser({ ...newUser, role: e.target.value })} style={{ width: '100%', padding: '8px', borderRadius: '4px', border: '1px solid #dfe6e9', marginTop: '4px', boxSizing: 'border-box' }}>
+                    <option value="student">Student</option>
+                    <option value="teacher">Teacher</option>
+                    <option value="admin">Admin</option>
+                  </select>
+                </div>
+                
+                {/* ✨ NEW: Timezone Dropdown on Create */}
+                <div>
+                  <label style={{ fontWeight: 'bold', fontSize: '13px' }}>Timezone:</label>
+                  <select value={newUser.timezone} onChange={(e) => setNewUser({ ...newUser, timezone: e.target.value })} style={{ width: '100%', padding: '8px', borderRadius: '4px', border: '1px solid #dfe6e9', marginTop: '4px', boxSizing: 'border-box' }}>
+                    {commonTimezones.map(tz => (
+                      <option key={tz.value} value={tz.value}>{tz.label}</option>
+                    ))}
+                  </select>
+                </div>
               </div>
 
               <div>
@@ -523,14 +573,28 @@ function UserList() {
             <form onSubmit={handleEditSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '15px' }}>
               <div><label style={{ fontWeight: 'bold', fontSize: '14px' }}>Full Name:</label><input type="text" required value={editForm.name} onChange={(e) => setEditForm({...editForm, name: e.target.value})} style={{ width: '100%', padding: '10px', borderRadius: '5px', border: '1px solid #ccc', boxSizing: 'border-box' }} /></div>
               <div><label style={{ fontWeight: 'bold', fontSize: '14px' }}>Email Address:</label><input type="email" required value={editForm.email} onChange={(e) => setEditForm({...editForm, email: e.target.value})} style={{ width: '100%', padding: '10px', borderRadius: '5px', border: '1px solid #ccc', boxSizing: 'border-box' }} /></div>
-              <div>
-                <label style={{ fontWeight: 'bold', fontSize: '14px' }}>System Role:</label>
-                <select value={editForm.role} onChange={(e) => setEditForm({...editForm, role: e.target.value})} style={{ width: '100%', padding: '10px', borderRadius: '5px', border: '1px solid #ccc', boxSizing: 'border-box' }}>
-                  <option value="student">Student</option>
-                  <option value="teacher">Teacher</option>
-                  <option value="admin">Admin</option>
-                </select>
+              
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
+                <div>
+                  <label style={{ fontWeight: 'bold', fontSize: '14px' }}>System Role:</label>
+                  <select value={editForm.role} onChange={(e) => setEditForm({...editForm, role: e.target.value})} style={{ width: '100%', padding: '10px', borderRadius: '5px', border: '1px solid #ccc', boxSizing: 'border-box' }}>
+                    <option value="student">Student</option>
+                    <option value="teacher">Teacher</option>
+                    <option value="admin">Admin</option>
+                  </select>
+                </div>
+                
+                {/* ✨ NEW: Timezone Dropdown on Edit */}
+                <div>
+                  <label style={{ fontWeight: 'bold', fontSize: '14px' }}>Timezone:</label>
+                  <select value={editForm.timezone} onChange={(e) => setEditForm({...editForm, timezone: e.target.value})} style={{ width: '100%', padding: '10px', borderRadius: '5px', border: '1px solid #ccc', boxSizing: 'border-box' }}>
+                    {commonTimezones.map(tz => (
+                      <option key={tz.value} value={tz.value}>{tz.label}</option>
+                    ))}
+                  </select>
+                </div>
               </div>
+
               <div><label style={{ fontWeight: 'bold', fontSize: '14px' }}>WhatsApp / Student Group ID:</label><input type="text" placeholder="e.g. 120363305478886477@g.us" value={editForm.studentGroupId} onChange={(e) => setEditForm({...editForm, studentGroupId: e.target.value})} style={{ width: '100%', padding: '10px', borderRadius: '5px', border: '1px solid #ccc', boxSizing: 'border-box' }} /></div>
               {editForm.role === 'teacher' && (
                 <>
@@ -607,9 +671,24 @@ function UserList() {
               </div>
             </div>
 
+            {/* ✨ SECTION 4: TIMEZONE SYNC */}
+            <div style={{ backgroundColor: '#eafaf1', padding: '20px', borderRadius: '8px', marginBottom: '20px', borderLeft: '4px solid #27ae60' }}>
+              <h3 style={{ margin: '0 0 10px 0', color: '#1e8449', fontSize: '16px' }}>🌍 DST & Timezone Sync</h3>
+              <p style={{ margin: '0 0 15px 0', fontSize: '13px', color: '#2d3436' }}>
+                Current Saved Timezone: <strong>{selectedStudent.timezone || 'Africa/Cairo'}</strong>
+              </p>
+              <button 
+                type="button" 
+                onClick={handleSyncTimezone}
+                disabled={isSyncingTZ}
+                style={{ width: '100%', padding: '10px', backgroundColor: isSyncingTZ ? '#95a5a6' : '#27ae60', color: 'white', border: 'none', borderRadius: '5px', cursor: isSyncingTZ ? 'not-allowed' : 'pointer', fontWeight: 'bold' }}>
+                {isSyncingTZ ? 'Syncing...' : '🌍 Sync Calendar to Student Timezone'}
+              </button>
+            </div>
+
             <form onSubmit={handleUpdateSubscription}>
               
-              {/* ✨ SECTION 1: PAYPAL BILLING */}
+              {/* SECTION 1: PAYPAL BILLING */}
               <div style={{ backgroundColor: '#f0f4f8', padding: '20px', borderRadius: '8px', marginBottom: '20px', borderLeft: '4px solid #3498db' }}>
                 <h3 style={{ margin: '0 0 15px 0', color: '#2c3e50', fontSize: '16px' }}>💳 Payment & Billing Setup (PayPal)</h3>
                 
@@ -643,7 +722,7 @@ function UserList() {
                 )}
               </div>
 
-              {/* ✨ SECTION 2: WEEKLY SCHEDULE */}
+              {/* SECTION 2: WEEKLY SCHEDULE */}
               <div style={{ backgroundColor: '#fcf3cf', padding: '20px', borderRadius: '8px', marginBottom: '20px', borderLeft: '4px solid #f1c40f' }}>
                 <h3 style={{ margin: '0 0 15px 0', color: '#7d6608', fontSize: '16px' }}>🗓️ Weekly Recurring Schedule</h3>
                 
