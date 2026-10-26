@@ -21,9 +21,10 @@ const {
     cancelUpcomingClass, 
     getMessageLogs,      
     adminForceEndClass,
-    // ✨ NEW: Admin Inbox Imports
     getPendingMakeups,
-    resolveMakeupRequest 
+    resolveMakeupRequest,
+    // ✨ NEW: Timezone Sync Import
+    syncStudentTimezoneToGoogleCalendar
 } = require('../controllers/scheduleController');
 
 // Import your authentication middleware
@@ -56,6 +57,9 @@ router.post('/join', protect, joinClass);
 router.post('/makeup', protect, grantMakeupCredit); 
 router.post('/admin-cancel', protect, cancelUpcomingClass); 
 router.get('/message-logs', protect, getMessageLogs); 
+
+// ✨ NEW: Route for Timezone Sync
+router.post('/sync-timezone', protect, syncStudentTimezoneToGoogleCalendar);
 
 // ✨ THE FIX: Specific PUT route MUST go before the wildcard!
 router.put('/admin-force-end', protect, adminForceEndClass); 

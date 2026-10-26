@@ -15,7 +15,7 @@ if (!fs.existsSync(CREDENTIALS_PATH)) {
 }
 const auth = new google.auth.GoogleAuth({
   keyFile: CREDENTIALS_PATH,
-  scopes: ['https://www.googleapis.com/auth/calendar.readonly'],
+  scopes: ['https://www.googleapis.com/auth/calendar'], // Updated to allow writing
 });
 const calendar = google.calendar({ version: 'v3', auth });
 
@@ -59,7 +59,7 @@ const extractGroupCodes = async (classTitle) => {
       if (codes.teacher || codes.student) break;
     }
   } catch (error) {
-    console.error('⚠️️ Calendar Link Extraction Error:', error.message);
+    console.error('⚠ Calendar Link Extraction Error:', error.message);
   }
   return codes;
 };
@@ -436,7 +436,6 @@ const getTeacherSchedule = async (req, res) => {
 
     if (searchId) searchId = searchId.trim();
     
-    // We clean the URL, but if it becomes empty string (e.g. they only entered "https://chat.whatsapp.com/"), we must catch it!
     const cleanSearch = searchId ? searchId.replace('https://chat.whatsapp.com/', '').trim() : '';
 
     const myCalendarId = 'admin@learnwithayman.com'; 
@@ -482,7 +481,6 @@ const getTeacherSchedule = async (req, res) => {
           else if (sAlpha && sAlpha[1] !== 'null') studentGroupId = sAlpha[1].trim();
       }
 
-      // Bulk Smart Extractor
       if (!extractedTeacherId || !studentGroupId) {
           const allLinks = [...cleanDesc.matchAll(/chat\.whatsapp\.com\/([a-zA-Z0-9_-]+)/gi)];
           if (allLinks.length > 0 && !extractedTeacherId) extractedTeacherId = allLinks[0][1].trim();
@@ -512,7 +510,6 @@ const getTeacherSchedule = async (req, res) => {
     });
 
     const userSpecificClasses = processedClasses.filter((cls) => {
-      // 🛑 BUG FIX: Prevent empty string matching! If their ID is blank, rely strictly on their Name.
       const isValidId = cleanSearch && cleanSearch.length > 5;
 
       if (isTeacher) {
@@ -882,11 +879,82 @@ const resolveMakeupRequest = async (req, res) => {
   }
 };
 
+// ==========================================
+// ✨ NEW: TIMEZONE & DST SYNC ENGINE
+// ==========================================
+const syncStudentTimezoneToGoogleCalendar = async (req, res) => {
+  try {
+    const { studentId } = req.body;
+    const student = await User.findById(studentId);
+    
+    if (!student) return res.status(404).json({ message: 'Student not found.' });
+
+    const targetTimezone = student.timezone || 'America/New_York';
+    
+    // Setup identifiers to search for this student's classes
+    const studentFullName = (student.name || '').toLowerCase().trim();
+    const studentFirstName = studentFullName.split(' ')[0];
+    const myCalendarId = 'admin@learnwithayman.com';
+    
+    // We use singleEvents: false to target the ROOT RECURRING EVENT, not just one instance.
+    // Searching by the student's name allows Google to filter the massive calendar instantly.
+    const response = await calendar.events.list({
+      calendarId: myCalendarId,
+      q: student.name, 
+      singleEvents: false 
+    });
+
+    const events = response.data.items || [];
+    let updatedCount = 0;
+
+    for (const event of events) {
+      if (event.status === 'cancelled') continue;
+
+      const summary = (event.summary || '').toLowerCase();
+      const description = (event.description || '').toLowerCase();
+
+      // Double-check we didn't pull a false positive from Google's search
+      if (summary.includes(studentFullName) || summary.includes(studentFirstName) || description.includes(studentFullName)) {
+        
+        if (!event.start || !event.end) continue;
+
+        const currentStartTZ = event.start.timeZone;
+        const currentEndTZ = event.end.timeZone;
+
+        // If the timezone isn't perfectly matched, override it
+        if (currentStartTZ !== targetTimezone || currentEndTZ !== targetTimezone) {
+          
+          // Using Google Calendar PATCH to safely inject the new timezone while preserving the raw time
+          const requestBody = {
+            start: { dateTime: event.start.dateTime, timeZone: targetTimezone },
+            end: { dateTime: event.end.dateTime, timeZone: targetTimezone }
+          };
+
+          await calendar.events.patch({
+            calendarId: myCalendarId,
+            eventId: event.id,
+            requestBody
+          });
+          
+          updatedCount++;
+        }
+      }
+    }
+
+    res.status(200).json({ 
+      message: `Successfully synced ${updatedCount} recurring calendar series to ${targetTimezone}. DST will now be fully automated by Google Calendar.` 
+    });
+  } catch (error) {
+    console.error('Error syncing timezone to Google Calendar:', error);
+    res.status(500).json({ message: 'Server error while executing Google Calendar timezone sync.' });
+  }
+};
+
 module.exports = {
   scheduleClass, getMyClasses, deleteClass, getAllClasses, updateClass,
   endClass, markAttendance, getCompletedClasses, getTeacherEarnings,
   getAdminPayrollReport, addTeacherAdjustment, getTeacherSchedule,
   getAdminLiveMonitor, resendReminder, resendNotes, joinClass,
   grantMakeupCredit, cancelUpcomingClass, getMessageLogs, adminForceEndClass,
-  getPendingMakeups, resolveMakeupRequest
+  getPendingMakeups, resolveMakeupRequest, syncStudentTimezoneToGoogleCalendar
 };
