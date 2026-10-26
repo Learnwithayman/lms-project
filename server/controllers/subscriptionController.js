@@ -1,5 +1,6 @@
 const Subscription = require('../models/Subscription');
 const User = require('../models/User');
+const whatsappClient = require('../utils/whatsappBot'); // Added for the automated receipt
 
 // Helper function to calculate exact 28-day cycles
 const calculateEndDate = (startDate, planType) => {
@@ -100,7 +101,107 @@ const getStudentSubscriptionSummary = async (req, res) => {
     }
 };
 
+// ==========================================
+// ✨ NEW: PAYPAL LINKING & WEBHOOK LOGIC
+// ==========================================
+
+// @desc    Link a PayPal ID to a student
+// @route   POST /api/subscriptions/link
+// @access  Private (Admin)
+const linkPayPalBilling = async (req, res) => {
+    try {
+        const { userId, billingType, subscriptionId, recurringSeriesId, invoiceId } = req.body;
+        const user = await User.findById(userId);
+        
+        if (!user) return res.status(404).json({ message: "User not found" });
+
+        if (!user.paypal) user.paypal = {};
+        user.paypal.billingType = billingType;
+        
+        if (subscriptionId) user.paypal.subscriptionId = subscriptionId;
+        if (recurringSeriesId) user.paypal.recurringSeriesId = recurringSeriesId;
+        if (invoiceId) user.paypal.invoiceId = invoiceId;
+
+        await user.save();
+        res.status(200).json({ message: 'PayPal billing method linked successfully', user });
+    } catch (error) {
+        console.error('Error linking PayPal:', error);
+        res.status(500).json({ message: 'Server error while linking PayPal' });
+    }
+};
+
+// @desc    Handle incoming PayPal Webhooks
+// @route   POST /api/subscriptions/webhook
+// @access  Public (Called securely by PayPal)
+const paypalWebhookHandler = async (req, res) => {
+    // 1. Acknowledge receipt to PayPal immediately so they don't retry the ping
+    res.status(200).send('Webhook received');
+
+    try {
+        const event = req.body;
+        const eventType = event.event_type;
+        const resource = event.resource;
+
+        let searchId = null;
+
+        // 2. Identify if this is a Subscription (I-...) or an Invoice (INV2-...)
+        if (eventType === 'PAYMENT.SALE.COMPLETED' || eventType === 'BILLING.SUBSCRIPTION.ACTIVATED') {
+            searchId = resource.billing_agreement_id || resource.id; 
+        } else if (eventType === 'INVOICING.INVOICE.PAID' || eventType === 'PAYMENT.INVOICE.PAID') {
+            searchId = resource.invoice?.id || resource.id; 
+        }
+
+        if (!searchId) return; // Exit if it's an irrelevant event type
+
+        // 3. Find the student via their exact PayPal ID
+        const user = await User.findOne({
+            $or: [
+                { 'paypal.subscriptionId': searchId },
+                { 'paypal.invoiceId': searchId },
+                { 'paypal.recurringSeriesId': searchId }
+            ]
+        });
+
+        if (!user) {
+            console.log(`Webhook Error: Payment received but no student found matching PayPal ID: ${searchId}`);
+            return;
+        }
+
+        // 4. Auto-Renew the Cycle (Roll forward 28 days & Reset Phase 1)
+        const now = new Date();
+        const endDate = new Date(now.getTime() + (28 * 24 * 60 * 60 * 1000));
+
+        user.subscription.startDate = now;
+        user.subscription.endDate = endDate;
+        user.subscription.classesUsed = 0; // Fresh 28-day cycle reset
+
+        if (!user.paypal) user.paypal = {};
+        user.paypal.status = 'active';
+
+        await user.save();
+
+        // 5. Send Automated WhatsApp Receipt to the Student or their Group
+        try {
+            if (whatsappClient && whatsappClient.sendMessage) {
+                const target = user.studentGroupId || `${user.whatsappNumber}@c.us`;
+                
+                if (target && target !== '@c.us') {
+                    const msg = `🎉 *Payment Received!*\n\nYour ${user.paypal.billingType === 'subscription' ? 'subscription' : 'invoice'} has successfully renewed.\n\n*New Cycle:* ${now.toLocaleDateString()} to ${endDate.toLocaleDateString()}\n*Phase 1 (Classes Completed):* 0\n\nThank you for choosing Learn With Ayman!`;
+                    await whatsappClient.sendMessage(target, msg);
+                }
+            }
+        } catch (botError) {
+            console.log('WhatsApp Bot failed to send receipt:', botError.message);
+        }
+
+    } catch (error) {
+        console.error('PayPal Webhook processing error:', error);
+    }
+};
+
 module.exports = {
     createSubscription,
-    getStudentSubscriptionSummary
+    getStudentSubscriptionSummary,
+    linkPayPalBilling,
+    paypalWebhookHandler
 };

@@ -39,6 +39,40 @@ const userSchema = mongoose.Schema(
     assignedTeachers: [{ type: mongoose.Schema.Types.ObjectId, ref: 'User' }], 
 
     // ==========================================
+    // ✨ PAYPAL BILLING ENGINE (Subscriptions & Invoices)
+    // ==========================================
+    paypal: {
+      billingType: { 
+        type: String, 
+        enum: ['subscription', 'recurring_invoice', 'none'], 
+        default: 'none' 
+      },
+      subscriptionId: { type: String, trim: true, index: true },   // For I-...
+      recurringSeriesId: { type: String, trim: true, index: true },// For REC-...
+      invoiceId: { type: String, trim: true, index: true },        // For INV2-...
+      planName: { type: String },                                  // e.g., "Quran Intensive - 12x"
+      status: { 
+        type: String, 
+        enum: ['active', 'paused', 'expired', 'cancelled'], 
+        default: 'active' 
+      },
+      cycleStartDate: { type: Date },
+      cycleEndDate: { type: Date },
+      nextBillingDate: { type: Date },
+      amount: { type: Number }
+    },
+
+    // ✨ RECURRING LESSON SLOTS
+    recurringSlots: [
+      {
+        dayOfWeek: { type: String }, // e.g., "Sunday", "Tuesday"
+        startTime: { type: String }, // e.g., "18:00"
+        endTime: { type: String },   // e.g., "18:45"
+        durationMinutes: { type: Number, default: 45 }
+      }
+    ],
+
+    // ==========================================
     // ✨ SUBSCRIPTION & MAKEUP ENGINE 
     // ==========================================
     subscription: {

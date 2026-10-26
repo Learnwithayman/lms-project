@@ -37,6 +37,19 @@ function UserList() {
   const [subUsed, setSubUsed] = useState(0); 
   const [subStart, setSubStart] = useState('');
   const [subEnd, setSubEnd] = useState('');
+  
+  // ✨ PAYPAL BILLING STATES
+  const [billingType, setBillingType] = useState('none');
+  const [subscriptionId, setSubscriptionId] = useState('');
+  const [invoiceId, setInvoiceId] = useState('');
+  const [recurringSeriesId, setRecurringSeriesId] = useState('');
+  
+  // ✨ RECURRING SLOTS STATES
+  const [recurringSlots, setRecurringSlots] = useState([]);
+  const [newSlotDay, setNewSlotDay] = useState('Sunday');
+  const [newSlotStart, setNewSlotStart] = useState('');
+  const [newSlotEnd, setNewSlotEnd] = useState('');
+
   const [isSubUpdating, setIsSubUpdating] = useState(false);
 
   const [isAssignModalOpen, setIsAssignModalOpen] = useState(false);
@@ -133,14 +146,25 @@ function UserList() {
     try {
       const token = localStorage.getItem('token');
       const config = { headers: { Authorization: `Bearer ${token}` } };
-      await axios.put(`${API_URL}/api/users/${selectedStudent._id}/subscription`, {
+      
+      // ✨ Build unified payload with PayPal & Scheduling Info
+      const payload = {
         status: subStatus,
         totalClassesBought: subTotal,
         classesUsed: subUsed,
         startDate: subStart,
-        endDate: subEnd
-      }, config);
-      alert('✅ Subscription updated successfully!');
+        endDate: subEnd,
+        paypal: {
+          billingType,
+          subscriptionId,
+          invoiceId,
+          recurringSeriesId
+        },
+        recurringSlots
+      };
+
+      await axios.put(`${API_URL}/api/users/${selectedStudent._id}/subscription`, payload, config);
+      alert('✅ Subscription, Billing & Schedule updated successfully!');
       setIsWalletOpen(false);
       fetchUsers(); 
     } catch (error) {
@@ -230,7 +254,6 @@ function UserList() {
     }
   };
 
-  // ✨ HELPER: Toggle Checkbox Selection
   const toggleTeacherSelection = (teacherId) => {
     if (selectedTeachers.includes(teacherId)) {
       setSelectedTeachers(selectedTeachers.filter(id => id !== teacherId));
@@ -257,13 +280,38 @@ function UserList() {
     }
   };
 
+  const handleAddRecurringSlot = () => {
+    if (!newSlotStart || !newSlotEnd) return alert("Please select start and end times");
+    setRecurringSlots([...recurringSlots, { dayOfWeek: newSlotDay, startTime: newSlotStart, endTime: newSlotEnd }]);
+    setNewSlotStart('');
+    setNewSlotEnd('');
+  };
+
+  const handleRemoveRecurringSlot = (index) => {
+    const updated = [...recurringSlots];
+    updated.splice(index, 1);
+    setRecurringSlots(updated);
+  };
+
   const openWallet = (student) => {
     setSelectedStudent(student);
+    
+    // Legacy fields
     setSubStatus(student.subscription?.status || 'none');
     setSubTotal(student.subscription?.totalClassesBought || 0);
     setSubUsed(student.subscription?.classesUsed || 0);
     setSubStart(student.subscription?.startDate ? student.subscription.startDate.split('T')[0] : '');
     setSubEnd(student.subscription?.endDate ? student.subscription.endDate.split('T')[0] : '');
+    
+    // ✨ PayPal fields
+    setBillingType(student.paypal?.billingType || 'none');
+    setSubscriptionId(student.paypal?.subscriptionId || '');
+    setInvoiceId(student.paypal?.invoiceId || '');
+    setRecurringSeriesId(student.paypal?.recurringSeriesId || '');
+    
+    // ✨ Scheduling Fields
+    setRecurringSlots(student.recurringSlots || []);
+    
     setIsWalletOpen(true);
   };
 
@@ -398,7 +446,7 @@ function UserList() {
                     {user.role === 'student' && (
                       <>
                         <button onClick={() => openAssignModal(user)} style={{ fontSize: '12px', padding: '5px 10px', backgroundColor: '#9b59b6', color: 'white', border: 'none', borderRadius: '5px', cursor: 'pointer' }}>🧑‍🏫 Assign</button>
-                        <button onClick={() => openWallet(user)} style={{ fontSize: '12px', padding: '5px 10px', backgroundColor: '#f39c12', color: 'white', border: 'none', borderRadius: '5px', cursor: 'pointer' }}>💳 Wallet</button>
+                        <button onClick={() => openWallet(user)} style={{ fontSize: '12px', padding: '5px 10px', backgroundColor: '#f39c12', color: 'white', border: 'none', borderRadius: '5px', cursor: 'pointer' }}>💳 Wallet & PayPal</button>
                       </>
                     )}
                     <button onClick={() => handleDelete(user._id)} className="role-admin" style={{ fontSize: '12px', padding: '5px 10px', border: 'none', cursor: 'pointer', color: 'white', borderRadius: '5px' }}>Delete</button>
@@ -498,7 +546,7 @@ function UserList() {
         </div>
       )}
 
-      {/* ✨ UPDATED ASSIGN MODAL (CHECKBOXES INSTEAD OF DROPDOWN) */}
+      {/* ASSIGN MODAL (CHECKBOXES) */}
       {isAssignModalOpen && assignStudent && (
         <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.6)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, padding: '20px' }}>
           <div style={{ backgroundColor: 'white', padding: '30px', borderRadius: '8px', width: '400px', color: 'black' }}>
@@ -529,15 +577,17 @@ function UserList() {
         </div>
       )}
 
-      {/* WALLET MODAL */}
+      {/* ✨ UPDATED WALLET & PAYPAL MODAL */}
       {isWalletOpen && selectedStudent && (
         <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.6)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, overflowY: 'auto', padding: '20px' }}>
-          <div style={{ backgroundColor: 'white', padding: '30px', borderRadius: '8px', width: '550px', color: 'black', maxHeight: '90vh', overflowY: 'auto' }}>
+          <div style={{ backgroundColor: 'white', padding: '30px', borderRadius: '8px', width: '650px', color: 'black', maxHeight: '90vh', overflowY: 'auto' }}>
+            
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '2px solid #eee', paddingBottom: '10px', marginBottom: '20px' }}>
-              <h2 style={{ margin: 0 }}>💳 {selectedStudent.name}'s Wallet</h2>
+              <h2 style={{ margin: 0 }}>💳 {selectedStudent.name}'s Profile</h2>
               <button onClick={() => setIsWalletOpen(false)} style={{ background: 'none', border: 'none', fontSize: '20px', cursor: 'pointer' }}>✖</button>
             </div>
 
+            {/* Quick Stats */}
             <div style={{ display: 'flex', gap: '15px', marginBottom: '25px' }}>
               <div style={{ flex: 1, backgroundColor: '#f8f9fa', padding: '15px', borderRadius: '8px', textAlign: 'center', border: '1px solid #ddd' }}>
                 <h4 style={{ margin: '0 0 10px 0', color: '#555' }}>Classes Used</h4>
@@ -548,7 +598,6 @@ function UserList() {
                   Status: {selectedStudent.subscription?.status ? selectedStudent.subscription.status.toUpperCase() : 'NONE'}
                 </p>
               </div>
-
               <div style={{ flex: 1, backgroundColor: '#f8f9fa', padding: '15px', borderRadius: '8px', textAlign: 'center', border: '1px solid #ddd' }}>
                 <h4 style={{ margin: '0 0 10px 0', color: '#555' }}>Makeup Bank</h4>
                 <div style={{ fontSize: '24px', fontWeight: 'bold', color: '#f39c12' }}>
@@ -558,101 +607,144 @@ function UserList() {
               </div>
             </div>
 
-            <div style={{ backgroundColor: '#eef2f5', padding: '20px', borderRadius: '8px', marginBottom: '20px' }}>
-              <h3 style={{ margin: '0 0 15px 0', color: '#2c3e50', borderBottom: '1px solid #ccc', paddingBottom: '10px' }}>⚙️️ Manage Subscription</h3>
+            <form onSubmit={handleUpdateSubscription}>
               
-              <div style={{ display: 'flex', gap: '10px', marginBottom: '15px' }}>
-                <button 
-                  type="button" 
-                  onClick={handleAutoSyncWallet}
-                  disabled={isSubUpdating}
-                  style={{ flex: 1, padding: '10px', backgroundColor: '#8e44ad', color: 'white', border: 'none', borderRadius: '5px', cursor: 'pointer', fontWeight: 'bold', fontSize: '12px' }}>
-                  {isSubUpdating ? 'Syncing...' : '⚡ Auto-Count Past Classes'}
-                </button>
-                <button 
-                  type="button" 
-                  onClick={handleResetCompletedToZero}
-                  disabled={isSubUpdating}
-                  style={{ flex: 1, padding: '10px', backgroundColor: '#e67e22', color: 'white', border: 'none', borderRadius: '5px', cursor: 'pointer', fontWeight: 'bold', fontSize: '12px' }}>
-                  🔄 Reset Completed to 0
-                </button>
-              </div>
-
-              <div style={{ display: 'flex', gap: '10px', marginBottom: '15px' }}>
-                <div style={{ flex: 1, backgroundColor: '#e8f8f5', padding: '10px', borderRadius: '6px', border: '1px solid #2ecc71', textAlign: 'center' }}>
-                  <div style={{ fontSize: '11px', fontWeight: 'bold', color: '#27ae60' }}>PHASE 1: CLASSES DONE</div>
-                  <div style={{ fontSize: '18px', fontWeight: 'bold', color: '#2d3436' }}>{subUsed}</div>
-                  <div style={{ fontSize: '10px', color: '#7f8c8d' }}>(Start Date ➔ Today)</div>
-                </div>
-                <div style={{ flex: 1, backgroundColor: '#e8f4fd', padding: '10px', borderRadius: '6px', border: '1px solid #3498db', textAlign: 'center' }}>
-                  <div style={{ fontSize: '11px', fontWeight: 'bold', color: '#2980b9' }}>PHASE 2: CLASSES REMAINING</div>
-                  <div style={{ fontSize: '18px', fontWeight: 'bold', color: '#2d3436' }}>{Math.max(0, subTotal - subUsed)}</div>
-                  <div style={{ fontSize: '10px', color: '#7f8c8d' }}>(Today ➔ End Date)</div>
-                </div>
-              </div>
-
-              <form onSubmit={handleUpdateSubscription} style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '15px' }}>
+              {/* ✨ SECTION 1: PAYPAL BILLING */}
+              <div style={{ backgroundColor: '#f0f4f8', padding: '20px', borderRadius: '8px', marginBottom: '20px', borderLeft: '4px solid #3498db' }}>
+                <h3 style={{ margin: '0 0 15px 0', color: '#2c3e50', fontSize: '16px' }}>💳 Payment & Billing Setup (PayPal)</h3>
                 
-                <div style={{ gridColumn: '1 / -1', backgroundColor: '#fff', padding: '12px', borderRadius: '6px', border: '1px solid #3498db' }}>
-                  <label style={{ display: 'block', marginBottom: '5px', fontWeight: 'bold', fontSize: '14px', color: '#2980b9' }}>⚡ Quick Auto-Calculate End Date:</label>
-                  <select 
-                    onChange={(e) => {
-                      const days = Number(e.target.value);
-                      if (!days) return;
-                      const start = subStart ? new Date(subStart) : new Date();
-                      const end = new Date(start.getTime() + days * 24 * 60 * 60 * 1000);
-                      setSubStart(start.toISOString().split('T')[0]);
-                      setSubEnd(end.toISOString().split('T')[0]);
-                    }} 
-                    style={{ width: '100%', padding: '8px', borderRadius: '5px', border: '1px solid #ccc', fontWeight: 'bold' }}>
-                    <option value="">-- Choose Duration Preset --</option>
-                    <option value="28">Monthly Cycle (28 Days)</option>
-                    <option value="84">Quarterly Cycle (84 Days / 3 Months)</option>
-                    <option value="336">Yearly Cycle (336 Days / 12 Months)</option>
+                <div style={{ marginBottom: '15px' }}>
+                  <label style={{ display: 'block', marginBottom: '5px', fontWeight: 'bold', fontSize: '14px' }}>Billing Type:</label>
+                  <select value={billingType} onChange={(e) => setBillingType(e.target.value)} style={{ width: '100%', padding: '10px', borderRadius: '5px', border: '1px solid #ccc' }}>
+                    <option value="none">None / Manual Payment</option>
+                    <option value="subscription">Auto-Subscription (I-...)</option>
+                    <option value="recurring_invoice">Recurring Invoice Series (INV2-...)</option>
                   </select>
                 </div>
 
-                <div>
-                  <label style={{ display: 'block', marginBottom: '5px', fontWeight: 'bold', fontSize: '14px' }}>Status:</label>
-                  <select value={subStatus} onChange={(e) => setSubStatus(e.target.value)} style={{ width: '100%', padding: '10px', borderRadius: '5px', border: '1px solid #ccc' }}>
-                    <option value="none">None</option>
-                    <option value="active">Active</option>
-                    <option value="paused">Paused</option>
-                    <option value="expired">Expired</option>
-                  </select>
+                {billingType === 'subscription' && (
+                  <div>
+                    <label style={{ display: 'block', marginBottom: '5px', fontWeight: 'bold', fontSize: '14px' }}>PayPal Subscription ID (I-xxx):</label>
+                    <input type="text" placeholder="e.g. I-BW452GL1KMUW" value={subscriptionId} onChange={(e) => setSubscriptionId(e.target.value)} style={{ width: '100%', padding: '10px', borderRadius: '5px', border: '1px solid #ccc', boxSizing: 'border-box' }} />
+                  </div>
+                )}
+
+                {billingType === 'recurring_invoice' && (
+                  <div style={{ display: 'flex', gap: '10px' }}>
+                    <div style={{ flex: 1 }}>
+                      <label style={{ display: 'block', marginBottom: '5px', fontWeight: 'bold', fontSize: '14px' }}>Invoice ID (INV2-xxx):</label>
+                      <input type="text" placeholder="e.g. INV2-9842-8821" value={invoiceId} onChange={(e) => setInvoiceId(e.target.value)} style={{ width: '100%', padding: '10px', borderRadius: '5px', border: '1px solid #ccc', boxSizing: 'border-box' }} />
+                    </div>
+                    <div style={{ flex: 1 }}>
+                      <label style={{ display: 'block', marginBottom: '5px', fontWeight: 'bold', fontSize: '14px' }}>Recurring Series ID (REC-xxx):</label>
+                      <input type="text" placeholder="e.g. REC-12345" value={recurringSeriesId} onChange={(e) => setRecurringSeriesId(e.target.value)} style={{ width: '100%', padding: '10px', borderRadius: '5px', border: '1px solid #ccc', boxSizing: 'border-box' }} />
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* ✨ SECTION 2: WEEKLY SCHEDULE */}
+              <div style={{ backgroundColor: '#fcf3cf', padding: '20px', borderRadius: '8px', marginBottom: '20px', borderLeft: '4px solid #f1c40f' }}>
+                <h3 style={{ margin: '0 0 15px 0', color: '#7d6608', fontSize: '16px' }}>🗓️ Weekly Recurring Schedule</h3>
+                
+                {recurringSlots.length > 0 && (
+                  <div style={{ marginBottom: '15px' }}>
+                    {recurringSlots.map((slot, index) => (
+                      <div key={index} style={{ display: 'flex', justifyContent: 'space-between', backgroundColor: '#fff', padding: '10px', borderRadius: '5px', marginBottom: '5px', border: '1px solid #f1c40f' }}>
+                        <span><strong>{slot.dayOfWeek}s</strong>: {slot.startTime} - {slot.endTime}</span>
+                        <button type="button" onClick={() => handleRemoveRecurringSlot(index)} style={{ background: 'none', border: 'none', color: '#e74c3c', cursor: 'pointer', fontWeight: 'bold' }}>✖ Remove</button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                <div style={{ display: 'flex', gap: '10px', alignItems: 'flex-end' }}>
+                  <div style={{ flex: 1 }}>
+                    <label style={{ display: 'block', fontSize: '12px', fontWeight: 'bold' }}>Day</label>
+                    <select value={newSlotDay} onChange={(e) => setNewSlotDay(e.target.value)} style={{ width: '100%', padding: '8px', borderRadius: '4px', border: '1px solid #ccc' }}>
+                      {['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'].map(d => <option key={d} value={d}>{d}</option>)}
+                    </select>
+                  </div>
+                  <div style={{ flex: 1 }}>
+                    <label style={{ display: 'block', fontSize: '12px', fontWeight: 'bold' }}>Start Time</label>
+                    <input type="time" value={newSlotStart} onChange={(e) => setNewSlotStart(e.target.value)} style={{ width: '100%', padding: '8px', borderRadius: '4px', border: '1px solid #ccc' }} />
+                  </div>
+                  <div style={{ flex: 1 }}>
+                    <label style={{ display: 'block', fontSize: '12px', fontWeight: 'bold' }}>End Time</label>
+                    <input type="time" value={newSlotEnd} onChange={(e) => setNewSlotEnd(e.target.value)} style={{ width: '100%', padding: '8px', borderRadius: '4px', border: '1px solid #ccc' }} />
+                  </div>
+                  <button type="button" onClick={handleAddRecurringSlot} style={{ padding: '9px 15px', backgroundColor: '#f39c12', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer', fontWeight: 'bold' }}>Add Slot</button>
                 </div>
+              </div>
 
-                <div>
-                  <label style={{ display: 'block', marginBottom: '5px', fontWeight: 'bold', fontSize: '14px' }}>Total Classes Bought:</label>
-                  <input type="number" min="0" value={subTotal} onChange={(e) => setSubTotal(e.target.value)} style={{ width: '100%', padding: '10px', borderRadius: '5px', border: '1px solid #ccc', boxSizing: 'border-box' }} />
-                </div>
-
-                <div>
-                  <label style={{ display: 'block', marginBottom: '5px', fontWeight: 'bold', fontSize: '14px' }}>Classes Completed:</label>
-                  <input type="number" min="0" value={subUsed} onChange={(e) => setSubUsed(e.target.value)} style={{ width: '100%', padding: '10px', borderRadius: '5px', border: '1px solid #ccc', boxSizing: 'border-box' }} />
-                </div>
-
-                <div></div>
-
-                <div>
-                  <label style={{ display: 'block', marginBottom: '5px', fontWeight: 'bold', fontSize: '14px' }}>Start Date:</label>
-                  <input type="date" value={subStart} onChange={(e) => setSubStart(e.target.value)} style={{ width: '100%', padding: '10px', borderRadius: '5px', border: '1px solid #ccc', boxSizing: 'border-box' }} />
-                </div>
-
-                <div>
-                  <label style={{ display: 'block', marginBottom: '5px', fontWeight: 'bold', fontSize: '14px' }}>End Date:</label>
-                  <input type="date" value={subEnd} onChange={(e) => setSubEnd(e.target.value)} style={{ width: '100%', padding: '10px', borderRadius: '5px', border: '1px solid #ccc', boxSizing: 'border-box' }} />
-                </div>
-
-                <div style={{ gridColumn: '1 / -1' }}>
-                  <button type="submit" disabled={isSubUpdating} style={{ width: '100%', padding: '12px', backgroundColor: isSubUpdating ? '#95a5a6' : '#2ecc71', color: 'white', border: 'none', borderRadius: '5px', cursor: isSubUpdating ? 'not-allowed' : 'pointer', fontWeight: 'bold', marginTop: '10px' }}>
-                    {isSubUpdating ? 'Updating...' : 'Update Subscription'}
+              {/* SECTION 3: CALENDAR CYCLE CONTROLS */}
+              <div style={{ backgroundColor: '#eef2f5', padding: '20px', borderRadius: '8px', marginBottom: '20px' }}>
+                <h3 style={{ margin: '0 0 15px 0', color: '#2c3e50', borderBottom: '1px solid #ccc', paddingBottom: '10px', fontSize: '16px' }}>⚙ Manual Cycle Overrides</h3>
+                
+                <div style={{ display: 'flex', gap: '10px', marginBottom: '15px' }}>
+                  <button type="button" onClick={handleAutoSyncWallet} disabled={isSubUpdating} style={{ flex: 1, padding: '10px', backgroundColor: '#8e44ad', color: 'white', border: 'none', borderRadius: '5px', cursor: 'pointer', fontWeight: 'bold', fontSize: '12px' }}>
+                    {isSubUpdating ? 'Syncing...' : '⚡ Auto-Count Past Classes'}
+                  </button>
+                  <button type="button" onClick={handleResetCompletedToZero} disabled={isSubUpdating} style={{ flex: 1, padding: '10px', backgroundColor: '#e67e22', color: 'white', border: 'none', borderRadius: '5px', cursor: 'pointer', fontWeight: 'bold', fontSize: '12px' }}>
+                    🔄 Reset Completed to 0
                   </button>
                 </div>
-              </form>
-            </div>
 
-            <div style={{ backgroundColor: '#fff4e6', padding: '20px', borderRadius: '8px', border: '1px solid #fce8cc' }}>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '15px' }}>
+                  <div style={{ gridColumn: '1 / -1', backgroundColor: '#fff', padding: '12px', borderRadius: '6px', border: '1px solid #3498db' }}>
+                    <label style={{ display: 'block', marginBottom: '5px', fontWeight: 'bold', fontSize: '14px', color: '#2980b9' }}>⚡ Quick Auto-Calculate End Date:</label>
+                    <select 
+                      onChange={(e) => {
+                        const days = Number(e.target.value);
+                        if (!days) return;
+                        const start = subStart ? new Date(subStart) : new Date();
+                        const end = new Date(start.getTime() + days * 24 * 60 * 60 * 1000);
+                        setSubStart(start.toISOString().split('T')[0]);
+                        setSubEnd(end.toISOString().split('T')[0]);
+                      }} 
+                      style={{ width: '100%', padding: '8px', borderRadius: '5px', border: '1px solid #ccc', fontWeight: 'bold' }}>
+                      <option value="">-- Choose Duration Preset --</option>
+                      <option value="28">Monthly Cycle (28 Days)</option>
+                      <option value="84">Quarterly Cycle (84 Days / 3 Months)</option>
+                      <option value="336">Yearly Cycle (336 Days / 12 Months)</option>
+                    </select>
+                  </div>
+
+                  <div>
+                    <label style={{ display: 'block', marginBottom: '5px', fontWeight: 'bold', fontSize: '14px' }}>Status:</label>
+                    <select value={subStatus} onChange={(e) => setSubStatus(e.target.value)} style={{ width: '100%', padding: '10px', borderRadius: '5px', border: '1px solid #ccc' }}>
+                      <option value="none">None</option>
+                      <option value="active">Active</option>
+                      <option value="paused">Paused</option>
+                      <option value="expired">Expired</option>
+                    </select>
+                  </div>
+
+                  <div>
+                    <label style={{ display: 'block', marginBottom: '5px', fontWeight: 'bold', fontSize: '14px' }}>Total Classes Bought:</label>
+                    <input type="number" min="0" value={subTotal} onChange={(e) => setSubTotal(e.target.value)} style={{ width: '100%', padding: '10px', borderRadius: '5px', border: '1px solid #ccc', boxSizing: 'border-box' }} />
+                  </div>
+
+                  <div>
+                    <label style={{ display: 'block', marginBottom: '5px', fontWeight: 'bold', fontSize: '14px' }}>Start Date:</label>
+                    <input type="date" value={subStart} onChange={(e) => setSubStart(e.target.value)} style={{ width: '100%', padding: '10px', borderRadius: '5px', border: '1px solid #ccc', boxSizing: 'border-box' }} />
+                  </div>
+
+                  <div>
+                    <label style={{ display: 'block', marginBottom: '5px', fontWeight: 'bold', fontSize: '14px' }}>End Date:</label>
+                    <input type="date" value={subEnd} onChange={(e) => setSubEnd(e.target.value)} style={{ width: '100%', padding: '10px', borderRadius: '5px', border: '1px solid #ccc', boxSizing: 'border-box' }} />
+                  </div>
+                </div>
+              </div>
+
+              <button type="submit" disabled={isSubUpdating} style={{ width: '100%', padding: '14px', backgroundColor: isSubUpdating ? '#95a5a6' : '#2ecc71', color: 'white', border: 'none', borderRadius: '8px', cursor: isSubUpdating ? 'not-allowed' : 'pointer', fontWeight: 'bold', fontSize: '16px', boxShadow: '0 4px 15px rgba(46,204,113,0.3)' }}>
+                {isSubUpdating ? 'Saving...' : '💾 Save All Profile Changes'}
+              </button>
+
+            </form>
+            
+            {/* MAKEUP BANK FORM */}
+            <div style={{ backgroundColor: '#fff4e6', padding: '20px', borderRadius: '8px', border: '1px solid #fce8cc', marginTop: '25px' }}>
               <h3 style={{ margin: '0 0 15px 0', color: '#d35400', borderBottom: '1px solid #fce8cc', paddingBottom: '10px' }}>➕ Grant Makeup Credit</h3>
               <form onSubmit={handleGrantMakeup}>
                 <label style={{ display: 'block', marginBottom: '5px', fontWeight: 'bold', fontSize: '14px' }}>Original Missed Date:</label>
@@ -664,6 +756,7 @@ function UserList() {
                 </button>
               </form>
             </div>
+
           </div>
         </div>
       )}

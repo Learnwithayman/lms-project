@@ -150,11 +150,12 @@ const createAdminInstantly = asyncHandler(async (req, res) => {
 });
 
 // ==========================================
-// 🎒 SUBSCRIPTION ENGINE
+// 🎒 PAYPAL & WALLET SYNC ENGINE
 // ==========================================
-// @desc    Update student subscription
+// @desc    Update student subscription & billing info
 const updateSubscription = asyncHandler(async (req, res) => {
-  const { status, startDate, endDate, totalClassesBought, classesUsed } = req.body;
+  // ✨ Added paypal and recurringSlots to the incoming body parsing
+  const { status, startDate, endDate, totalClassesBought, classesUsed, paypal, recurringSlots } = req.body;
   const user = await User.findById(req.params.id);
 
   if (!user) {
@@ -162,15 +163,31 @@ const updateSubscription = asyncHandler(async (req, res) => {
     throw new Error('User not found');
   }
 
+  // Legacy Subscription Object updates
   if (status) user.subscription.status = status;
   if (startDate) user.subscription.startDate = startDate;
   if (endDate) user.subscription.endDate = endDate;
   if (totalClassesBought !== undefined) user.subscription.totalClassesBought = Number(totalClassesBought);
-  
   if (classesUsed !== undefined) user.subscription.classesUsed = Number(classesUsed);
 
+  // ✨ PayPal Billing Object updates
+  if (paypal) {
+    if (!user.paypal) user.paypal = {};
+    if (paypal.billingType) user.paypal.billingType = paypal.billingType;
+    if (paypal.subscriptionId !== undefined) user.paypal.subscriptionId = paypal.subscriptionId;
+    if (paypal.recurringSeriesId !== undefined) user.paypal.recurringSeriesId = paypal.recurringSeriesId;
+    if (paypal.invoiceId !== undefined) user.paypal.invoiceId = paypal.invoiceId;
+    if (paypal.planName) user.paypal.planName = paypal.planName;
+    if (paypal.amount !== undefined) user.paypal.amount = Number(paypal.amount);
+  }
+
+  // ✨ Recurring Slots updates
+  if (recurringSlots && Array.isArray(recurringSlots)) {
+    user.recurringSlots = recurringSlots;
+  }
+
   await user.save();
-  res.status(200).json({ message: 'Subscription updated successfully!', user });
+  res.status(200).json({ message: 'Subscription & Billing Info updated successfully!', user });
 });
 
 // ⚡ STRICT 2-PHASE CALCULATION ENGINE
@@ -259,8 +276,8 @@ const syncStudentWallet = asyncHandler(async (req, res) => {
 
   res.status(200).json({
     message: resetZero 
-      ? `✅ Reset Complete!\n\n• Phase 1 (Classes Completed): 0\n• Phase 2 (Classes Remaining): ${finalTotal}\n• Total Package: ${finalTotal}`
-      : `⚡ 2-Phase Auto-Sync Complete!\n\n• Phase 1 (Classes Completed): ${phase1Done}\n• Phase 2 (Classes Remaining): ${phase2Remaining}\n• Total Package: ${finalTotal}`,
+      ? `✅ Reset Complete!\n\nPhase 1 (Classes Completed): 0\nPhase 2 (Classes Remaining): ${finalTotal}\nTotal Package: ${finalTotal}`
+      : `⚡ 2-Phase Auto-Sync Complete!\n\nPhase 1 (Classes Completed): ${phase1Done}\nPhase 2 (Classes Remaining): ${phase2Remaining}\nTotal Package: ${finalTotal}`,
     subscription: student.subscription,
     phase1Done,
     phase2Remaining
