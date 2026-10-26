@@ -46,6 +46,7 @@ function Dashboard() {
   const [loadingHistory, setLoadingHistory] = useState(true);
 
   const [reportStatuses, setReportStatuses] = useState({});
+  const [nextClassCountdown, setNextClassCountdown] = useState('');
 
   const navigate = useNavigate();
   
@@ -129,6 +130,39 @@ function Dashboard() {
       loadPlanSilently();
     }
   }, [isPlanModalOpen, planForm.monthYear, planStudentIdentifier]);
+
+  // ✨ LIVE COUNTDOWN TIMER
+  useEffect(() => {
+    if (classes.length === 0) return;
+
+    const upcomingClasses = classes.filter(cls => cls.status !== 'completed' && new Date(cls.startTime) > new Date());
+    if (upcomingClasses.length === 0) {
+      setNextClassCountdown('');
+      return;
+    }
+
+    const nextClassTime = new Date(upcomingClasses[0].startTime).getTime();
+
+    const interval = setInterval(() => {
+      const now = new Date().getTime();
+      const distance = nextClassTime - now;
+
+      if (distance < 0) {
+        setNextClassCountdown('Class is Live Now!');
+        clearInterval(interval);
+        return;
+      }
+
+      const days = Math.floor(distance / (1000 * 60 * 60 * 24));
+      const hours = Math.floor((distance % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
+      const minutes = Math.floor((distance % (1000 * 60 * 60)) / (1000 * 60));
+      const seconds = Math.floor((distance % (1000 * 60)) / 1000);
+
+      setNextClassCountdown(`${days > 0 ? days + 'd ' : ''}${hours}h ${minutes}m ${seconds}s`);
+    }, 1000);
+
+    return () => clearInterval(interval);
+  }, [classes]);
 
   const getRecentMonths = () => {
     const months = [];
@@ -571,11 +605,21 @@ function Dashboard() {
           <div style={{ backgroundColor: '#fff', padding: '30px', borderRadius: '15px', borderTop: '5px solid #0984e3', boxShadow: '0 10px 25px rgba(0,0,0,0.04)' }}>
             <h3 style={{ margin: '0 0 20px 0', color: '#2d3436', fontSize: '20px', display: 'flex', justifyContent: 'space-between' }}>
               <span>📅 Current Plan</span>
-              {subSummary.subscription?.status === 'active' ? (
-                <span style={{ fontSize: '12px', backgroundColor: '#00b894', color: 'white', padding: '4px 10px', borderRadius: '12px', alignSelf: 'center' }}>ACTIVE</span>
-              ) : (
-                <span style={{ fontSize: '12px', backgroundColor: '#b2bec3', color: 'white', padding: '4px 10px', borderRadius: '12px', alignSelf: 'center' }}>INACTIVE</span>
-              )}
+              <div style={{ display: 'flex', gap: '10px' }}>
+                {/* ✨ NEW PAYPAL BADGES */}
+                {user.paypal?.billingType === 'subscription' && (
+                  <span style={{ fontSize: '11px', backgroundColor: '#0984e3', color: 'white', padding: '4px 10px', borderRadius: '12px', alignSelf: 'center' }}>🔄 PayPal Auto-Subscription</span>
+                )}
+                {user.paypal?.billingType === 'recurring_invoice' && (
+                  <span style={{ fontSize: '11px', backgroundColor: '#8e44ad', color: 'white', padding: '4px 10px', borderRadius: '12px', alignSelf: 'center' }}>🧾 PayPal Recurring Invoice</span>
+                )}
+                
+                {subSummary.subscription?.status === 'active' ? (
+                  <span style={{ fontSize: '12px', backgroundColor: '#00b894', color: 'white', padding: '4px 10px', borderRadius: '12px', alignSelf: 'center' }}>ACTIVE</span>
+                ) : (
+                  <span style={{ fontSize: '12px', backgroundColor: '#b2bec3', color: 'white', padding: '4px 10px', borderRadius: '12px', alignSelf: 'center' }}>INACTIVE</span>
+                )}
+              </div>
             </h3>
             
             {subSummary.subscription ? (
@@ -708,17 +752,18 @@ function Dashboard() {
       )}
 
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
-        <h2 style={{ margin: '0' }}>🗓️ Your Schedule</h2>
+        <h2 style={{ margin: 0 }}>🗓️ Your Schedule</h2>
       </div>
       
       <div style={{ display: 'grid', gap: '20px', marginBottom: '40px' }}>
         {classes.length === 0 ? (
            <p style={{ fontStyle: 'italic', color: 'gray' }}>No upcoming classes found on your calendar.</p>
         ) : (
-          classes.filter(cls => cls.status !== 'completed').map((cls) => {
+          classes.filter(cls => cls.status !== 'completed').map((cls, idx) => {
             const isLive = isClassLive(cls.startTime);
             const classIdentifier = cls._id || cls.id;
             
+            // The Fuzzy Matcher
             const rawIdentifier = (cls.studentGroupName || cls.title || cls.studentGroupId || '').toLowerCase();
             const cleanKey = rawIdentifier.split('-')[0].trim();
             
@@ -737,6 +782,11 @@ function Dashboard() {
               planStatus = '⚪ No Plan Yet';
             }
 
+            // ✨ Determine exact start and end times dynamically
+            const startDateObj = new Date(cls.startTime);
+            const endDateObj = cls.endTime ? new Date(cls.endTime) : new Date(startDateObj.getTime() + (cls.durationMinutes || 60) * 60000);
+            const isNextClass = idx === 0 && !isLive && startDateObj > new Date();
+
             return (
               <div key={classIdentifier} className="card" style={{ borderLeft: isLive ? '5px solid #2ecc71' : '5px solid #0984e3', borderRadius: '12px', boxShadow: '0 5px 15px rgba(0,0,0,0.03)', backgroundColor: isLive ? '#f0fff4' : '#fff' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
@@ -745,7 +795,19 @@ function Dashboard() {
                       📚 {cls.title || cls.subject}
                       {isLive && <span style={{ marginLeft: '10px', backgroundColor: '#2ecc71', color: 'white', padding: '2px 8px', borderRadius: '10px', fontSize: '11px', fontWeight: 'bold' }}>LIVE NOW</span>}
                     </h3>
-                    <p style={{ margin: '0 0 15px 0', color: '#636e72' }}><strong>⏰ Time:</strong> {new Date(cls.startTime).toLocaleString(undefined, { weekday: 'long', month: 'long', day: 'numeric', hour: '2-digit', minute: '2-digit' })}</p>
+                    
+                    {/* ✨ EXACT START AND END TIMES DISPLAY */}
+                    <p style={{ margin: '0 0 15px 0', color: '#636e72', fontSize: '15px' }}>
+                      <strong>🗓️ Date:</strong> {startDateObj.toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric' })}<br/>
+                      <strong>⏰ Exact Time:</strong> {startDateObj.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} — {endDateObj.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                    </p>
+                    
+                    {/* ✨ LIVE COUNTDOWN TIMER (Only for the immediate next class) */}
+                    {isNextClass && nextClassCountdown && (
+                      <div style={{ display: 'inline-block', backgroundColor: '#fff3cd', color: '#d35400', padding: '6px 12px', borderRadius: '6px', fontSize: '13px', fontWeight: 'bold', marginBottom: '15px', border: '1px solid #ffe69c' }}>
+                        ⏳ Starts in: {nextClassCountdown}
+                      </div>
+                    )}
                   </div>
                   
                   {user?.role?.toLowerCase() === 'teacher' && (
