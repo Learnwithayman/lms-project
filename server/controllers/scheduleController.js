@@ -910,6 +910,9 @@ const syncStudentTimezoneToGoogleCalendar = async (req, res) => {
     for (const event of events) {
       if (event.status === 'cancelled') continue;
 
+      // ✨ THE FIX: Skip detached single instances and only target the Master series
+      if (event.id && event.id.includes('_R')) continue;
+
       const summary = (event.summary || '').toLowerCase();
       const description = (event.description || '').toLowerCase();
 
@@ -946,7 +949,9 @@ const syncStudentTimezoneToGoogleCalendar = async (req, res) => {
     });
   } catch (error) {
     console.error('Error syncing timezone to Google Calendar:', error);
-    res.status(500).json({ message: 'Server error while executing Google Calendar timezone sync.' });
+    // ✨ THE FIX: Extract the exact error message from Google's API response
+    const googleError = error.response?.data?.error?.message || error.message || 'Unknown server error';
+    res.status(500).json({ message: `Google API Error: ${googleError}` });
   }
 };
 
