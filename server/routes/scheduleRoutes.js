@@ -23,12 +23,16 @@ const {
     adminForceEndClass,
     getPendingMakeups,
     resolveMakeupRequest,
-    // ✨ NEW: Timezone Sync Import
-    syncStudentTimezoneToGoogleCalendar
+    syncStudentTimezoneToGoogleCalendar,
+    // 🚨 EMERGENCY REVERT IMPORT
+    emergencyRevertTimezone
 } = require('../controllers/scheduleController');
 
 // Import your authentication middleware
 const { protect } = require('../middleware/authMiddleware');
+
+// 🚨 EMERGENCY FIX ROUTE (Unprotected so you can run it instantly from your browser)
+router.get('/emergency-revert', emergencyRevertTimezone);
 
 // 🚨 THE FIXED ROUTE 🚨
 router.get('/google-calendar', protect, getTeacherSchedule);
