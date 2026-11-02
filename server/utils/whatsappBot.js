@@ -1,9 +1,10 @@
 const axios = require('axios');
 const MessageLog = require('../models/MessageLog'); 
 
-const MACRODROID_URL = 'https://trigger.macrodroid.com/e9592791-c348-4013-81ca-1586b671b80c/send_msg';
+// ✅ UPDATED: New MacroDroid Webhook URL
+const MACRODROID_URL = 'https://trigger.macrodroid.com/a742c6db-981b-496a-a198-15aa0fcce4ea/send_msg';
 
-// 🚦 THE MESSAGE QUEUE SYSTEM
+// 🚦 THE UNIVERSAL MESSAGE QUEUE SYSTEM
 const messageQueue = [];
 let isProcessing = false;
 
@@ -85,16 +86,20 @@ const processQueue = async () => {
     isProcessing = false;
 };
 
-// ✨ VIP PRIORITY QUEUE SYSTEM
+// ✨ VIP PRIORITY QUEUE SYSTEM (Funnels ALL messages universally)
 const sendMessage = (remoteJid, text) => {
     return new Promise((resolve) => {
-        const isUrgent = text.includes('Late') || text.includes('Absent') || text.includes('Reminder') || text.includes('Alert');
+        // ✅ THE FIX: Add a double newline at the end of the text to isolate links 
+        // This prevents the word "message" or other Android clipboard artifacts from corrupting the URL.
+        const safeText = (text || '').trim() + '\n\n';
+
+        const isUrgent = safeText.includes('Late') || safeText.includes('Absent') || safeText.includes('Reminder') || safeText.includes('Alert');
 
         if (isUrgent) {
             console.log('🚨 URGENT MESSAGE DETECTED: Jumping to the front of the queue.');
-            messageQueue.unshift({ remoteJid, text, resolve });
+            messageQueue.unshift({ remoteJid, text: safeText, resolve });
         } else {
-            messageQueue.push({ remoteJid, text, resolve });
+            messageQueue.push({ remoteJid, text: safeText, resolve });
         }
         
         processQueue(); 
