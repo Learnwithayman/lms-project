@@ -3,29 +3,29 @@ const { getUpcomingClasses } = require('./calendarBot');
 const { sendMessage } = require('./whatsappBot'); 
 const ClassSession = require('../models/ClassSession'); 
 const User = require('../models/User'); 
-
+ 
 console.log('✅ Dual-Group Cron jobs initialized. Listening for upcoming classes...');
-
+ 
 const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
-
+ 
 // ✨ NEW: The "Special Character" Shield! 
 // This stops parentheses, brackets, or dashes in your class titles from breaking the database search.
 const escapeRegex = (text) => {
   if (!text) return "";
   return text.replace(/[-[\]{}()*+?.,\\^$|#\s]/g, '\\$&');
 };
-
+ 
 cron.schedule('* * * * *', async () => {
   try {
     const classes = await getUpcomingClasses();
     const now = new Date();
-
+ 
     for (const cls of classes) {
       if (cls.description && cls.description.toLowerCase().includes('do not send')) {
         console.log(`🚫 Skipped reminders for "${cls.title}" because it is marked as "do not send".`);
         continue; 
       }
-
+ 
       // ✨ TIME CALCULATORS
       const timeDifferenceMs = cls.startTime - now;
       const minutesUntilStart = Math.round(timeDifferenceMs / (1000 * 60));
@@ -33,26 +33,26 @@ cron.schedule('* * * * *', async () => {
       // ✨ NEW: Calculate exactly when the class ends
       const classEndTime = cls.endTime ? new Date(cls.endTime) : new Date(cls.startTime.getTime() + (60 * 60 * 1000));
       const minutesSinceEnd = Math.round((now - classEndTime) / (1000 * 60));
-
+ 
       const timeString = new Date(cls.startTime).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', timeZone: "Africa/Cairo" });
-
+ 
       let teacherSearchTerm = null;
       let studentSearchTerm = null;
       let dbStudentName = null;
-
+ 
       if (cls.description) {
         const teacherMatch = cls.description.match(/TeacherGroupLink[\s\S]*?chat\.whatsapp\.com\/([a-zA-Z0-9_-]+)/i);
         if (teacherMatch && teacherMatch[1]) teacherSearchTerm = teacherMatch[1].trim(); 
-
+ 
         const studentMatch = cls.description.match(/StudentGroupLink[\s\S]*?chat\.whatsapp\.com\/([a-zA-Z0-9_-]+)/i);
         if (studentMatch && studentMatch[1]) studentSearchTerm = studentMatch[1].trim(); 
-
+ 
         const nameMatch = cls.description.match(/StudentGroupName[\s*:-]*([^\n<]+)/i);
         if (nameMatch) dbStudentName = nameMatch[1].trim();
       }
-
+ 
       const safeTitle = cls.title ? cls.title.trim() : "NO_TITLE";
-
+ 
       // ==========================================
       // 1-HOUR REMINDERS
       // ==========================================
@@ -61,17 +61,15 @@ cron.schedule('* * * * *', async () => {
           const teacherMessage = `🔔 *Teacher Reminder*\n\nالسلام عليكم / Assalamu Alaikum,\n\nYour class *${cls.title}* is starting in exactly *1 Hour*.\n\n🕒 *Time:* ${timeString}\n\n🔗 *Teacher Dashboard:*\nhttps://lms.learnwithayman.com\n\n*Learn With Ayman Admin Team*`;
           await sendMessage(teacherSearchTerm, teacherMessage); 
           console.log(`✅ Sent 1-hour Teacher reminder to group code: ${teacherSearchTerm}`);
-          await delay(25000); 
         }
-
+ 
         if (studentSearchTerm) {
           const studentMessage = `🔔 *Class Reminder*\n\nالسلام عليكم / Assalamu Alaikum,\n\nGet ready! Your class *${cls.title}* is starting in exactly *1 Hour*.\n\n🔗 *Join Here:*\n${cls.zoomLink || 'No link provided'}\n\n*Learn With Ayman Admin Team*`;
           await sendMessage(studentSearchTerm, studentMessage); 
           console.log(`✅ Sent 1-hour Student reminder to group code: ${studentSearchTerm}`);
-          await delay(25000); 
         }
       }
-
+ 
       // ==========================================
       // 3-MINUTE LATE ALERTS (TEACHER ONLY)
       // ==========================================
@@ -82,7 +80,7 @@ cron.schedule('* * * * *', async () => {
           // ✨ NEW: Using the Escape Shield on our search variables!
           const safeStudentRegex = dbStudentName ? new RegExp(escapeRegex(dbStudentName), 'i') : /NO_STUDENT_NAME/;
           const safeTitleRegex = new RegExp(escapeRegex(safeTitle), 'i');
-
+ 
           const alreadyJoined = await ClassSession.findOne({
             $or: [
               { subject: safeTitleRegex },
@@ -91,18 +89,17 @@ cron.schedule('* * * * *', async () => {
             startTime: { $gte: threeHoursAgo }, 
             status: { $in: ['in-progress', 'started', 'completed'] } 
           });
-
+ 
           if (alreadyJoined) {
             console.log(`✅ Teacher already joined "${cls.title}". Skipping the 3-minute late alert!`);
           } else {
             const lateMessage = `🚨 *Action Required: You are 3 minutes late!*\n\nالسلام عليكم / Assalamu Alaikum,\n\nYour class *${cls.title}* was scheduled to begin at *${timeString}*.\n\nYou are currently 3 minutes late. Please jump into the room immediately so the student is not left waiting. If you have an emergency, please notify the admin team!\n\n🔗 *Join Class Here:*\n${cls.zoomLink || 'No link provided'}\n\n*Learn With Ayman Admin Team*`;
             await sendMessage(teacherSearchTerm, lateMessage); 
             console.log(`🚨 Sent 3-minute late alert to group code: ${teacherSearchTerm}`);
-            await delay(25000); 
           }
         }
       }
-
+ 
       // ==========================================
       // ⏳ 50-MINUTE "FORGOT TO END CLASS" REMINDER
       // ==========================================
@@ -114,7 +111,7 @@ cron.schedule('* * * * *', async () => {
           // ✨ NEW: Using the Escape Shield here too!
           const safeStudentRegex = dbStudentName ? new RegExp(escapeRegex(dbStudentName), 'i') : /NO_STUDENT_NAME/;
           const safeTitleRegex = new RegExp(escapeRegex(safeTitle), 'i');
-
+ 
           // Check if the class is STILL marked as 'started' (meaning they didn't end it)
           const stillRunning = await ClassSession.findOne({
             $or: [
@@ -124,12 +121,11 @@ cron.schedule('* * * * *', async () => {
             startTime: { $gte: twelveHoursAgo }, 
             status: { $in: ['in-progress', 'started'] } 
           });
-
+ 
           if (stillRunning) {
             const forgotMsg = `🔔 *Action Required: End Class Reminder*\n\nالسلام عليكم / Assalamu Alaikum,\n\nYour class *${cls.title}* ended over 50 minutes ago.\n\nIf the class is finished, please remember to click the *🛑 End Class* button on your dashboard so your teaching hours are logged and homework is submitted!\n\n🔗 *Teacher Dashboard:*\nhttps://lms.learnwithayman.com\n\n*Learn With Ayman Admin Team*`;
             await sendMessage(teacherSearchTerm, forgotMsg); 
             console.log(`🚨 Sent post-class "End Class" reminder to group code: ${teacherSearchTerm}`);
-            await delay(25000); 
           } else {
              console.log(`✅ Teacher already ended "${cls.title}". Skipping reminder.`);
           }
@@ -141,7 +137,7 @@ cron.schedule('* * * * *', async () => {
     console.error('❌ Error running minute-by-minute checks:', error);
   }
 });
-
+ 
 // ==========================================
 // 🧹 MIDNIGHT SWEEPER: EXPIRED MAKEUP CREDITS
 // ==========================================
@@ -151,7 +147,7 @@ cron.schedule('0 0 * * *', async () => {
     const now = new Date();
     const usersWithMakeups = await User.find({ 'makeupBank.0': { $exists: true } });
     let expiredCount = 0;
-
+ 
     for (const student of usersWithMakeups) {
       const originalLength = student.makeupBank.length;
       student.makeupBank = student.makeupBank.filter(credit => credit.expirationDate > now);
@@ -165,7 +161,7 @@ cron.schedule('0 0 * * *', async () => {
     console.error('❌ Error running Midnight Sweeper:', error);
   }
 });
-
+ 
 // ==========================================
 // 📝 PHASE 1 NAG: 3RD OF THE MONTH AT 10:00 AM
 // ==========================================
@@ -174,7 +170,7 @@ cron.schedule('0 10 3 * *', async () => {
   try {
     const teachers = await User.find({ role: 'teacher' });
     const currentMonth = new Date().toLocaleString('default', { month: 'long', year: 'numeric' });
-
+ 
     for (const teacher of teachers) {
       if (teacher.whatsappNumber) {
         const msg = `🔔 *Reminder: Phase 1 Study Plans*\n\nAssalamu Alaikum ${teacher.name},\n\nPlease ensure you have submitted the Draft Study Plans for all your students for ${currentMonth}. Log into your LMS dashboard to complete this today!`;
@@ -188,7 +184,7 @@ cron.schedule('0 10 3 * *', async () => {
     console.error('Error in Phase 1 Cron:', error);
   }
 });
-
+ 
 // ==========================================
 // 📝 PHASE 2 NAG: 27TH OF THE MONTH AT 10:00 AM
 // ==========================================
@@ -197,7 +193,7 @@ cron.schedule('0 10 27 * *', async () => {
   try {
     const teachers = await User.find({ role: 'teacher' });
     const currentMonth = new Date().toLocaleString('default', { month: 'long', year: 'numeric' });
-
+ 
     for (const teacher of teachers) {
       if (teacher.whatsappNumber) {
         const msg = `🔔 *Reminder: Phase 2 Final Grades*\n\nAssalamu Alaikum ${teacher.name},\n\nThe month of ${currentMonth} is ending soon! Please finalize the grades and reports for your students via your LMS dashboard.`;
