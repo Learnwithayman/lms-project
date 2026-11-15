@@ -48,6 +48,11 @@ function Dashboard() {
   const [reportStatuses, setReportStatuses] = useState({});
   const [nextClassCountdown, setNextClassCountdown] = useState('');
 
+  // ⏰ LATE FLOW (Step 2): progress saved on the server + a 1-second clock for the countdowns
+  const [lateProgress, setLateProgress] = useState({});
+  const [lateBusy, setLateBusy] = useState(null);
+  const [nowTick, setNowTick] = useState(Date.now());
+
   const navigate = useNavigate();
   
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -191,6 +196,7 @@ function Dashboard() {
     if (parsedUser?.role?.toLowerCase() === 'teacher') {
       fetchEarnings(token);
       fetchReportStatuses(token);
+      fetchLateProgress(token);
     } else {
       fetchSubSummary(token);
     }
@@ -235,6 +241,71 @@ function Dashboard() {
       setSubSummary(res.data);
     } catch (error) {
       console.error("Failed to fetch subscription summary:", error);
+    }
+  };
+
+  // ⏰ LATE FLOW: 1-second clock (teachers only) so countdowns and unlocks update live
+  useEffect(() => {
+    if (user?.role?.toLowerCase() !== 'teacher') return;
+    const timer = setInterval(() => setNowTick(Date.now()), 1000);
+    return () => clearInterval(timer);
+  }, [user]);
+
+  const fetchLateProgress = async (token) => {
+    try {
+      const config = { headers: { Authorization: `Bearer ${token}` } };
+      const res = await axios.get(`${API_URL}/api/schedule/late-progress`, config);
+      const map = {};
+      (res.data || []).forEach(p => { map[p.classId] = p; });
+      setLateProgress(map);
+    } catch (error) {
+      console.error("Failed to fetch late progress:", error);
+    }
+  };
+
+  const lateRequestBody = (cls) => ({
+    classId: cls.id || cls._id,
+    startTime: cls.startTime,
+    studentGroupId: cls.studentGroupId,
+    studentGroupName: cls.studentGroupName,
+    title: cls.title,
+    zoomLink: cls.zoomLink || cls.meetingLink
+  });
+
+  // ⏰ Send late reminder 1 (minute 3), 2 (minute 8) or 3 (minute 13). The class stays on the dashboard.
+  const handleLateReminder = async (cls, step) => {
+    const label = step === 1 ? 'the first late reminder' : step === 2 ? 'the second late reminder' : 'the FINAL late reminder';
+    if (!window.confirm(`Send ${label} to ${cls.title || 'the student'}'s group?`)) return;
+    const classKey = cls.id || cls._id;
+    setLateBusy(classKey);
+    try {
+      const token = localStorage.getItem('token');
+      const config = { headers: { Authorization: `Bearer ${token}` } };
+      const res = await axios.post(`${API_URL}/api/schedule/late-reminder`, { ...lateRequestBody(cls), step }, config);
+      if (res.data.progress) setLateProgress(prev => ({ ...prev, [classKey]: res.data.progress }));
+    } catch (error) {
+      console.error('Error sending late reminder:', error);
+      alert(error.response?.data?.message || '❌ Failed to send the late reminder.');
+    } finally {
+      setLateBusy(null);
+    }
+  };
+
+  // ✅ Student joined → "class has started" message to the student group (so parents know)
+  const handleStudentJoined = async (cls) => {
+    if (!window.confirm(`Confirm that ${cls.title || 'the student'} has joined? A "class has started" message will be sent to the student group.`)) return;
+    const classKey = cls.id || cls._id;
+    setLateBusy(classKey);
+    try {
+      const token = localStorage.getItem('token');
+      const config = { headers: { Authorization: `Bearer ${token}` } };
+      const res = await axios.post(`${API_URL}/api/schedule/student-joined`, lateRequestBody(cls), config);
+      if (res.data.progress) setLateProgress(prev => ({ ...prev, [classKey]: res.data.progress }));
+    } catch (error) {
+      console.error('Error marking student joined:', error);
+      alert(error.response?.data?.message || '❌ Failed to mark the student as joined.');
+    } finally {
+      setLateBusy(null);
     }
   };
 
@@ -370,7 +441,8 @@ function Dashboard() {
       alert(`✅ Student marked as ${status}. WhatsApp message sent!`);
       fetchHistory(token); 
 
-      if (status === 'Absent' || status === 'Late') {
+      // ⏰ Step 2 fix: only Absent removes the class. Late keeps it on the dashboard.
+      if (status === 'Absent') {
         setClasses(prevClasses => prevClasses.filter(c => (c.id || c._id) !== (cls.id || cls._id)));
       }
       
@@ -787,6 +859,27 @@ function Dashboard() {
             const endDateObj = cls.endTime ? new Date(cls.endTime) : new Date(startDateObj.getTime() + (cls.durationMinutes || 60) * 60000);
             const isNextClass = idx === 0 && !isLive && startDateObj > new Date();
 
+            // ⏰ LATE FLOW (Step 2): clock fixed to the class start
+            const LATE_STEP_MIN = { 1: 3, 2: 8, 3: 13 };
+            const startMs = startDateObj.getTime();
+            const minutesIn = (nowTick - startMs) / 60000;
+            const lateKey = cls.id || cls._id;
+            const lp = lateProgress[lateKey];
+            const sentSteps = lp?.reminders ? lp.reminders.map(r => r.step) : [];
+            const lastLateStep = sentSteps.length ? Math.max(...sentSteps) : 0;
+            const lastLateSent = lp?.reminders?.find(r => r.step === lastLateStep)?.sentAt;
+            const studentJoined = !!lp?.joinedAt;
+            const lateUnlockMs = startMs + LATE_STEP_MIN[1] * 60000;
+            const nextLateStep = lastLateStep < 3 ? lastLateStep + 1 : null;
+            const nextLateUnlockMs = nextLateStep ? startMs + LATE_STEP_MIN[nextLateStep] * 60000 : null;
+            const showLateBanner = lastLateStep > 0 || studentJoined;
+            const isLateBusy = lateBusy === lateKey;
+            const fmtCountdown = (ms) => {
+              const s = Math.max(0, Math.ceil(ms / 1000));
+              return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
+            };
+            const fmtClock = (d) => new Date(d).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+
             return (
               <div key={classIdentifier} className="card" style={{ borderLeft: isLive ? '5px solid #2ecc71' : '5px solid #0984e3', borderRadius: '12px', boxShadow: '0 5px 15px rgba(0,0,0,0.03)', backgroundColor: isLive ? '#f0fff4' : '#fff' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
@@ -848,12 +941,51 @@ function Dashboard() {
 
                   {user?.role?.toLowerCase() === 'teacher' && (
                     <>
-                      <button onClick={() => handleAttendance(cls, 'Late')} style={{ backgroundColor: '#fdcb6e', color: 'black', padding: '10px 15px', border: 'none', borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold' }}>🏃‍♂️ Late</button>
+                      {!showLateBanner && (
+                        nowTick < lateUnlockMs ? (
+                          <button disabled style={{ backgroundColor: '#dfe6e9', color: '#636e72', padding: '10px 15px', border: 'none', borderRadius: '6px', cursor: 'not-allowed', fontWeight: 'bold' }}>
+                            {isLive ? `⏳ Late available in ${fmtCountdown(lateUnlockMs - nowTick)}` : '🏃‍♂️ Late'}
+                          </button>
+                        ) : (
+                          <button onClick={() => handleLateReminder(cls, 1)} disabled={isLateBusy} style={{ backgroundColor: '#fdcb6e', color: 'black', padding: '10px 15px', border: 'none', borderRadius: '6px', cursor: isLateBusy ? 'not-allowed' : 'pointer', fontWeight: 'bold' }}>🏃‍♂️ Late</button>
+                        )
+                      )}
                       <button onClick={() => handleAttendance(cls, 'Absent')} style={{ backgroundColor: '#636e72', color: 'white', padding: '10px 15px', border: 'none', borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold' }}>❌ Absent</button>
                       <button onClick={() => { setCurrentClassId(classIdentifier); setIsModalOpen(true); }} style={{ backgroundColor: '#d63031', color: 'white', padding: '10px 15px', border: 'none', borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold' }}>🛑 End Class</button>
                     </>
                   )}
                 </div>
+
+                {/* ⏰ LATE FLOW BANNER (Step 2) */}
+                {user?.role?.toLowerCase() === 'teacher' && showLateBanner && (
+                  studentJoined ? (
+                    <div style={{ marginTop: '15px', padding: '12px 15px', borderRadius: '8px', backgroundColor: '#eafaf1', border: '1px solid #2ecc71', color: '#1e8449', fontWeight: 'bold', fontSize: '14px' }}>
+                      ✅ Student has joined. "Class has started" message sent at {fmtClock(lp.joinedAt)}.
+                    </div>
+                  ) : minutesIn >= 15 ? (
+                    <div style={{ marginTop: '15px', padding: '12px 15px', borderRadius: '8px', backgroundColor: '#fdecea', border: '1px solid #d63031', color: '#c0392b', fontSize: '14px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '10px' }}>
+                      <strong>⛔ 15 minutes have passed. Please record this class as Absent.</strong>
+                      <button onClick={() => handleStudentJoined(cls)} disabled={isLateBusy} style={{ backgroundColor: '#2ecc71', color: 'white', padding: '8px 12px', border: 'none', borderRadius: '6px', cursor: isLateBusy ? 'not-allowed' : 'pointer', fontWeight: 'bold' }}>✅ Student has joined</button>
+                    </div>
+                  ) : (
+                    <div style={{ marginTop: '15px', padding: '12px 15px', borderRadius: '8px', backgroundColor: '#fff8e1', border: '1px solid #fdcb6e', color: '#7d6608', fontSize: '14px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '10px' }}>
+                      <div>
+                        <strong>📨 Late reminder {lastLateStep} of 3 sent{lastLateSent ? ` at ${fmtClock(lastLateSent)}` : ''}.</strong><br/>
+                        {nextLateStep
+                          ? (nowTick < nextLateUnlockMs ? `⏳ Reminder ${nextLateStep} available in ${fmtCountdown(nextLateUnlockMs - nowTick)}` : `Reminder ${nextLateStep} is ready to send.`)
+                          : `⏳ Waiting period ends in ${fmtCountdown(startMs + 15 * 60000 - nowTick)}`}
+                      </div>
+                      <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                        {nextLateStep && nowTick >= nextLateUnlockMs && (
+                          <button onClick={() => handleLateReminder(cls, nextLateStep)} disabled={isLateBusy} style={{ backgroundColor: '#fdcb6e', color: 'black', padding: '8px 12px', border: 'none', borderRadius: '6px', cursor: isLateBusy ? 'not-allowed' : 'pointer', fontWeight: 'bold' }}>
+                            📨 Send reminder {nextLateStep}
+                          </button>
+                        )}
+                        <button onClick={() => handleStudentJoined(cls)} disabled={isLateBusy} style={{ backgroundColor: '#2ecc71', color: 'white', padding: '8px 12px', border: 'none', borderRadius: '6px', cursor: isLateBusy ? 'not-allowed' : 'pointer', fontWeight: 'bold' }}>✅ Student has joined</button>
+                      </div>
+                    </div>
+                  )
+                )}
               </div>
             );
           })

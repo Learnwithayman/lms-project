@@ -962,5 +962,6 @@ module.exports = {
   getAdminPayrollReport, addTeacherAdjustment, getTeacherSchedule,
   getAdminLiveMonitor, resendReminder, resendNotes, joinClass,
   grantMakeupCredit, cancelUpcomingClass, getMessageLogs, adminForceEndClass,
-  getPendingMakeups, resolveMakeupRequest, syncStudentTimezoneToGoogleCalendar
+  getPendingMakeups, resolveMakeupRequest, syncStudentTimezoneToGoogleCalendar,
+  extractGroupCodes // ⏰ Shared with lateController (Step 2)
 };

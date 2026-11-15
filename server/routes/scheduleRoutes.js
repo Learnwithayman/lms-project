@@ -25,6 +25,7 @@ const {
     resolveMakeupRequest,
     syncStudentTimezoneToGoogleCalendar
 } = require('../controllers/scheduleController');
+const { sendLateReminder, markStudentJoined, getLateProgress } = require('../controllers/lateController'); // ⏰ Late flow (Step 2)
 
 // Import your authentication middleware
 const { protect } = require('../middleware/authMiddleware');
@@ -51,6 +52,11 @@ router.post('/payroll-adjustment', protect, adminOnly, addTeacherAdjustment);
 router.get('/completed', protect, teacherOrStudent, getCompletedClasses);
 router.put('/end', protect, teacherOnly, endClass);
 router.post('/attendance', protect, teacherOnly, markAttendance);
+
+// ⏰ Late flow (Step 2): reminders at minute 3 / 8 / 13, 'Student has joined', saved progress
+router.post('/late-reminder', protect, teacherOnly, sendLateReminder);
+router.post('/student-joined', protect, teacherOnly, markStudentJoined);
+router.get('/late-progress', protect, teacherOnly, getLateProgress);
 
 // ==========================================
 // 📡 ADMIN COMMAND CENTER & SUBSCRIPTIONS
