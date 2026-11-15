@@ -956,56 +956,11 @@ const syncStudentTimezoneToGoogleCalendar = async (req, res) => {
   }
 };
 
-// ==========================================
-// 🚨 EMERGENCY REVERSAL SCRIPT 🚨
-// ==========================================
-const emergencyRevertTimezone = async (req, res) => {
-  try {
-    const myCalendarId = 'admin@learnwithayman.com';
-    
-    // Fetch ALL root recurring events from the calendar
-    const response = await calendar.events.list({
-      calendarId: myCalendarId,
-      singleEvents: false,
-      maxResults: 2500
-    });
-
-    const events = response.data.items || [];
-    let revertedCount = 0;
-
-    for (const event of events) {
-      if (event.status === 'cancelled') continue;
-      if (event.recurringEventId || (event.id && event.id.includes('_'))) continue;
-
-      // If the timezone was changed by our previous script, revert it to Cairo
-      if (event.start && event.start.timeZone && event.start.timeZone !== 'Africa/Cairo') {
-        const requestBody = {
-          start: { dateTime: event.start.dateTime, timeZone: 'Africa/Cairo' },
-          end: { dateTime: event.end.dateTime, timeZone: 'Africa/Cairo' }
-        };
-
-        await calendar.events.patch({
-          calendarId: myCalendarId,
-          eventId: event.id,
-          requestBody
-        });
-        revertedCount++;
-      }
-    }
-    
-    res.status(200).send(`<h1>CRITICAL FIX APPLIED</h1><p>Successfully reverted ${revertedCount} recurring events back to Africa/Cairo. Check your Google Calendar to confirm the times are restored.</p>`);
-  } catch (error) {
-    console.error('Emergency revert error:', error);
-    res.status(500).send(`<h1>Revert Failed</h1><p>${error.message}</p>`);
-  }
-};
-
 module.exports = {
   scheduleClass, getMyClasses, deleteClass, getAllClasses, updateClass,
   endClass, markAttendance, getCompletedClasses, getTeacherEarnings,
   getAdminPayrollReport, addTeacherAdjustment, getTeacherSchedule,
   getAdminLiveMonitor, resendReminder, resendNotes, joinClass,
   grantMakeupCredit, cancelUpcomingClass, getMessageLogs, adminForceEndClass,
-  getPendingMakeups, resolveMakeupRequest, syncStudentTimezoneToGoogleCalendar,
-  emergencyRevertTimezone
+  getPendingMakeups, resolveMakeupRequest, syncStudentTimezoneToGoogleCalendar
 };

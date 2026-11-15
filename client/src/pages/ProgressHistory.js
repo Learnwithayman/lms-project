@@ -47,12 +47,11 @@ function ProgressHistory() {
 
   const fetchLegacyReports = async (token, userId) => {
     try {
-      // Re-fetch the specific user to grab their legacy PDFs array
+      // Fetch ONLY the logged-in student's own profile to grab their legacy PDFs array
       const config = { headers: { Authorization: `Bearer ${token}` } };
-      const res = await axios.get(`${API_URL}/api/users`, config);
-      const currentUser = res.data.find(u => u._id === userId);
-      if (currentUser && currentUser.legacyReports) {
-        setLegacyReports(currentUser.legacyReports);
+      const res = await axios.get(`${API_URL}/api/users/me`, config);
+      if (res.data && res.data.legacyReports) {
+        setLegacyReports(res.data.legacyReports);
       }
     } catch (error) {
       console.error("Failed to fetch legacy reports:", error);

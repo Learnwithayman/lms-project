@@ -116,37 +116,20 @@ const deleteUser = asyncHandler(async (req, res) => {
   res.status(200).json({ id: req.params.id });
 });
 
-// --- TEST FUNCTION ---
+// --- WHATSAPP BOT TEST (Admin Dashboard button) ---
+// Sends a test message to the Admin Alerts group through the normal phone queue.
 const testGroupMessage = asyncHandler(async (req, res) => {
-  const targetName = req.body.groupName || 'Test Group'; 
-  const message = '🤖 Hello! This is an automated test message from the LMS backend!';
+  const adminGroupTarget = process.env.ADMIN_WHATSAPP_NUMBER || 'https://chat.whatsapp.com/BYFE1IPRs2KGJNhGaxvpJd';
+  const timeString = new Date().toLocaleString('en-US', { timeZone: 'Africa/Cairo', dateStyle: 'medium', timeStyle: 'short' });
+  const message = `✅ *WhatsApp Bot Test*\n\nTest successful! The LMS → phone connection is working.\n\n🕒 *Sent at:* ${timeString} (Cairo)\n\n*Learn With Ayman System*`;
 
-  try {
-    await whatsappClient.sendMessage(targetName, message);
-    res.status(200).json({ success: true, message: `Group message sent to ${targetName}!` });
-  } catch (error) {
-    console.error(error);
-    res.status(500);
-    throw new Error('Failed to send WhatsApp message');
+  const delivered = await whatsappClient.sendMessage(adminGroupTarget, message);
+
+  if (delivered) {
+    res.status(200).json({ success: true, message: 'Test message handed to the phone. Check the Admin Alerts group.' });
+  } else {
+    res.status(500).json({ success: false, message: 'The phone did not accept the test message. Check MacroDroid and the Message Logs.' });
   }
-});
-
-// --- EMERGENCY ADMIN CREATOR ---
-const createAdminInstantly = asyncHandler(async (req, res) => {
-  const userExists = await User.findOne({ email: 'boss@learnwithayman.com' });
-  
-  if (userExists) {
-    return res.json({ message: 'Admin already exists! Use boss@learnwithayman.com and password: BossPassword123!' });
-  }
-
-  const user = await User.create({
-    name: 'Ayman (Super Admin)',
-    email: 'boss@learnwithayman.com',
-    password: 'BossPassword123!',
-    role: 'admin'
-  });
-
-  res.status(201).json({ message: 'SUCCESS! Admin created. Go log in!', user });
 });
 
 // ==========================================
@@ -338,7 +321,6 @@ module.exports = {
   getAllUsers, 
   deleteUser, 
   testGroupMessage, 
-  createAdminInstantly,
   updateSubscription,
   syncStudentWallet,
   getMyStudents,

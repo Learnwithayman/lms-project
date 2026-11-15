@@ -23,61 +23,62 @@ const {
     adminForceEndClass,
     getPendingMakeups,
     resolveMakeupRequest,
-    syncStudentTimezoneToGoogleCalendar,
-    // 🚨 EMERGENCY REVERT IMPORT
-    emergencyRevertTimezone
+    syncStudentTimezoneToGoogleCalendar
 } = require('../controllers/scheduleController');
 
 // Import your authentication middleware
 const { protect } = require('../middleware/authMiddleware');
+const { allowRoles } = require('../middleware/roleMiddleware'); // 🔐 Role locks
 
-// 🚨 EMERGENCY FIX ROUTE (Unprotected so you can run it instantly from your browser)
-router.get('/emergency-revert', emergencyRevertTimezone);
+// 🔐 Shortcuts for who is allowed through each door
+const adminOnly = allowRoles('admin');
+const teacherOnly = allowRoles('teacher');
+const teacherOrStudent = allowRoles('teacher', 'student');
 
-// 🚨 THE FIXED ROUTE 🚨
-router.get('/google-calendar', protect, getTeacherSchedule);
+// 🚨 THE FIXED ROUTE 🚨 (Teachers & Students: their own schedule)
+router.get('/google-calendar', protect, teacherOrStudent, getTeacherSchedule);
 
 // Your other existing routes
-router.post('/', protect, scheduleClass);
+router.post('/', protect, adminOnly, scheduleClass);
 router.get('/my-classes', protect, getMyClasses);
-router.get('/all', protect, getAllClasses);
-router.get('/earnings', protect, getTeacherEarnings);
+router.get('/all', protect, adminOnly, getAllClasses);
+router.get('/earnings', protect, teacherOnly, getTeacherEarnings);
 
-// 🚪 THE FIXED DOORS
-router.get('/payroll-report', protect, getAdminPayrollReport);
-router.post('/payroll-adjustment', protect, addTeacherAdjustment);
+// 🚪 THE FIXED DOORS (Admin only)
+router.get('/payroll-report', protect, adminOnly, getAdminPayrollReport);
+router.post('/payroll-adjustment', protect, adminOnly, addTeacherAdjustment);
 
-router.get('/completed', protect, getCompletedClasses);
-router.put('/end', protect, endClass);
-router.post('/attendance', protect, markAttendance);
+router.get('/completed', protect, teacherOrStudent, getCompletedClasses);
+router.put('/end', protect, teacherOnly, endClass);
+router.post('/attendance', protect, teacherOnly, markAttendance);
 
 // ==========================================
 // 📡 ADMIN COMMAND CENTER & SUBSCRIPTIONS
 // ==========================================
-router.get('/admin-live-monitor', protect, getAdminLiveMonitor);
-router.post('/resend-reminder', protect, resendReminder);
-router.post('/resend-notes', protect, resendNotes);
-router.post('/join', protect, joinClass);          
-router.post('/makeup', protect, grantMakeupCredit); 
-router.post('/admin-cancel', protect, cancelUpcomingClass); 
-router.get('/message-logs', protect, getMessageLogs); 
+router.get('/admin-live-monitor', protect, adminOnly, getAdminLiveMonitor);
+router.post('/resend-reminder', protect, adminOnly, resendReminder);
+router.post('/resend-notes', protect, adminOnly, resendNotes);
+router.post('/join', protect, teacherOnly, joinClass);          
+router.post('/makeup', protect, adminOnly, grantMakeupCredit); 
+router.post('/admin-cancel', protect, adminOnly, cancelUpcomingClass); 
+router.get('/message-logs', protect, adminOnly, getMessageLogs); 
 
 // ✨ NEW: Route for Timezone Sync
-router.post('/sync-timezone', protect, syncStudentTimezoneToGoogleCalendar);
+router.post('/sync-timezone', protect, adminOnly, syncStudentTimezoneToGoogleCalendar);
 
 // ✨ THE FIX: Specific PUT route MUST go before the wildcard!
-router.put('/admin-force-end', protect, adminForceEndClass); 
+router.put('/admin-force-end', protect, adminOnly, adminForceEndClass); 
 
 // ✨ NEW: Admin Makeup Inbox Routes
-router.get('/admin/makeups', protect, getPendingMakeups);
-router.put('/admin/makeups/:id/resolve', protect, resolveMakeupRequest);
+router.get('/admin/makeups', protect, adminOnly, getPendingMakeups);
+router.put('/admin/makeups/:id/resolve', protect, adminOnly, resolveMakeupRequest);
 
 // ⚠️ WILDCARD ROUTES (Must ALWAYS be at the bottom)
-router.put('/:id', protect, updateClass);
-router.delete('/:id', protect, deleteClass);
+router.put('/:id', protect, adminOnly, updateClass);
+router.delete('/:id', protect, adminOnly, deleteClass);
 
 // 💰 FORCE RUN MONTHLY PAYROLL (Manual Trigger from Admin Dashboard Button)
-router.post('/force-payroll', protect, async (req, res) => {
+router.post('/force-payroll', protect, adminOnly, async (req, res) => {
     try {
         console.log('🔥 Admin clicked Force Run Payroll!');
         

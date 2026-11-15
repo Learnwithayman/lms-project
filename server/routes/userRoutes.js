@@ -7,7 +7,6 @@ const {
   getAllUsers,
   deleteUser,
   testGroupMessage,
-  createAdminInstantly, 
   updateSubscription,
   syncStudentWallet, // 👈 Imported auto-sync function
   getMyStudents,
@@ -15,30 +14,32 @@ const {
   updateUserProfile
 } = require('../controllers/userController');
 const { protect } = require('../middleware/authMiddleware');
+const { allowRoles } = require('../middleware/roleMiddleware'); // 🔐 Role locks
 
-router.post('/', registerUser);
-router.get('/', protect, getAllUsers);
+// 🔐 Only admins can create users or see the full user list
+router.post('/', protect, allowRoles('admin'), registerUser);
+router.get('/', protect, allowRoles('admin'), getAllUsers);
 router.post('/login', loginUser);
 router.get('/me', protect, getMe);
 
 // 🧑‍🏫 Teacher Students Route
 router.get('/my-students', protect, getMyStudents);
 
-// ✏️ Edit Profile Route
-router.put('/:id', protect, updateUserProfile);
+// ✏️ Edit Profile Route (Admin only)
+router.put('/:id', protect, allowRoles('admin'), updateUserProfile);
 
-// Delete User Route
-router.delete('/:id', protect, deleteUser);
+// Delete User Route (Admin only)
+router.delete('/:id', protect, allowRoles('admin'), deleteUser);
 
-// 💳 Subscription Routes
-router.put('/:id/subscription', protect, updateSubscription);
-router.post('/:id/sync-wallet', protect, syncStudentWallet); // 👈 NEW: Auto-Sync Wallet Route
+// 💳 Subscription Routes (Admin only)
+router.put('/:id/subscription', protect, allowRoles('admin'), updateSubscription);
+router.post('/:id/sync-wallet', protect, allowRoles('admin'), syncStudentWallet); // 👈 Auto-Sync Wallet Route
 
-// ✨ Assign Teachers Route
-router.put('/:id/assign', protect, assignTeachers);
+// ✨ Assign Teachers Route (Admin only)
+router.put('/:id/assign', protect, allowRoles('admin'), assignTeachers);
 
-// --- TEST & ADMIN ROUTES ---
-router.post('/test-group', testGroupMessage); 
-router.get('/emergency-admin', createAdminInstantly);
+// --- TEST ROUTE ---
+// 📲 WhatsApp Bot Test (Admin Dashboard button) — Admin only
+router.post('/test-group', protect, allowRoles('admin'), testGroupMessage); 
 
 module.exports = router;

@@ -51,6 +51,9 @@ function AdminDashboard() {
   const [trackData, setTrackData] = useState({ summary: null, trackingData: [] });
   const [loadingTrack, setLoadingTrack] = useState(false);
 
+  // ✨ NEW: WhatsApp Bot Test State
+  const [isTestingBot, setIsTestingBot] = useState(false);
+
   // Helper to generate recent months for the dropdown
   const getRecentMonths = () => {
     const months = [];
@@ -435,6 +438,35 @@ function AdminDashboard() {
     alert('📋 Text copied to clipboard!');
   };
 
+  // ✨ NEW: Send a test message to the Admin Alerts group
+  const handleTestBot = async () => {
+    if (!window.confirm('Send a test message to the Admin Alerts WhatsApp group?')) return;
+    setIsTestingBot(true);
+    try {
+      const token = localStorage.getItem('token');
+      const response = await fetch(`${API_URL}/api/users/test-group`, {
+        method: 'POST',
+        headers: { 
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}` 
+        }
+      });
+      const data = await response.json().catch(() => ({}));
+
+      if (response.ok) {
+        alert('✅ Test sent! Check the Admin Alerts group on WhatsApp.');
+      } else {
+        alert(`❌ ${data.message || 'Test failed. Check MacroDroid and the Message Logs.'}`);
+      }
+      fetchMessageLogs(token);
+    } catch (error) {
+      console.error(error);
+      alert('❌ Server error while sending the test message.');
+    } finally {
+      setIsTestingBot(false);
+    }
+  };
+
   const handleLogout = () => {
     localStorage.removeItem('token');
     localStorage.removeItem('user');
@@ -484,6 +516,10 @@ function AdminDashboard() {
         </button>
         <button onClick={() => navigate('/admin-payroll')} className="action-btn btn-grey" style={{width: 'auto', padding: '10px 20px', backgroundColor: '#ffc107', color: '#333', fontWeight: 'bold', border: 'none'}}>
           💰 Manage Payroll
+        </button>
+        {/* ✨ NEW: WhatsApp Bot Test */}
+        <button onClick={handleTestBot} disabled={isTestingBot} className="action-btn btn-grey" style={{width: 'auto', padding: '10px 20px', backgroundColor: isTestingBot ? '#95a5a6' : '#25D366', color: 'white', fontWeight: 'bold', border: 'none', cursor: isTestingBot ? 'not-allowed' : 'pointer'}}>
+          {isTestingBot ? '⏳ Sending Test...' : '📲 Test WhatsApp Bot'}
         </button>
       </div>
 
