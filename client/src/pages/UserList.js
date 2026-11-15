@@ -191,6 +191,29 @@ function UserList() {
     }
   };
 
+  // ✅ Manual-payment students: mark as paid & start a new 28-day cycle
+  const handleManualRenew = async () => {
+    if (!window.confirm(`Mark ${selectedStudent.name} as paid and start a new 28-day cycle from today? Classes used will reset to 0.`)) return;
+    setIsSubUpdating(true);
+    try {
+      const token = localStorage.getItem('token');
+      const config = { headers: { Authorization: `Bearer ${token}` } };
+      const res = await axios.post(`${API_URL}/api/paypal/manual-renew/${selectedStudent._id}`, {}, config);
+      const sub = res.data.subscription || {};
+      setSubStatus(sub.status || subStatus);
+      setSubUsed(sub.classesUsed || 0);
+      setSubStart(sub.startDate ? sub.startDate.split('T')[0] : '');
+      setSubEnd(sub.endDate ? sub.endDate.split('T')[0] : '');
+      alert(`✅ ${res.data.message}`);
+      fetchUsers();
+    } catch (error) {
+      console.error(error);
+      alert('❌ Failed to mark as paid.');
+    } finally {
+      setIsSubUpdating(false);
+    }
+  };
+
   // ⚡ BUTTON 1: Auto-Count Past Classes
   const handleAutoSyncWallet = async () => {
     if (!subEnd) {
@@ -715,9 +738,18 @@ function UserList() {
                       <input type="text" placeholder="e.g. INV2-9842-8821" value={invoiceId} onChange={(e) => setInvoiceId(e.target.value)} style={{ width: '100%', padding: '10px', borderRadius: '5px', border: '1px solid #ccc', boxSizing: 'border-box' }} />
                     </div>
                     <div style={{ flex: 1 }}>
-                      <label style={{ display: 'block', marginBottom: '5px', fontWeight: 'bold', fontSize: '14px' }}>Recurring Series ID (REC-xxx):</label>
-                      <input type="text" placeholder="e.g. REC-12345" value={recurringSeriesId} onChange={(e) => setRecurringSeriesId(e.target.value)} style={{ width: '100%', padding: '10px', borderRadius: '5px', border: '1px solid #ccc', boxSizing: 'border-box' }} />
+                      <label style={{ display: 'block', marginBottom: '5px', fontWeight: 'bold', fontSize: '14px' }}>Recurring Series ID (RI-xxx):</label>
+                      <input type="text" placeholder="e.g. RI-4PM28422F5491245W" value={recurringSeriesId} onChange={(e) => setRecurringSeriesId(e.target.value)} style={{ width: '100%', padding: '10px', borderRadius: '5px', border: '1px solid #ccc', boxSizing: 'border-box' }} />
                     </div>
+                  </div>
+                )}
+
+                {billingType === 'none' && (
+                  <div style={{ marginTop: '10px' }}>
+                    <button type="button" onClick={handleManualRenew} disabled={isSubUpdating} style={{ width: '100%', padding: '10px', backgroundColor: isSubUpdating ? '#95a5a6' : '#16a085', color: 'white', border: 'none', borderRadius: '5px', cursor: isSubUpdating ? 'not-allowed' : 'pointer', fontWeight: 'bold' }}>
+                      ✅ Mark as Paid & Start New 28-Day Cycle
+                    </button>
+                    <p style={{ margin: '5px 0 0 0', fontSize: '12px', color: '#777' }}>For manual-payment students: starts a new cycle from today and resets classes used to 0.</p>
                   </div>
                 )}
               </div>

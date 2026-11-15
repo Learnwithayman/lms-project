@@ -2,9 +2,7 @@ const express = require('express');
 const router = express.Router();
 const { 
     createSubscription, 
-    getStudentSubscriptionSummary,
-    linkPayPalBilling,
-    paypalWebhookHandler
+    getStudentSubscriptionSummary
 } = require('../controllers/subscriptionController');
 const { protect } = require('../middleware/authMiddleware');
 const { allowRoles } = require('../middleware/roleMiddleware'); // 🔐 Role locks
@@ -19,14 +17,6 @@ router.post('/', protect, allowRoles('admin'), createSubscription);
 // @access  Private (Student)
 router.get('/my-summary', protect, getStudentSubscriptionSummary);
 
-// @route   POST /api/subscriptions/link
-// @desc    Link a PayPal Subscription or Recurring Invoice to a user
-// @access  Private
-router.post('/link', protect, linkPayPalBilling);
-
-// @route   POST /api/subscriptions/webhook
-// @desc    Handle incoming PayPal Webhooks (Auto-renewals and Invoice payments)
-// @access  Public (Called by PayPal Servers)
-router.post('/webhook', paypalWebhookHandler);
+// 💳 PayPal webhook moved to /api/paypal (see paypalRoutes.js)
 
 module.exports = router;

@@ -48,7 +48,7 @@ const userSchema = mongoose.Schema(
         default: 'none' 
       },
       subscriptionId: { type: String, trim: true, index: true },   // For I-...
-      recurringSeriesId: { type: String, trim: true, index: true },// For REC-...
+      recurringSeriesId: { type: String, trim: true, index: true },// For RI-... (PayPal Recurring Series ID)
       invoiceId: { type: String, trim: true, index: true },        // For INV2-...
       planName: { type: String },                                  // e.g., "Quran Intensive - 12x"
       status: { 
@@ -59,7 +59,13 @@ const userSchema = mongoose.Schema(
       cycleStartDate: { type: Date },
       cycleEndDate: { type: Date },
       nextBillingDate: { type: Date },
-      amount: { type: Number }
+      amount: { type: Number },
+
+      // 🛡️ Webhook safety fields (Step 1)
+      lastInvoiceId: { type: String },        // Last invoice that started a cycle (stops double renewals)
+      lastInvoiceSentAt: { type: Date },      // When PayPal sent that invoice
+      lastPaidAt: { type: Date },             // Last time a payment was received
+      processedEventIds: [{ type: String }]   // Recent PayPal event IDs already handled (duplicate protection)
     },
 
     // ✨ RECURRING LESSON SLOTS

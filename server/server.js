@@ -61,6 +61,7 @@ app.use('/api/admin', require('./routes/adminRoutes'));
 app.use('/api/schedule', require('./routes/scheduleRoutes'));
 app.use('/api/leads', require('./routes/leadRoutes')); 
 app.use('/api/subscriptions', require('./routes/subscriptionRoutes')); // Subscription & Makeup Engine
+app.use('/api/paypal', require('./routes/paypalRoutes')); // 💳 PayPal webhook & manual renew
 app.use('/api/progress', require('./routes/progressRoutes')); // Progress Hub Sprint Routes
 app.use('/api/student', require('./routes/studentRoutes')); 
 
