@@ -6,7 +6,7 @@ const whatsappClient = require('../utils/whatsappBot');
 // 💳 PAYPAL ENGINE (Step 1)
 // ==========================================
 // How it works:
-// - INVOICING.INVOICE.SENT  → a new 28-day cycle starts (from the invoice sent date), Phase 1 resets to 0,
+// - INVOICING.INVOICE.SENT  → a new cycle starts (from the invoice sent date), Phase 1 resets to 0,
 //                             and the student group gets the "new cycle started" message + the invoice's payment link.
 // - INVOICING.INVOICE.PAID  → only records the payment date. If the SENT notice for that invoice never arrived,
 //                             the cycle is renewed here instead and the "payment received" message is sent.
@@ -14,8 +14,11 @@ const whatsappClient = require('../utils/whatsappBot');
 // - Late payment never stops a subscription.
 // - Matching: 1) Recurring Series ID (RI-...), 2) saved Invoice ID (INV2-...), 3) invoice email
 //             (recurring-invoice students only), 4) nothing → WhatsApp alert to the admin group.
+// - Siblings: EVERY student with the same series / subscription ID is renewed. Each student group gets
+//             the message once (siblings sharing one group get one message with all their names).
+// - Cycle length: each student's "Billing cycle" (monthly 28 / quarterly 84 / half-year 168 / yearly 336 days).
 
-const CYCLE_DAYS = 28;
+const CYCLE_DAYS = { monthly: 28, quarterly: 84, semiannual: 168, yearly: 336 };
 const MAX_SAVED_EVENT_IDS = 30;
 const ADMIN_GROUP_TARGET = process.env.ADMIN_WHATSAPP_NUMBER || 'https://chat.whatsapp.com/BYFE1IPRs2KGJNhGaxvpJd';
 
@@ -55,31 +58,33 @@ const readInvoice = (resource) => {
 
 const escapeRegex = (text) => text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
-// Finds the student an invoice belongs to
-const findStudentForInvoice = async ({ seriesId, invoiceId, email }) => {
+// Finds ALL students an invoice belongs to (siblings share one series)
+const findStudentsForInvoice = async ({ seriesId, invoiceId, email }) => {
   if (seriesId) {
-    const user = await User.findOne({ 'paypal.recurringSeriesId': seriesId });
-    if (user) return { user, matchedBy: 'seriesId' };
+    const users = await User.find({ 'paypal.recurringSeriesId': seriesId });
+    if (users.length) return { users, matchedBy: 'seriesId' };
   }
   if (invoiceId) {
-    const user = await User.findOne({ 'paypal.invoiceId': invoiceId });
-    if (user) return { user, matchedBy: 'invoiceId' };
+    const users = await User.find({ 'paypal.invoiceId': invoiceId });
+    if (users.length) return { users, matchedBy: 'invoiceId' };
   }
   if (email) {
-    const user = await User.findOne({
+    const users = await User.find({
       role: 'student',
       'paypal.billingType': 'recurring_invoice',
       email: new RegExp(`^${escapeRegex(email.trim())}$`, 'i')
     });
-    if (user) return { user, matchedBy: 'email' };
+    if (users.length) return { users, matchedBy: 'email' };
   }
-  return { user: null, matchedBy: 'none' };
+  return { users: [], matchedBy: 'none' };
 };
 
-// Starts a fresh 28-day cycle and resets Phase 1 (classes completed) to 0
+const cycleDaysFor = (user) => CYCLE_DAYS[user.paypal?.billingCycle] || CYCLE_DAYS.monthly;
+
+// Starts a fresh cycle (length from the student's billing cycle) and resets Phase 1 (classes completed) to 0
 const startNewCycle = (user, startDate) => {
   const start = new Date(startDate);
-  const end = new Date(start.getTime() + CYCLE_DAYS * 24 * 60 * 60 * 1000);
+  const end = new Date(start.getTime() + cycleDaysFor(user) * 24 * 60 * 60 * 1000);
 
   if (!user.subscription) user.subscription = {};
   user.subscription.startDate = start;
@@ -124,16 +129,30 @@ const sendToAdmin = async (text) => {
   }
 };
 
-// Student messages go to the group link only. No group link → tell the admin instead.
-const sendToStudentGroup = async (user, text) => {
-  if (!user.studentGroupId || !user.studentGroupId.trim()) {
-    await sendToAdmin(`⚠️ ${user.name} renewed but has no group link, so no message was sent.`);
-    return;
+const joinNames = (names) =>
+  names.length <= 1 ? (names[0] || '') : `${names.slice(0, -1).join(', ')} & ${names[names.length - 1]}`;
+
+// Sends one message per student group. Siblings sharing a group get ONE message with all their names.
+// Students without a group link → admin alert instead.
+// renewed = [{ user, start, end }], buildText(name, start, end) → message text
+const notifyGroups = async (renewed, buildText) => {
+  const byGroup = new Map();
+  for (const item of renewed) {
+    const group = (item.user.studentGroupId || '').trim();
+    if (!group) {
+      await sendToAdmin(`⚠️ ${item.user.name} renewed but has no group link, so no message was sent.`);
+      continue;
+    }
+    if (!byGroup.has(group)) byGroup.set(group, []);
+    byGroup.get(group).push(item);
   }
-  try {
-    await whatsappClient.sendMessage(user.studentGroupId.trim(), text);
-  } catch (err) {
-    console.log(`PayPal: message to ${user.name}'s group failed:`, err.message);
+  for (const [group, items] of byGroup) {
+    const names = joinNames(items.map((i) => (i.user.name || '').trim()));
+    try {
+      await whatsappClient.sendMessage(group, buildText(names, items[0].start, items[0].end));
+    } catch (err) {
+      console.log(`PayPal: message to ${names}'s group failed:`, err.message);
+    }
   }
 };
 
@@ -147,34 +166,40 @@ const alertUnmatched = async (kind, details) => {
   );
 };
 
+const summary = (renewed, label) =>
+  renewed.length
+    ? `${label}: ${renewed.map((r) => `${(r.user.name || '').trim()} ${formatDate(r.start)} to ${formatDate(r.end)}`).join('; ')}`
+    : null;
+
 // ---------- Event handlers ----------
 
 const handleInvoiceSent = async (event, details) => {
-  const { user, matchedBy } = await findStudentForInvoice(details);
-  if (!user) {
+  const { users, matchedBy } = await findStudentsForInvoice(details);
+  if (!users.length) {
     await alertUnmatched('invoice', { amount: details.amount, email: details.email, id: details.seriesId || details.invoiceId });
-    return { matchedBy, result: 'No student matched: admin alerted' };
-  }
-  if (!user.paypal) user.paypal = {};
-
-  if (details.invoiceId && user.paypal.lastInvoiceId === details.invoiceId) {
-    return { user, matchedBy, result: 'Invoice already started a cycle: skipped' };
+    return { users, matchedBy, result: 'No student matched: admin alerted' };
   }
 
   const sentAt = event.create_time ? new Date(event.create_time) : new Date();
-  const { start, end } = startNewCycle(user, sentAt);
-  user.paypal.lastInvoiceId = details.invoiceId;
-  user.paypal.lastInvoiceSentAt = sentAt;
-  rememberEvent(user, event.id);
-  await user.save();
+  const renewed = [];
+  for (const user of users) {
+    if (!user.paypal) user.paypal = {};
+    if (details.invoiceId && user.paypal.lastInvoiceId === details.invoiceId) continue; // already started this cycle
+    const { start, end } = startNewCycle(user, sentAt);
+    user.paypal.lastInvoiceId = details.invoiceId;
+    user.paypal.lastInvoiceSentAt = sentAt;
+    rememberEvent(user, event.id);
+    await user.save();
+    renewed.push({ user, start, end });
+  }
 
-  await sendToStudentGroup(user, newCycleMessage(user.name, start, end, details.paymentLink));
-  return { user, matchedBy, result: `New cycle started ${formatDate(start)} to ${formatDate(end)}` };
+  await notifyGroups(renewed, (name, start, end) => newCycleMessage(name, start, end, details.paymentLink));
+  return { users, matchedBy, result: summary(renewed, 'New cycle started') || 'Invoice already started a cycle: skipped' };
 };
 
 const handleInvoicePaid = async (event, details) => {
-  const { user, matchedBy } = await findStudentForInvoice(details);
-  if (!user) {
+  const { users, matchedBy } = await findStudentsForInvoice(details);
+  if (!users.length) {
     // Only one alert per invoice: skip if this invoice was already reported as unmatched
     const alreadyAlerted = details.invoiceId
       ? await PaypalEvent.exists({ resourceId: details.invoiceId, matchedBy: 'none', eventId: { $ne: event.id } })
@@ -182,28 +207,32 @@ const handleInvoicePaid = async (event, details) => {
     if (!alreadyAlerted) {
       await alertUnmatched('payment', { amount: details.amount, email: details.email, id: details.seriesId || details.invoiceId });
     }
-    return { matchedBy, result: alreadyAlerted ? 'No student matched (already alerted)' : 'No student matched: admin alerted' };
+    return { users, matchedBy, result: alreadyAlerted ? 'No student matched (already alerted)' : 'No student matched: admin alerted' };
   }
-  if (!user.paypal) user.paypal = {};
 
   const paidAt = event.create_time ? new Date(event.create_time) : new Date();
-  user.paypal.lastPaidAt = paidAt;
-  rememberEvent(user, event.id);
+  const renewed = [];
+  for (const user of users) {
+    if (!user.paypal) user.paypal = {};
+    user.paypal.lastPaidAt = paidAt;
+    rememberEvent(user, event.id);
 
-  // Normal case: the SENT notice already started the cycle → just record the payment
-  if (details.invoiceId && user.paypal.lastInvoiceId === details.invoiceId) {
+    // Normal case: the SENT notice already started the cycle → just record the payment
+    if (details.invoiceId && user.paypal.lastInvoiceId === details.invoiceId) {
+      await user.save();
+      continue;
+    }
+
+    // Fallback: SENT never arrived for this invoice → renew now
+    const { start, end } = startNewCycle(user, paidAt);
+    user.paypal.lastInvoiceId = details.invoiceId;
+    user.paypal.lastInvoiceSentAt = user.paypal.lastInvoiceSentAt || paidAt;
     await user.save();
-    return { user, matchedBy, result: 'Payment date recorded' };
+    renewed.push({ user, start, end });
   }
 
-  // Fallback: SENT never arrived for this invoice → renew now
-  const { start, end } = startNewCycle(user, paidAt);
-  user.paypal.lastInvoiceId = details.invoiceId;
-  user.paypal.lastInvoiceSentAt = user.paypal.lastInvoiceSentAt || paidAt;
-  await user.save();
-
-  await sendToStudentGroup(user, paymentReceivedMessage(user.name, start, end));
-  return { user, matchedBy, result: `Fallback renewal on payment: ${formatDate(start)} to ${formatDate(end)}` };
+  await notifyGroups(renewed, paymentReceivedMessage);
+  return { users, matchedBy, result: summary(renewed, 'Fallback renewal on payment') || 'Payment date recorded' };
 };
 
 const handleSubscriptionPayment = async (event) => {
@@ -213,21 +242,25 @@ const handleSubscriptionPayment = async (event) => {
     ? `${resource.amount.total} ${resource.amount.currency || ''}`.trim()
     : 'Unknown';
 
-  const user = subscriptionId ? await User.findOne({ 'paypal.subscriptionId': subscriptionId }) : null;
-  if (!user) {
+  const users = subscriptionId ? await User.find({ 'paypal.subscriptionId': subscriptionId }) : [];
+  if (!users.length) {
     await alertUnmatched('subscription payment', { amount, email: null, id: subscriptionId || resource.id });
-    return { matchedBy: 'none', result: 'No student matched: admin alerted' };
+    return { users, matchedBy: 'none', result: 'No student matched: admin alerted' };
   }
-  if (!user.paypal) user.paypal = {};
 
   const paidAt = event.create_time ? new Date(event.create_time) : new Date();
-  const { start, end } = startNewCycle(user, paidAt);
-  user.paypal.lastPaidAt = paidAt;
-  rememberEvent(user, event.id);
-  await user.save();
+  const renewed = [];
+  for (const user of users) {
+    if (!user.paypal) user.paypal = {};
+    const { start, end } = startNewCycle(user, paidAt);
+    user.paypal.lastPaidAt = paidAt;
+    rememberEvent(user, event.id);
+    await user.save();
+    renewed.push({ user, start, end });
+  }
 
-  await sendToStudentGroup(user, paymentReceivedMessage(user.name, start, end));
-  return { user, matchedBy: 'subscriptionId', result: `Subscription renewed ${formatDate(start)} to ${formatDate(end)}` };
+  await notifyGroups(renewed, paymentReceivedMessage);
+  return { users, matchedBy: 'subscriptionId', result: summary(renewed, 'Subscription renewed') };
 };
 
 // @desc    Handle incoming PayPal webhooks
@@ -279,7 +312,9 @@ const paypalWebhook = async (req, res) => {
 
   if (record) {
     try {
-      record.student = outcome.user ? outcome.user._id : undefined;
+      const matched = outcome.users || [];
+      record.student = matched[0] ? matched[0]._id : undefined;
+      record.students = matched.map((u) => u._id);
       record.matchedBy = outcome.matchedBy;
       record.result = outcome.result;
       await record.save();

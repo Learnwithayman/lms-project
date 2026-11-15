@@ -44,6 +44,7 @@ function UserList() {
   const [subscriptionId, setSubscriptionId] = useState('');
   const [invoiceId, setInvoiceId] = useState('');
   const [recurringSeriesId, setRecurringSeriesId] = useState('');
+  const [billingCycle, setBillingCycle] = useState('monthly'); // ⏳ 28 / 84 / 168 / 336 days
   
   // ✨ RECURRING SLOTS STATES
   const [recurringSlots, setRecurringSlots] = useState([]);
@@ -174,7 +175,8 @@ function UserList() {
           billingType,
           subscriptionId,
           invoiceId,
-          recurringSeriesId
+          recurringSeriesId,
+          billingCycle
         },
         recurringSlots
       };
@@ -193,7 +195,7 @@ function UserList() {
 
   // ✅ Manual-payment students: mark as paid & start a new 28-day cycle
   const handleManualRenew = async () => {
-    if (!window.confirm(`Mark ${selectedStudent.name} as paid and start a new 28-day cycle from today? Classes used will reset to 0.`)) return;
+    if (!window.confirm(`Mark ${selectedStudent.name} as paid and start a new cycle from today (length: saved Billing Cycle)? Classes used will reset to 0.`)) return;
     setIsSubUpdating(true);
     try {
       const token = localStorage.getItem('token');
@@ -368,6 +370,7 @@ function UserList() {
     setSubscriptionId(student.paypal?.subscriptionId || '');
     setInvoiceId(student.paypal?.invoiceId || '');
     setRecurringSeriesId(student.paypal?.recurringSeriesId || '');
+    setBillingCycle(student.paypal?.billingCycle || 'monthly');
     
     // Scheduling Fields
     setRecurringSlots(student.recurringSlots || []);
@@ -744,10 +747,20 @@ function UserList() {
                   </div>
                 )}
 
+                <div style={{ marginTop: '15px' }}>
+                  <label style={{ display: 'block', marginBottom: '5px', fontWeight: 'bold', fontSize: '14px' }}>⏳ Billing Cycle (length of each new cycle):</label>
+                  <select value={billingCycle} onChange={(e) => setBillingCycle(e.target.value)} style={{ width: '100%', padding: '10px', borderRadius: '5px', border: '1px solid #ccc' }}>
+                    <option value="monthly">Monthly (28 days)</option>
+                    <option value="quarterly">Quarterly (84 days)</option>
+                    <option value="semiannual">Half-year (168 days)</option>
+                    <option value="yearly">Yearly (336 days)</option>
+                  </select>
+                </div>
+
                 {billingType === 'none' && (
                   <div style={{ marginTop: '10px' }}>
                     <button type="button" onClick={handleManualRenew} disabled={isSubUpdating} style={{ width: '100%', padding: '10px', backgroundColor: isSubUpdating ? '#95a5a6' : '#16a085', color: 'white', border: 'none', borderRadius: '5px', cursor: isSubUpdating ? 'not-allowed' : 'pointer', fontWeight: 'bold' }}>
-                      ✅ Mark as Paid & Start New 28-Day Cycle
+                      ✅ Mark as Paid & Start New Cycle
                     </button>
                     <p style={{ margin: '5px 0 0 0', fontSize: '12px', color: '#777' }}>For manual-payment students: starts a new cycle from today and resets classes used to 0.</p>
                   </div>

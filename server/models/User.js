@@ -60,6 +60,11 @@ const userSchema = mongoose.Schema(
       cycleEndDate: { type: Date },
       nextBillingDate: { type: Date },
       amount: { type: Number },
+      billingCycle: {                         // ⏳ Length of a new cycle when PayPal bills (4-week months)
+        type: String,
+        enum: ['monthly', 'quarterly', 'semiannual', 'yearly'], // 28 / 84 / 168 / 336 days
+        default: 'monthly'
+      },
 
       // 🛡️ Webhook safety fields (Step 1)
       lastInvoiceId: { type: String },        // Last invoice that started a cycle (stops double renewals)

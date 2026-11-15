@@ -162,6 +162,7 @@ const updateSubscription = asyncHandler(async (req, res) => {
     if (paypal.invoiceId !== undefined) user.paypal.invoiceId = paypal.invoiceId;
     if (paypal.planName) user.paypal.planName = paypal.planName;
     if (paypal.amount !== undefined) user.paypal.amount = Number(paypal.amount);
+    if (['monthly', 'quarterly', 'semiannual', 'yearly'].includes(paypal.billingCycle)) user.paypal.billingCycle = paypal.billingCycle; // ⏳ Billing cycle length
   }
 
   // ✨ Recurring Slots updates
