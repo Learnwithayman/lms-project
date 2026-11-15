@@ -963,5 +963,6 @@ module.exports = {
   getAdminLiveMonitor, resendReminder, resendNotes, joinClass,
   grantMakeupCredit, cancelUpcomingClass, getMessageLogs, adminForceEndClass,
   getPendingMakeups, resolveMakeupRequest, syncStudentTimezoneToGoogleCalendar,
-  extractGroupCodes // ⏰ Shared with lateController (Step 2)
+  extractGroupCodes, // ⏰ Shared with lateController (Step 2)
+  calendar // ⏸️ Shared with pauseController (Step 3)
 };

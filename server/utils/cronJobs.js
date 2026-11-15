@@ -1,6 +1,7 @@
 const cron = require('node-cron');
 const { getUpcomingClasses } = require('./calendarBot');
-const { sendMessage } = require('./whatsappBot'); 
+const { sendMessage } = require('./whatsappBot');
+const { parseEventStudent, classBelongsToStudent } = require('./classMatch'); // ⏸️ Step 3: match classes to paused students
 const ClassSession = require('../models/ClassSession'); 
 const User = require('../models/User'); 
  
@@ -19,11 +20,22 @@ cron.schedule('* * * * *', async () => {
   try {
     const classes = await getUpcomingClasses();
     const now = new Date();
- 
+
+    // ⏸️ Step 3: students who are paused or away → no reminders at all for their classes
+    const pausedStudents = await User.find({ 'pause.kind': { $in: ['full', 'away'] } }, 'name studentGroupId pause');
+
     for (const cls of classes) {
       if (cls.description && cls.description.toLowerCase().includes('do not send')) {
         console.log(`🚫 Skipped reminders for "${cls.title}" because it is marked as "do not send".`);
-        continue; 
+        continue;
+      }
+
+      if (pausedStudents.length) {
+        const owner = parseEventStudent(cls);
+        const pausedOwner = pausedStudents.find((u) => classBelongsToStudent(owner, u));
+        if (pausedOwner) {
+          continue; // ⏸️ Student paused / away: student AND teacher reminders are muted
+        }
       }
  
       // ✨ TIME CALCULATORS

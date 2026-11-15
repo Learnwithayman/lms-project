@@ -45,6 +45,12 @@ function UserList() {
   const [invoiceId, setInvoiceId] = useState('');
   const [recurringSeriesId, setRecurringSeriesId] = useState('');
   const [billingCycle, setBillingCycle] = useState('monthly'); // ⏳ 28 / 84 / 168 / 336 days
+
+  // ⏸️ STUDENT PAUSE STATES (Step 3)
+  const [pauseKind, setPauseKind] = useState('full');
+  const [pauseReturnDate, setPauseReturnDate] = useState('');
+  const [pauseClasses, setPauseClasses] = useState(null); // future classes listed for the confirm button
+  const [isPauseBusy, setIsPauseBusy] = useState(false);
   
   // ✨ RECURRING SLOTS STATES
   const [recurringSlots, setRecurringSlots] = useState([]);
@@ -355,8 +361,91 @@ function UserList() {
     setRecurringSlots(updated);
   };
 
+  // ==========================================
+  // ⏸️ STUDENT PAUSE (Step 3)
+  // ==========================================
+  const pauseRequest = async (method, path, body) => {
+    const token = localStorage.getItem('token');
+    const config = { headers: { Authorization: `Bearer ${token}` } };
+    const url = `${API_URL}/api/users/${selectedStudent._id}${path}`;
+    const res = method === 'get' ? await axios.get(url, config) : await axios.post(url, body || {}, config);
+    if (res.data.user) setSelectedStudent(res.data.user);
+    return res.data;
+  };
+
+  const handleSavePause = async () => {
+    if (!pauseReturnDate) return alert('Please choose a return date.');
+    const label = pauseKind === 'full' ? 'FULL PAUSE (subscription stops, cycle saved)' : 'AWAY (subscription continues, all reminders muted)';
+    if (!window.confirm(`Save ${label} for ${selectedStudent.name} until ${pauseReturnDate}?`)) return;
+    setIsPauseBusy(true);
+    try {
+      const data = await pauseRequest('post', '/pause', { kind: pauseKind, returnDate: pauseReturnDate });
+      setPauseClasses(null);
+      if (data.user?.subscription?.status) setSubStatus(data.user.subscription.status); // keep the form below in sync (Paused)
+      alert(data.message);
+      fetchUsers();
+    } catch (error) {
+      alert(error.response?.data?.message || '❌ Failed to save the pause.');
+    } finally {
+      setIsPauseBusy(false);
+    }
+  };
+
+  const handleLoadPauseClasses = async () => {
+    setIsPauseBusy(true);
+    try {
+      const data = await pauseRequest('get', '/pause/classes');
+      setPauseClasses(data.classes || []);
+    } catch (error) {
+      alert(error.response?.data?.message || '❌ Failed to load the classes.');
+    } finally {
+      setIsPauseBusy(false);
+    }
+  };
+
+  const handleRemovePauseClasses = async () => {
+    if (!pauseClasses || !pauseClasses.length) return;
+    if (!window.confirm(`Remove ${pauseClasses.length} class(es) of ${selectedStudent.name} from Google Calendar? This cannot be undone automatically.`)) return;
+    setIsPauseBusy(true);
+    try {
+      const data = await pauseRequest('post', '/pause/remove-classes', { eventIds: pauseClasses.map(c => c.id) });
+      setPauseClasses(null);
+      alert(data.message);
+    } catch (error) {
+      alert(error.response?.data?.message || '❌ Failed to remove the classes.');
+    } finally {
+      setIsPauseBusy(false);
+    }
+  };
+
+  const handleReactivate = async () => {
+    if (!window.confirm(`Reactivate ${selectedStudent.name}? Reminders will start again${selectedStudent.pause?.kind === 'full' ? ' and the saved cycle resumes from today' : ''}.`)) return;
+    setIsPauseBusy(true);
+    try {
+      const data = await pauseRequest('post', '/reactivate');
+      setPauseClasses(null);
+      if (data.user?.subscription) {
+        const sub = data.user.subscription;
+        setSubStatus(sub.status || subStatus);
+        setSubUsed(sub.classesUsed || 0);
+        setSubTotal(sub.totalClassesBought || 0);
+        setSubStart(sub.startDate ? sub.startDate.split('T')[0] : '');
+        setSubEnd(sub.endDate ? sub.endDate.split('T')[0] : '');
+      }
+      alert(data.message);
+      fetchUsers();
+    } catch (error) {
+      alert(error.response?.data?.message || '❌ Failed to reactivate.');
+    } finally {
+      setIsPauseBusy(false);
+    }
+  };
+
   const openWallet = (student) => {
     setSelectedStudent(student);
+    setPauseKind(student.pause?.kind || 'full');
+    setPauseReturnDate(student.pause?.returnDate ? student.pause.returnDate.split('T')[0] : '');
+    setPauseClasses(null);
     
     // Legacy fields
     setSubStatus(student.subscription?.status || 'none');
@@ -695,6 +784,76 @@ function UserList() {
                 </div>
                 <p style={{ margin: '5px 0 0 0', fontSize: '14px', color: '#777' }}>Available (90-Day)</p>
               </div>
+            </div>
+
+            {/* ⏸️ STUDENT PAUSE (Step 3) */}
+            <div style={{ backgroundColor: '#f4ecf7', padding: '20px', borderRadius: '8px', marginBottom: '20px', borderLeft: '4px solid #8e44ad' }}>
+              <h3 style={{ margin: '0 0 10px 0', color: '#6c3483', fontSize: '16px' }}>⏸️ Pause</h3>
+
+              {selectedStudent.pause?.kind ? (
+                <div>
+                  <p style={{ margin: '0 0 10px 0', fontSize: '14px', color: '#2d3436' }}>
+                    {selectedStudent.pause.kind === 'full'
+                      ? <><strong>⏸️ Full pause</strong> until <strong>{selectedStudent.pause.returnDate ? new Date(selectedStudent.pause.returnDate).toLocaleDateString(undefined, { timeZone: 'UTC', dateStyle: 'medium' }) : '?'}</strong>. Saved cycle: {selectedStudent.pause.savedClassesUsed}/{selectedStudent.pause.savedTotalClasses} classes used, {selectedStudent.pause.savedDaysLeft} days left.</>
+                      : <><strong>🧳 Away</strong> until <strong>{selectedStudent.pause.returnDate ? new Date(selectedStudent.pause.returnDate).toLocaleDateString(undefined, { timeZone: 'UTC', dateStyle: 'medium' }) : '?'}</strong>. Subscription continues; all reminders are muted.</>}
+                    {selectedStudent.pause.classesRemovedCount ? <><br/>🗑️ {selectedStudent.pause.classesRemovedCount} class(es) already removed from Google Calendar.</> : null}
+                  </p>
+
+                  <div style={{ display: 'flex', gap: '10px', alignItems: 'flex-end', marginBottom: '10px' }}>
+                    <div style={{ flex: 1 }}>
+                      <label style={{ display: 'block', fontSize: '12px', fontWeight: 'bold' }}>Change return date</label>
+                      <input type="date" value={pauseReturnDate} onChange={(e) => setPauseReturnDate(e.target.value)} style={{ width: '100%', padding: '8px', borderRadius: '4px', border: '1px solid #ccc', boxSizing: 'border-box' }} />
+                    </div>
+                    <button type="button" onClick={handleSavePause} disabled={isPauseBusy} style={{ padding: '9px 15px', backgroundColor: '#8e44ad', color: 'white', border: 'none', borderRadius: '4px', cursor: isPauseBusy ? 'not-allowed' : 'pointer', fontWeight: 'bold' }}>Update date</button>
+                  </div>
+
+                  {selectedStudent.pause.kind === 'full' && (
+                    <div style={{ marginBottom: '10px' }}>
+                      {pauseClasses === null ? (
+                        <button type="button" onClick={handleLoadPauseClasses} disabled={isPauseBusy} style={{ width: '100%', padding: '10px', backgroundColor: '#e67e22', color: 'white', border: 'none', borderRadius: '5px', cursor: isPauseBusy ? 'not-allowed' : 'pointer', fontWeight: 'bold' }}>
+                          🔎 Show future classes to remove (until the return date)
+                        </button>
+                      ) : pauseClasses.length === 0 ? (
+                        <p style={{ fontSize: '13px', color: '#636e72', margin: 0 }}>✅ No future classes found in Google Calendar before the return date.</p>
+                      ) : (
+                        <div>
+                          <div style={{ maxHeight: '150px', overflowY: 'auto', backgroundColor: 'white', border: '1px solid #ddd', borderRadius: '5px', padding: '8px', marginBottom: '8px', fontSize: '13px' }}>
+                            {pauseClasses.map(c => (
+                              <div key={c.id}>📅 {new Date(c.startTime).toLocaleString(undefined, { weekday: 'short', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}: {c.title}</div>
+                            ))}
+                          </div>
+                          <button type="button" onClick={handleRemovePauseClasses} disabled={isPauseBusy} style={{ width: '100%', padding: '10px', backgroundColor: '#c0392b', color: 'white', border: 'none', borderRadius: '5px', cursor: isPauseBusy ? 'not-allowed' : 'pointer', fontWeight: 'bold' }}>
+                            🗑️ Remove {pauseClasses.length} future class(es) ({new Date(pauseClasses[0].startTime).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })} to {new Date(pauseClasses[pauseClasses.length - 1].startTime).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })})
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  <button type="button" onClick={handleReactivate} disabled={isPauseBusy} style={{ width: '100%', padding: '10px', backgroundColor: '#27ae60', color: 'white', border: 'none', borderRadius: '5px', cursor: isPauseBusy ? 'not-allowed' : 'pointer', fontWeight: 'bold' }}>
+                    ▶️ Reactivate {selectedStudent.name}
+                  </button>
+                </div>
+              ) : (
+                <div>
+                  <div style={{ display: 'flex', gap: '10px', alignItems: 'flex-end' }}>
+                    <div style={{ flex: 1 }}>
+                      <label style={{ display: 'block', fontSize: '12px', fontWeight: 'bold' }}>Kind</label>
+                      <select value={pauseKind} onChange={(e) => setPauseKind(e.target.value)} style={{ width: '100%', padding: '8px', borderRadius: '4px', border: '1px solid #ccc' }}>
+                        <option value="full">⏸️ Full pause (subscription stops, cycle saved)</option>
+                        <option value="away">🧳 Away (subscription continues, reminders muted)</option>
+                      </select>
+                    </div>
+                    <div style={{ flex: 1 }}>
+                      <label style={{ display: 'block', fontSize: '12px', fontWeight: 'bold' }}>Return date</label>
+                      <input type="date" value={pauseReturnDate} onChange={(e) => setPauseReturnDate(e.target.value)} style={{ width: '100%', padding: '8px', borderRadius: '4px', border: '1px solid #ccc', boxSizing: 'border-box' }} />
+                    </div>
+                  </div>
+                  <button type="button" onClick={handleSavePause} disabled={isPauseBusy} style={{ width: '100%', marginTop: '10px', padding: '10px', backgroundColor: isPauseBusy ? '#95a5a6' : '#8e44ad', color: 'white', border: 'none', borderRadius: '5px', cursor: isPauseBusy ? 'not-allowed' : 'pointer', fontWeight: 'bold' }}>
+                    ⏸️ Save Pause
+                  </button>
+                </div>
+              )}
             </div>
 
             {/* ✨ SECTION 4: TIMEZONE SYNC */}

@@ -13,6 +13,7 @@ const {
   assignTeachers,
   updateUserProfile
 } = require('../controllers/userController');
+const { setPause, getPauseClasses, removePauseClasses, reactivateStudent } = require('../controllers/pauseController'); // ⏸️ Student pause (Step 3)
 const { protect } = require('../middleware/authMiddleware');
 const { allowRoles } = require('../middleware/roleMiddleware'); // 🔐 Role locks
 
@@ -34,6 +35,12 @@ router.delete('/:id', protect, allowRoles('admin'), deleteUser);
 // 💳 Subscription Routes (Admin only)
 router.put('/:id/subscription', protect, allowRoles('admin'), updateSubscription);
 router.post('/:id/sync-wallet', protect, allowRoles('admin'), syncStudentWallet); // 👈 Auto-Sync Wallet Route
+
+// ⏸️ Student pause (Admin only)
+router.post('/:id/pause', protect, allowRoles('admin'), setPause);
+router.get('/:id/pause/classes', protect, allowRoles('admin'), getPauseClasses);
+router.post('/:id/pause/remove-classes', protect, allowRoles('admin'), removePauseClasses);
+router.post('/:id/reactivate', protect, allowRoles('admin'), reactivateStudent);
 
 // ✨ Assign Teachers Route (Admin only)
 router.put('/:id/assign', protect, allowRoles('admin'), assignTeachers);

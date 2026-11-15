@@ -14,6 +14,7 @@ connectDB();
 // --- Start the WhatsApp Bot & Automated Systems ---
 require('./utils/whatsappBot');
 require('./utils/cronJobs'); // Turns on the automated time-based WhatsApp alerts
+require('./utils/pauseCrons'); // ⏸️ Return-day alerts for paused / away students (10 AM Cairo admin, 10 AM Eastern student)
 
 // 💰 Turn on the new Monthly Payroll Robotic Accountant
 const { startPayrollCron } = require('./utils/payrollCron');

@@ -26,6 +26,7 @@ const {
     syncStudentTimezoneToGoogleCalendar
 } = require('../controllers/scheduleController');
 const { sendLateReminder, markStudentJoined, getLateProgress } = require('../controllers/lateController'); // ⏰ Late flow (Step 2)
+const { getAwayStudents } = require('../controllers/pauseController'); // ⏸️ Student pause (Step 3)
 
 // Import your authentication middleware
 const { protect } = require('../middleware/authMiddleware');
@@ -57,6 +58,7 @@ router.post('/attendance', protect, teacherOnly, markAttendance);
 router.post('/late-reminder', protect, teacherOnly, sendLateReminder);
 router.post('/student-joined', protect, teacherOnly, markStudentJoined);
 router.get('/late-progress', protect, teacherOnly, getLateProgress);
+router.get('/away-students', protect, teacherOnly, getAwayStudents); // ⏸️ 'Student away until…' on teacher classes
 
 // ==========================================
 // 📡 ADMIN COMMAND CENTER & SUBSCRIPTIONS

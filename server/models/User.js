@@ -98,6 +98,25 @@ const userSchema = mongoose.Schema(
       classesUsed: { type: Number, default: 0 }
     },
 
+    // ==========================================
+    // ⏸️ STUDENT PAUSE (Step 3)
+    // ==========================================
+    // kind 'full' → subscription paused (status 'paused'), cycle saved to resume on return.
+    // kind 'away' → subscription continues (status stays 'active'), all class reminders muted.
+    // Stays paused until the admin reactivates (even after the return date).
+    pause: {
+      kind: { type: String, enum: ['full', 'away'] },
+      startedAt: { type: Date },
+      returnDate: { type: Date },
+      savedClassesUsed: { type: Number },      // full pause: cycle snapshot to resume
+      savedTotalClasses: { type: Number },
+      savedDaysLeft: { type: Number },
+      classesRemovedAt: { type: Date },        // when the admin removed future classes
+      classesRemovedCount: { type: Number },
+      adminAlertSentAt: { type: Date },        // return-day alerts (sent once)
+      studentWelcomeSentAt: { type: Date }
+    },
+
     makeupBank: [
       {
         originalClassDate: { type: Date, required: true },

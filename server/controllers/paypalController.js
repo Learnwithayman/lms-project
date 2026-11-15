@@ -166,6 +166,19 @@ const alertUnmatched = async (kind, details) => {
   );
 };
 
+// ⏸️ Step 3: a PayPal bill for a FULLY paused student never starts a cycle → alert the admin instead
+const isFullyPaused = (user) => user.pause?.kind === 'full';
+const alertPaused = async (pausedUsers, kind, amount, id) => {
+  if (!pausedUsers.length) return;
+  await sendToAdmin(
+    `⚠️ *PayPal ${kind} for a paused student*\n\n` +
+    `👤 Student: ${joinNames(pausedUsers.map((u) => (u.name || '').trim()))}\n` +
+    `💵 Amount: ${amount || 'Unknown'}\n` +
+    `🧾 PayPal ID: ${id || 'Unknown'}\n\n` +
+    `The cycle was NOT renewed because the student is paused. Please check the PayPal billing for this student.`
+  );
+};
+
 const summary = (renewed, label) =>
   renewed.length
     ? `${label}: ${renewed.map((r) => `${(r.user.name || '').trim()} ${formatDate(r.start)} to ${formatDate(r.end)}`).join('; ')}`
@@ -182,9 +195,11 @@ const handleInvoiceSent = async (event, details) => {
 
   const sentAt = event.create_time ? new Date(event.create_time) : new Date();
   const renewed = [];
+  const paused = [];
   for (const user of users) {
     if (!user.paypal) user.paypal = {};
     if (details.invoiceId && user.paypal.lastInvoiceId === details.invoiceId) continue; // already started this cycle
+    if (isFullyPaused(user)) { paused.push(user); continue; } // ⏸️ no new cycle while paused
     const { start, end } = startNewCycle(user, sentAt);
     user.paypal.lastInvoiceId = details.invoiceId;
     user.paypal.lastInvoiceSentAt = sentAt;
@@ -194,7 +209,8 @@ const handleInvoiceSent = async (event, details) => {
   }
 
   await notifyGroups(renewed, (name, start, end) => newCycleMessage(name, start, end, details.paymentLink));
-  return { users, matchedBy, result: summary(renewed, 'New cycle started') || 'Invoice already started a cycle: skipped' };
+  await alertPaused(paused, 'invoice', details.amount, details.seriesId || details.invoiceId);
+  return { users, matchedBy, result: [summary(renewed, 'New cycle started'), paused.length ? `Paused (not renewed): ${paused.map((u) => u.name).join(', ')}` : null].filter(Boolean).join(' | ') || 'Invoice already started a cycle: skipped' };
 };
 
 const handleInvoicePaid = async (event, details) => {
@@ -212,6 +228,7 @@ const handleInvoicePaid = async (event, details) => {
 
   const paidAt = event.create_time ? new Date(event.create_time) : new Date();
   const renewed = [];
+  const paused = [];
   for (const user of users) {
     if (!user.paypal) user.paypal = {};
     user.paypal.lastPaidAt = paidAt;
@@ -220,6 +237,13 @@ const handleInvoicePaid = async (event, details) => {
     // Normal case: the SENT notice already started the cycle → just record the payment
     if (details.invoiceId && user.paypal.lastInvoiceId === details.invoiceId) {
       await user.save();
+      continue;
+    }
+
+    // ⏸️ Paused: record the payment, but no new cycle (admin is alerted below)
+    if (isFullyPaused(user)) {
+      await user.save();
+      paused.push(user);
       continue;
     }
 
@@ -232,7 +256,8 @@ const handleInvoicePaid = async (event, details) => {
   }
 
   await notifyGroups(renewed, paymentReceivedMessage);
-  return { users, matchedBy, result: summary(renewed, 'Fallback renewal on payment') || 'Payment date recorded' };
+  await alertPaused(paused, 'payment', details.amount, details.seriesId || details.invoiceId);
+  return { users, matchedBy, result: [summary(renewed, 'Fallback renewal on payment'), paused.length ? `Paused (not renewed): ${paused.map((u) => u.name).join(', ')}` : null].filter(Boolean).join(' | ') || 'Payment date recorded' };
 };
 
 const handleSubscriptionPayment = async (event) => {
@@ -250,17 +275,20 @@ const handleSubscriptionPayment = async (event) => {
 
   const paidAt = event.create_time ? new Date(event.create_time) : new Date();
   const renewed = [];
+  const paused = [];
   for (const user of users) {
     if (!user.paypal) user.paypal = {};
-    const { start, end } = startNewCycle(user, paidAt);
     user.paypal.lastPaidAt = paidAt;
     rememberEvent(user, event.id);
+    if (isFullyPaused(user)) { await user.save(); paused.push(user); continue; } // ⏸️ no new cycle while paused
+    const { start, end } = startNewCycle(user, paidAt);
     await user.save();
     renewed.push({ user, start, end });
   }
 
   await notifyGroups(renewed, paymentReceivedMessage);
-  return { users, matchedBy: 'subscriptionId', result: summary(renewed, 'Subscription renewed') };
+  await alertPaused(paused, 'subscription payment', amount, subscriptionId);
+  return { users, matchedBy: 'subscriptionId', result: [summary(renewed, 'Subscription renewed'), paused.length ? `Paused (not renewed): ${paused.map((u) => u.name).join(', ')}` : null].filter(Boolean).join(' | ') };
 };
 
 // @desc    Handle incoming PayPal webhooks

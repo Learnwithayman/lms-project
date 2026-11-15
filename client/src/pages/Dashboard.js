@@ -53,6 +53,9 @@ function Dashboard() {
   const [lateBusy, setLateBusy] = useState(null);
   const [nowTick, setNowTick] = useState(Date.now());
 
+  // ⏸️ STUDENT PAUSE (Step 3): students who are away / paused
+  const [awayStudents, setAwayStudents] = useState([]);
+
   const navigate = useNavigate();
   
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -197,10 +200,32 @@ function Dashboard() {
       fetchEarnings(token);
       fetchReportStatuses(token);
       fetchLateProgress(token);
+      fetchAwayStudents(token);
     } else {
       fetchSubSummary(token);
     }
   }, [navigate]);
+
+  // ⏸️ Step 3: paused / away students → "Student away until…" on their classes
+  const fetchAwayStudents = async (token) => {
+    try {
+      const config = { headers: { Authorization: `Bearer ${token}` } };
+      const res = await axios.get(`${API_URL}/api/schedule/away-students`, config);
+      setAwayStudents(res.data || []);
+    } catch (error) {
+      console.error("Failed to fetch away students:", error);
+    }
+  };
+
+  const findAwayStudent = (cls) => {
+    const code = (cls.studentGroupId || '').replace('https://chat.whatsapp.com/', '').trim();
+    const clsName = (cls.studentGroupName || '').toLowerCase().trim();
+    return awayStudents.find(s => {
+      if (code && s.code && s.code.length > 5 && (code.includes(s.code) || s.code.includes(code))) return true;
+      const n = (s.name || '').toLowerCase().trim();
+      return clsName && n && (clsName === n || clsName.includes(n) || n.includes(clsName));
+    });
+  };
 
   const fetchClasses = async (token) => {
     try {
@@ -896,6 +921,18 @@ function Dashboard() {
                     </p>
                     
                     {/* ✨ LIVE COUNTDOWN TIMER (Only for the immediate next class) */}
+                    {/* ⏸️ STUDENT AWAY BADGE (Step 3) */}
+                    {user?.role?.toLowerCase() === 'teacher' && (() => {
+                      const away = findAwayStudent(cls);
+                      if (!away) return null;
+                      const until = away.returnDate ? new Date(away.returnDate).toLocaleDateString(undefined, { timeZone: 'UTC', month: 'long', day: 'numeric' }) : '?';
+                      return (
+                        <div style={{ display: 'inline-block', backgroundColor: '#f4ecf7', color: '#6c3483', padding: '6px 12px', borderRadius: '6px', fontSize: '13px', fontWeight: 'bold', marginBottom: '15px', marginRight: '10px', border: '1px solid #d2b4de' }}>
+                          {away.kind === 'away' ? '🧳 Student away' : '⏸️ Student paused'} until {until}. No need to wait for this class.
+                        </div>
+                      );
+                    })()}
+
                     {isNextClass && nextClassCountdown && (
                       <div style={{ display: 'inline-block', backgroundColor: '#fff3cd', color: '#d35400', padding: '6px 12px', borderRadius: '6px', fontSize: '13px', fontWeight: 'bold', marginBottom: '15px', border: '1px solid #ffe69c' }}>
                         ⏳ Starts in: {nextClassCountdown}
