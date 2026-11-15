@@ -50,6 +50,12 @@ function AdminDashboard() {
   const [trackMonth, setTrackMonth] = useState('');
   const [trackData, setTrackData] = useState({ summary: null, trackingData: [] });
   const [loadingTrack, setLoadingTrack] = useState(false);
+  const [trackTeacher, setTrackTeacher] = useState(''); // 📋 Step 5: filter the tracker by teacher
+
+  // 📋 Step 5: Preview plan / report reminders (sends nothing)
+  const [previewDate, setPreviewDate] = useState(new Date().toLocaleDateString('en-CA', { timeZone: 'Africa/Cairo' }));
+  const [previewData, setPreviewData] = useState(null);
+  const [loadingPreview, setLoadingPreview] = useState(false);
 
   // ✨ NEW: WhatsApp Bot Test State
   const [isTestingBot, setIsTestingBot] = useState(false);
@@ -128,6 +134,23 @@ function AdminDashboard() {
     }
   };
 
+  // 📋 Step 5: Preview who would get a plan / report reminder on a day (nothing is sent)
+  const fetchReminderPreview = async () => {
+    setLoadingPreview(true);
+    try {
+      const token = localStorage.getItem('token');
+      const res = await axios.get(`${API_URL}/api/admin/reminder-preview?date=${previewDate}`, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      setPreviewData(res.data);
+    } catch (error) {
+      console.error('Error loading reminder preview:', error);
+      alert('Failed to load the reminder preview.');
+    } finally {
+      setLoadingPreview(false);
+    }
+  };
+
   const handleLegacySubmit = async (e) => {
     e.preventDefault();
     setIsSubmittingLegacy(true);
@@ -171,8 +194,11 @@ function AdminDashboard() {
     }
   };
 
-  const handleApproveReport = async (studentId, monthYear, customNote = null) => {
-    if (!customNote && !window.confirm('Approve this report exactly as the teacher wrote it?')) return;
+  const handleApproveReport = async (studentId, monthYear, customNote = null, opts = {}) => {
+    const confirmText = opts.mode === 'wait'
+      ? `Approve now, and send the student message after ${(opts.waitingFor || []).join(', ')} saves their part and you approve it?`
+      : 'Approve this report exactly as the teacher wrote it?';
+    if (!customNote && !window.confirm(confirmText)) return;
     
     setIsSubmittingReport(true);
     try {
@@ -183,10 +209,11 @@ function AdminDashboard() {
           'Content-Type': 'application/json',
           Authorization: `Bearer ${token}` 
         },
-        body: JSON.stringify({ studentId, monthYear, editedNote: customNote }) 
+        body: JSON.stringify({ studentId, monthYear, editedNote: customNote, mode: opts.mode, waitingFor: opts.waitingFor }) 
       });
       if (response.ok) {
-        alert('✅ Report Approved! It is now live on the Student Portal.');
+        const result = await response.json().catch(() => ({}));
+        alert(result.waiting || result.alreadySent ? `✅ ${result.message}` : '✅ Report Approved! It is now live on the Student Portal.');
         setIsEditApproveModalOpen(false);
         fetchPendingReports(token);
         // Refresh tracker if open
@@ -649,6 +676,14 @@ function AdminDashboard() {
                   <div>
                     <h3 style={{ margin: '0 0 5px 0', color: '#2d3436' }}>👤 {report.studentName}</h3>
                     <p style={{ margin: 0, color: '#636e72', fontWeight: 'bold' }}>{report.monthYear} - {report.isFinalized ? 'Phase 2: Final Graded Report' : 'Phase 1: Draft Monthly Plan'}</p>
+                    {report.lastSavedByName && (
+                      <p style={{ margin: '5px 0 0 0', color: '#6c5ce7', fontSize: '13px', fontWeight: 'bold' }}>🆕 Last saved by {report.lastSavedByName}</p>
+                    )}
+                    {report.teacherCount > 1 && (
+                      <p style={{ margin: '5px 0 0 0', color: report.waitingFor?.length ? '#d35400' : '#00b894', fontSize: '13px', fontWeight: 'bold' }}>
+                        👥 {report.doneCount} of {report.teacherCount} teachers done{report.waitingFor?.length ? `, waiting for ${report.waitingFor.join(', ')}` : ''}
+                      </p>
+                    )}
                   </div>
                   <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
                     
@@ -671,8 +706,17 @@ function AdminDashboard() {
                     <button 
                       onClick={() => handleApproveReport(report.studentId, report.monthYear)}
                       style={{ backgroundColor: '#2ecc71', color: 'white', border: 'none', padding: '8px 15px', borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold' }}>
-                      ✅ Approve As-Is
+                      {report.waitingFor?.length && report.teacherCount > 1 ? '✅ Approve and send anyway' : '✅ Approve As-Is'}
                     </button>
+
+                    {/* 👥 Step 5: two-teacher students — approve now, send after the other teacher's part */}
+                    {report.teacherCount > 1 && report.waitingFor?.length > 0 && (
+                      <button
+                        onClick={() => handleApproveReport(report.studentId, report.monthYear, null, { mode: 'wait', waitingFor: report.waitingFor })}
+                        style={{ backgroundColor: '#e67e22', color: 'white', border: 'none', padding: '8px 15px', borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold' }}>
+                        ⏳ Approve and wait for {report.waitingFor.join(', ')}
+                      </button>
+                    )}
                   </div>
                 </div>
 
@@ -690,6 +734,45 @@ function AdminDashboard() {
               </div>
             ))}
           </div>
+        )}
+      </div>
+
+      {/* ========================================== */}
+      {/* 📋 STEP 5: PREVIEW PLAN / REPORT REMINDERS (sends nothing) */}
+      {/* ========================================== */}
+      <div style={{ backgroundColor: '#fff', padding: '25px', borderRadius: '15px', boxShadow: '0 10px 25px rgba(0,0,0,0.04)', marginTop: '40px', borderTop: '5px solid #0984e3' }}>
+        <h2 style={{ margin: 0, color: '#2d3436', fontSize: '20px' }}>📋 Plan & Report Reminders</h2>
+        <p style={{ margin: '5px 0 15px 0', color: '#636e72', fontSize: '13px' }}>See exactly who would get a reminder on a day (10:00 AM Cairo). Nothing is sent from here.</p>
+        <div style={{ display: 'flex', gap: '15px', alignItems: 'center', flexWrap: 'wrap', marginBottom: '15px' }}>
+          <input type="date" value={previewDate} onChange={(e) => setPreviewDate(e.target.value)} style={{ padding: '9px 12px', borderRadius: '8px', border: '1px solid #dfe6e9', fontSize: '14px' }} />
+          <button onClick={fetchReminderPreview} disabled={loadingPreview} style={{ padding: '10px 20px', backgroundColor: '#0984e3', color: 'white', border: 'none', borderRadius: '8px', fontWeight: 'bold', cursor: 'pointer' }}>
+            {loadingPreview ? 'Checking...' : (previewDate === new Date().toLocaleDateString('en-CA', { timeZone: 'Africa/Cairo' }) ? "👀 Preview today's reminders" : `👀 Preview reminders for ${previewDate}`)}
+          </button>
+        </div>
+        {previewData && (
+          <>
+            {previewData.warnings?.length > 0 && (
+              <div style={{ backgroundColor: '#fff3cd', border: '1px solid #ffe69c', color: '#856404', padding: '12px 15px', borderRadius: '8px', marginBottom: '15px', fontSize: '13px' }}>
+                {previewData.warnings.map((w, i) => <p key={i} style={{ margin: i ? '6px 0 0 0' : 0 }}>⚠️ {w}</p>)}
+              </div>
+            )}
+            {previewData.actions?.length === 0 ? (
+              <p style={{ color: '#636e72', fontStyle: 'italic' }}>No reminders would be sent on {previewData.date}.</p>
+            ) : (
+              <div style={{ display: 'grid', gap: '12px' }}>
+                <p style={{ margin: 0, fontWeight: 'bold', color: '#2d3436' }}>{previewData.actions.length} message(s) on {previewData.date}:</p>
+                {previewData.actions.map((a, i) => (
+                  <div key={i} style={{ backgroundColor: '#f8f9fa', borderLeft: '4px solid #0984e3', padding: '12px 15px', borderRadius: '8px' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', gap: '10px', flexWrap: 'wrap', marginBottom: '8px' }}>
+                      <strong style={{ color: '#2d3436' }}>📨 To: {a.toName}</strong>
+                      {a.alreadySent && <span style={{ backgroundColor: '#55efc4', color: '#00684a', padding: '2px 8px', borderRadius: '10px', fontSize: '11px', fontWeight: 'bold' }}>✅ Already sent</span>}
+                    </div>
+                    <div style={{ whiteSpace: 'pre-wrap', fontSize: '13px', color: '#2d3436' }}>{a.text}</div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </>
         )}
       </div>
 
@@ -721,13 +804,19 @@ function AdminDashboard() {
           >
             {loadingTrack ? 'Scanning...' : '🔍 Fetch Tracking Data'}
           </button>
+          {trackData.teacherStats?.length > 0 && (
+            <select value={trackTeacher} onChange={(e) => setTrackTeacher(e.target.value)} style={{ padding: '10px 15px', borderRadius: '8px', border: '1px solid #dfe6e9', fontSize: '14px', backgroundColor: 'white', cursor: 'pointer', fontWeight: 'bold', color: '#2d3436' }}>
+              <option value="">👨‍🏫 All teachers</option>
+              {trackData.teacherStats.map(t => <option key={t.teacherId} value={t.teacherId}>{t.name}</option>)}
+            </select>
+          )}
         </div>
 
         {trackData.summary && (
           <>
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: '15px', marginBottom: '20px' }}>
               <div style={{ backgroundColor: '#f1f2f6', padding: '15px', borderRadius: '8px', textAlign: 'center', borderLeft: '4px solid #b2bec3' }}>
-                <h4 style={{ margin: '0 0 5px 0', color: '#636e72', fontSize: '12px', textTransform: 'uppercase' }}>Total Students</h4>
+                <h4 style={{ margin: '0 0 5px 0', color: '#636e72', fontSize: '12px', textTransform: 'uppercase' }}>Students With Classes</h4>
                 <p style={{ margin: 0, fontSize: '24px', fontWeight: 'bold', color: '#2d3436' }}>{trackData.summary.total}</p>
               </div>
               <div style={{ backgroundColor: '#fff5f5', padding: '15px', borderRadius: '8px', textAlign: 'center', borderLeft: '4px solid #ff7675' }}>
@@ -749,14 +838,23 @@ function AdminDashboard() {
                 <thead>
                   <tr style={{ backgroundColor: '#f8f9fa', color: '#2d3436', borderBottom: '2px solid #dfe6e9' }}>
                     <th style={{ padding: '12px 15px' }}>Student Name</th>
+                    <th style={{ padding: '12px 15px' }}>Teachers (📋 plan · 📝 report)</th>
                     <th style={{ padding: '12px 15px' }}>Plan Status</th>
                     <th style={{ padding: '12px 15px' }}>Approval Status</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {trackData.trackingData.map((row, idx) => (
+                  {trackData.trackingData.filter(row => !trackTeacher || (row.teachers || []).some(t => t.teacherId === trackTeacher)).map((row, idx) => (
                     <tr key={idx} style={{ borderBottom: '1px solid #f1f2f6', backgroundColor: row.status === 'Missing' ? '#fff9f9' : 'white' }}>
                       <td style={{ padding: '12px 15px', fontWeight: 'bold', color: '#2d3436' }}>{row.studentName}</td>
+                      <td style={{ padding: '12px 15px', fontSize: '13px' }}>
+                        {(row.teachers || []).map(t => (
+                          <div key={t.teacherId}>{t.name}: 📋{t.planDone ? '✅' : '❌'} 📝{t.reportDone ? '✅' : '❌'}</div>
+                        ))}
+                        {row.teacherCount > 1 && (
+                          <div style={{ color: '#d35400', fontWeight: 'bold', marginTop: '3px' }}>👥 Plans {row.plansDone} of {row.teacherCount} done · Reports {row.reportsDone} of {row.teacherCount} done</div>
+                        )}
+                      </td>
                       <td style={{ padding: '12px 15px' }}>
                         {row.status === 'Missing' && <span style={{ color: '#d63031', fontWeight: 'bold' }}>❌ Missing</span>}
                         {row.status === 'Draft Plan' && <span style={{ color: '#0984e3', fontWeight: 'bold' }}>📝 Draft Plan</span>}
@@ -773,6 +871,19 @@ function AdminDashboard() {
                 </tbody>
               </table>
             </div>
+
+            {/* ⏱️ Step 5: on time vs late, per teacher */}
+            {trackData.teacherStats?.length > 0 && (
+              <div style={{ marginTop: '20px', backgroundColor: '#f8f9fa', padding: '15px', borderRadius: '8px' }}>
+                <h3 style={{ margin: '0 0 10px 0', fontSize: '16px', color: '#2d3436' }}>⏱️ On time this month</h3>
+                {trackData.teacherStats.filter(t => !trackTeacher || t.teacherId === trackTeacher).map(t => (
+                  <p key={t.teacherId} style={{ margin: '5px 0', fontSize: '14px', color: '#2d3436' }}>
+                    <strong>{t.name}:</strong> Plans {t.plansOnTime}/{t.students} on time{t.plansLate ? `, ${t.plansLate} late` : ''} · Reports {t.reportsOnTime}/{t.students} on time{t.reportsLate ? `, ${t.reportsLate} late` : ''}
+                  </p>
+                ))}
+                <p style={{ margin: '8px 0 0 0', fontSize: '12px', color: '#636e72' }}>On time = plan saved by the student's first class day, report saved by the student's last class day.</p>
+              </div>
+            )}
           </>
         )}
       </div>

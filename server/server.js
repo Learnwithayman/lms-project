@@ -3,9 +3,6 @@ const dotenv = require('dotenv').config();
 const connectDB = require('./config/db');
 const cors = require('cors'); 
 
-// ✨ NEW: Import the Report Crons (The Nag System)
-const startReportCrons = require('./cron/reportCrons');
-
 const port = process.env.PORT || 5000;
 
 // Connect to MongoDB Database
@@ -15,13 +12,12 @@ connectDB();
 require('./utils/whatsappBot');
 require('./utils/cronJobs'); // Turns on the automated time-based WhatsApp alerts
 require('./utils/pauseCrons'); // ⏸️ Return-day alerts for paused / away students (10 AM Cairo admin, 10 AM Eastern student)
+require('./utils/reportDeadlines'); // 📋 Plan & report deadline reminders + approval nudge (10 AM Cairo)
 
 // 💰 Turn on the new Monthly Payroll Robotic Accountant
 const { startPayrollCron } = require('./utils/payrollCron');
 startPayrollCron(); 
 
-// 🤖 Turn on the Monthly Report Nag System
-startReportCrons();
 
 const app = express();
 

@@ -36,4 +36,28 @@ const classBelongsToStudent = ({ code, name }, user) => {
   return !!(clsName && dbName && (clsName === dbName || clsName.includes(dbName) || dbName.includes(clsName)));
 };
 
-module.exports = { groupCode, parseEventStudent, classBelongsToStudent };
+// 📋 Step 5: reads the teacher group code out of a calendar event description
+// (same order as getTeacherSchedule: TeacherGroupID, TeacherGroupLink, then the first link)
+const parseEventTeacher = (event) => {
+  const description = event.description || '';
+  const cleanDesc = description.replace(/<[^>]*>?/gm, ' ').replace(/&nbsp;/g, ' ');
+  const idMatch = description.match(/TeacherGroupID[\s*:-]*([0-9]+@g\.us)/i) || description.match(/TeacherGroup[^\d]*([0-9]+@g\.us)/i);
+  if (idMatch) return idMatch[1].trim();
+  const tLink = cleanDesc.match(/TeacherGroupLink[\s\S]*?chat\.whatsapp\.com\/([a-zA-Z0-9_-]+)/i);
+  if (tLink && tLink[1] !== 'null') return tLink[1].trim();
+  const tAlpha = cleanDesc.match(/(?:TeacherGroupID|TeacherGroup|Teacher ID)[\s*:-]*([a-zA-Z0-9_-]{10,})/i);
+  if (tAlpha && tAlpha[1] !== 'null') return tAlpha[1].trim();
+  const allLinks = [...cleanDesc.matchAll(/chat\.whatsapp\.com\/([a-zA-Z0-9_-]+)/gi)];
+  return allLinks.length > 0 ? allLinks[0][1].trim() : null;
+};
+
+// True when the class teacher code belongs to this teacher (by their saved group link)
+const classBelongsToTeacher = (code, teacher) => {
+  if (!code) return false;
+  return [teacher.teacherGroupId, teacher.whatsappGroupId].some((link) => {
+    const mine = groupCode(link);
+    return mine.length > 5 && (code.includes(mine) || mine.includes(code));
+  });
+};
+
+module.exports = { groupCode, parseEventStudent, classBelongsToStudent, parseEventTeacher, classBelongsToTeacher };

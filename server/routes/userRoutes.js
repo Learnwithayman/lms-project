@@ -14,6 +14,7 @@ const {
   updateUserProfile
 } = require('../controllers/userController');
 const { setPause, getPauseClasses, removePauseClasses, reactivateStudent } = require('../controllers/pauseController'); // ⏸️ Student pause (Step 3)
+const { getAssignmentCheck } = require('../controllers/reportDutyController'); // 📋 Step 5: calendar teacher check
 const { protect } = require('../middleware/authMiddleware');
 const { allowRoles } = require('../middleware/roleMiddleware'); // 🔐 Role locks
 
@@ -22,6 +23,9 @@ router.post('/', protect, allowRoles('admin'), registerUser);
 router.get('/', protect, allowRoles('admin'), getAllUsers);
 router.post('/login', loginUser);
 router.get('/me', protect, getMe);
+
+// 📋 Which teachers teach each student this month on Google Calendar (Admin only, Users page)
+router.get('/assignment-check', protect, allowRoles('admin'), getAssignmentCheck);
 
 // 🧑‍🏫 Teacher Students Route
 router.get('/my-students', protect, getMyStudents);

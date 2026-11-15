@@ -10,6 +10,7 @@ const {
   getHonorList,
   getMonthlyReportTracking // ✨ NEW: Tracker Import
 } = require('../controllers/adminController');
+const { getReminderPreview } = require('../controllers/reportDutyController'); // 📋 Step 5: preview reminders
 const { protect, admin } = require('../middleware/authMiddleware');
 
 // All routes here are protected (Must be Logged In + Must be Admin)
@@ -37,5 +38,8 @@ router.get('/honor-list/:monthYear', protect, admin, getHonorList);
 // ✨ SCHOOL-WIDE REPORT TRACKER ROUTE
 // ==========================================
 router.get('/report-tracking/:monthYear', protect, admin, getMonthlyReportTracking); // ✨ NEW: Tracker Route
+
+// 📋 Step 5: preview today's plan / report reminders (sends nothing)
+router.get('/reminder-preview', protect, admin, getReminderPreview);
 
 module.exports = router;

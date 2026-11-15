@@ -157,8 +157,23 @@ const userSchema = mongoose.Schema(
         totalScore: { type: Number, default: null }, // Always out of 10
         teacherNote: { type: String, default: '' },
         isFinalized: { type: Boolean, default: false }, // false = Phase 1 Plan, true = Phase 2 Report
-        approvalStatus: { type: String, enum: ['pending', 'approved', 'rejected'], default: 'pending' }, 
-        createdAt: { type: Date, default: Date.now }
+        approvalStatus: { type: String, enum: ['pending', 'approved', 'rejected'], default: 'pending' },
+        createdAt: { type: Date, default: Date.now },
+
+        // 📋 Step 5: which teacher saved which part (first save time = on-time check)
+        savedBy: [
+          {
+            teacher: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+            teacherName: { type: String },
+            planSavedAt: { type: Date },
+            reportSavedAt: { type: Date }
+          }
+        ],
+        lastSavedByName: { type: String },   // shown on the approval screen ("New part from …")
+        lastSavedAt: { type: Date },         // approval nudge (waiting 2+ days)
+        waitingForNames: [{ type: String }], // "Approve and wait for {name}"
+        planSentAt: { type: Date },          // student notified once per phase
+        reportSentAt: { type: Date }
       }
     ],
 

@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 import axios from 'axios';
 import { useNavigate } from 'react-router-dom';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
@@ -56,6 +56,11 @@ function Dashboard() {
   // ⏸️ STUDENT PAUSE (Step 3): students who are away / paused
   const [awayStudents, setAwayStudents] = useState([]);
 
+  // 📋 PLAN & REPORT DEADLINES (Step 5): progress bars, class cards, red panel
+  const [myDuties, setMyDuties] = useState(null);
+  const [openDutyList, setOpenDutyList] = useState(null);
+  const openAsReportRef = useRef(false);
+
   const navigate = useNavigate();
   
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -92,12 +97,13 @@ function Dashboard() {
         const token = localStorage.getItem('token');
         const config = { headers: { Authorization: `Bearer ${token}` } };
         const res = await axios.get(`${API_URL}/api/student/reports/${planStudentIdentifier}/${planForm.monthYear}`, config);
+        const forceReport = openAsReportRef.current; // 📋 Step 5: opened from a "Report required" card
         
         if (res.data) {
           const r = res.data;
           setPlanForm(prev => ({
             ...prev,
-            isFinalized: r.isFinalized || false,
+            isFinalized: forceReport || r.isFinalized || false,
             quranEnrolled: r.quran?.enrolled || false,
             quranPlan: r.quran?.plan || '',
             quranScore: r.quran?.score || '',
@@ -118,7 +124,7 @@ function Dashboard() {
         } else {
           setPlanForm(prev => ({
             ...prev,
-            isFinalized: false,
+            isFinalized: forceReport,
             quranEnrolled: false, quranPlan: '', quranScore: '', quranCompleted: false, quranComment: '',
             arabicEnrolled: false, arabicPlan: '', arabicScore: '', arabicCompleted: false, arabicComment: '',
             islamicEnrolled: false, islamicPlan: '', islamicScore: '', islamicCompleted: false, islamicComment: '',
@@ -201,6 +207,7 @@ function Dashboard() {
       fetchReportStatuses(token);
       fetchLateProgress(token);
       fetchAwayStudents(token);
+      fetchMyDuties(token);
     } else {
       fetchSubSummary(token);
     }
@@ -215,6 +222,31 @@ function Dashboard() {
     } catch (error) {
       console.error("Failed to fetch away students:", error);
     }
+  };
+
+  // 📋 Step 5: plan / report duties for this teacher
+  const fetchMyDuties = async (token) => {
+    try {
+      const config = { headers: { Authorization: `Bearer ${token}` } };
+      const res = await axios.get(`${API_URL}/api/student/my-duties`, config);
+      setMyDuties(res.data || null);
+    } catch (error) {
+      console.error("Failed to fetch plan/report duties:", error);
+    }
+  };
+
+  // 'YYYY-MM' → the month text the plan form uses (same format as the month list)
+  const monthTextOf = (key) => {
+    const [y, m] = key.split('-').map(Number);
+    return new Date(y, m - 1, 1).toLocaleString('default', { month: 'long', year: 'numeric' });
+  };
+
+  // Clicking a "Plan required" / "Report required" card opens the form on the right month and phase
+  const openDutyCard = (cls, card) => {
+    openAsReportRef.current = card.kind === 'report';
+    setPlanStudentIdentifier(cls.studentGroupName || cls.title || cls.studentGroupId);
+    setPlanForm(prev => ({ ...prev, monthYear: monthTextOf(card.monthKey), isFinalized: card.kind === 'report' }));
+    setIsPlanModalOpen(true);
   };
 
   const findAwayStudent = (cls) => {
@@ -533,6 +565,7 @@ function Dashboard() {
       }));
 
       fetchReportStatuses(token); 
+      fetchMyDuties(token); // 📋 Step 5: refresh progress after saving
     } catch (error) {
       console.error('Error saving plan:', error);
       alert(error.response?.data?.message || '❌ Failed to save study plan.');
@@ -693,6 +726,44 @@ function Dashboard() {
             <p style={{ margin: 0 }}>You have taught <strong>{earnings.totalHours} hours</strong> this month at <strong>${earnings.hourlyRate}/hr</strong>.</p>
           </div>
           <div style={{ fontSize: '36px', fontWeight: 'bold' }}>${earnings.currentEarnings}</div>
+        </div>
+      )}
+
+      {/* 📋 PLAN & REPORT DEADLINES (Step 5): red panel + progress bars */}
+      {user?.role?.toLowerCase() === 'teacher' && myDuties && (
+        <div style={{ marginBottom: '20px' }}>
+          {myDuties.panel?.length > 0 && (
+            <div style={{ backgroundColor: '#fdecea', border: '2px solid #d63031', color: '#c0392b', padding: '15px 20px', borderRadius: '10px', marginBottom: '15px' }}>
+              {myDuties.panel.map((p, i) => (
+                <p key={i} style={{ margin: i ? '8px 0 0 0' : 0, fontWeight: 'bold' }}>
+                  🚨 Immediate action required: {p.kind === 'plan'
+                    ? `study plans for ${p.month} are missing for: ${p.students.join(', ')}. Please save them now.`
+                    : `the ${p.month} report for ${p.students[0]} is missing. Please save it now.`}
+                </p>
+              ))}
+            </div>
+          )}
+          {[
+            { id: 'plans', on: myDuties.progress?.plansOn, icon: '📋', label: 'Plans', data: myDuties.progress?.plans },
+            { id: 'reports', on: myDuties.progress?.reportsOn, icon: '📝', label: 'Reports', data: myDuties.progress?.reports }
+          ].filter(b => b.on && b.data && b.data.total > 0).map(b => {
+            const pct = Math.round((b.data.done / b.data.total) * 100);
+            const complete = b.data.done === b.data.total;
+            return (
+              <div key={b.id} onClick={() => setOpenDutyList(openDutyList === b.id ? null : b.id)} style={{ backgroundColor: 'white', padding: '12px 16px', borderRadius: '10px', marginBottom: '10px', boxShadow: '0 2px 8px rgba(0,0,0,0.05)', cursor: complete ? 'default' : 'pointer' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 'bold', fontSize: '14px', color: '#2d3436', marginBottom: '8px', gap: '10px', flexWrap: 'wrap' }}>
+                  <span>{b.icon} {b.label} for {myDuties.progress.month}: {b.data.done} of {b.data.total} saved</span>
+                  <span style={{ color: complete ? '#00b894' : '#636e72', fontSize: '12px' }}>{complete ? '✅ All done' : (openDutyList === b.id ? '▲ Hide' : '▼ Show missing')}</span>
+                </div>
+                <div style={{ height: '8px', backgroundColor: '#f1f2f6', borderRadius: '4px', overflow: 'hidden' }}>
+                  <div style={{ width: `${pct}%`, height: '100%', backgroundColor: complete ? '#00b894' : '#0984e3' }}></div>
+                </div>
+                {openDutyList === b.id && !complete && (
+                  <p style={{ margin: '10px 0 0 0', fontSize: '13px', color: '#636e72' }}>Missing: {b.data.missing.join(', ')}</p>
+                )}
+              </div>
+            );
+          })}
         </div>
       )}
 
@@ -933,6 +1004,13 @@ function Dashboard() {
                       );
                     })()}
 
+                    {/* 📋 PLAN / REPORT REQUIRED CARDS (Step 5) */}
+                    {user?.role?.toLowerCase() === 'teacher' && (myDuties?.cards?.[cls.id] || []).map((card, cardIdx) => (
+                      <button key={cardIdx} onClick={() => openDutyCard(cls, card)} title="Open the form for this month" style={{ display: 'inline-block', backgroundColor: card.kind === 'plan' ? '#e8f4fd' : '#fdecea', color: card.kind === 'plan' ? '#0984e3' : '#d63031', padding: '6px 12px', borderRadius: '6px', fontSize: '13px', fontWeight: 'bold', marginBottom: '15px', marginRight: '10px', border: card.kind === 'plan' ? '1px solid #74b9ff' : '1px solid #ff7675', cursor: 'pointer' }}>
+                        {card.kind === 'plan' ? '📋 Plan required' : '📝 Report required'} ({card.month})
+                      </button>
+                    ))}
+
                     {isNextClass && nextClassCountdown && (
                       <div style={{ display: 'inline-block', backgroundColor: '#fff3cd', color: '#d35400', padding: '6px 12px', borderRadius: '6px', fontSize: '13px', fontWeight: 'bold', marginBottom: '15px', border: '1px solid #ffe69c' }}>
                         ⏳ Starts in: {nextClassCountdown}
@@ -947,6 +1025,7 @@ function Dashboard() {
                       </span>
                       <button 
                         onClick={() => {
+                          openAsReportRef.current = false;
                           setPlanStudentIdentifier(cls.studentGroupName || cls.title || cls.studentGroupId);
                           setIsPlanModalOpen(true);
                         }} 
@@ -1094,7 +1173,7 @@ function Dashboard() {
                   onChange={(e) => setPlanForm({...planForm, monthYear: e.target.value})}
                   style={{ padding: '8px', borderRadius: '6px', border: '1px solid #dfe6e9', backgroundColor: 'white', fontWeight: 'bold', fontSize: '14px' }}
                 >
-                  {recentMonths.map(m => (
+                  {[...new Set([planForm.monthYear, ...recentMonths])].map(m => (
                     <option key={m} value={m}>{m}</option>
                   ))}
                 </select>

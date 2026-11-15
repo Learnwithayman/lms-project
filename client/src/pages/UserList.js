@@ -61,6 +61,10 @@ function UserList() {
   const [isSubUpdating, setIsSubUpdating] = useState(false);
   const [isSyncingTZ, setIsSyncingTZ] = useState(false); // ✨ Timezone Sync State
 
+  // 🧑‍🏫 Step 5: assignment review (unassigned students + who teaches them on Google Calendar)
+  const [calendarTeachers, setCalendarTeachers] = useState(null);
+  const [showUnassignedOnly, setShowUnassignedOnly] = useState(false);
+
   const [isAssignModalOpen, setIsAssignModalOpen] = useState(false);
   const [assignStudent, setAssignStudent] = useState(null);
   const [selectedTeachers, setSelectedTeachers] = useState([]); 
@@ -86,6 +90,23 @@ function UserList() {
 
   useEffect(() => {
     fetchUsers();
+  }, []);
+
+  // 🧑‍🏫 Step 5: which teachers actually teach each student this month (for the "Calendar:" warning)
+  useEffect(() => {
+    const loadAssignmentCheck = async () => {
+      const token = localStorage.getItem('token');
+      if (!token) return;
+      try {
+        const config = { headers: { Authorization: `Bearer ${token}` } };
+        const res = await axios.get(`${API_URL}/api/users/assignment-check`, config);
+        setCalendarTeachers(res.data?.calendarTeachers || {});
+      } catch (error) {
+        console.error('Failed to load the calendar teacher check:', error);
+        setCalendarTeachers({});
+      }
+    };
+    loadAssignmentCheck();
   }, []);
 
   const fetchUsers = async () => {
@@ -489,8 +510,21 @@ function UserList() {
 
   const allTeachers = users.filter(u => u.role === 'teacher');
 
+  // 🧑‍🏫 Step 5: assigned teachers vs. teachers on this month's calendar
+  const assignedTeachersOf = (student) => (student.assignedTeachers || [])
+    .map(id => allTeachers.find(t => t._id === (id?._id || id)))
+    .filter(Boolean);
+  const calendarOnlyTeachersOf = (student) => ((calendarTeachers || {})[student._id] || [])
+    .filter(c => !assignedTeachersOf(student).some(a => a._id === c.id));
+  // Studying students (active / paused subscription, or classes on the calendar this month) with no teacher assigned
+  const unassignedStudents = users.filter(u => u.role === 'student' && assignedTeachersOf(u).length === 0 &&
+    (['active', 'paused'].includes(u.subscription?.status) || ((calendarTeachers || {})[u._id] || []).length > 0));
+  const unassignedIds = new Set(unassignedStudents.map(u => u._id));
+  const mismatchCount = calendarTeachers ? users.filter(u => u.role === 'student' && assignedTeachersOf(u).length > 0 && calendarOnlyTeachersOf(u).length > 0).length : 0;
+
   const filteredUsers = users
     .filter((user) => {
+      if (showUnassignedOnly) return unassignedIds.has(user._id);
       const matchesRole = roleFilter === 'ALL' || user.role?.toLowerCase() === roleFilter.toLowerCase();
       const matchesSearch = (user.name || '').toLowerCase().includes(searchTerm.toLowerCase()) || (user.email || '').toLowerCase().includes(searchTerm.toLowerCase());
       return matchesRole && matchesSearch;
@@ -551,6 +585,19 @@ function UserList() {
         />
       </div>
 
+      {/* 🧑‍🏫 STEP 5: ASSIGNMENT SUMMARY BAR (click = show only unassigned students) */}
+      <div
+        onClick={() => unassignedStudents.length > 0 && setShowUnassignedOnly(!showUnassignedOnly)}
+        style={{ backgroundColor: unassignedStudents.length > 0 ? '#fdecea' : '#eafaf1', border: unassignedStudents.length > 0 ? '1px solid #ff7675' : '1px solid #2ecc71', color: unassignedStudents.length > 0 ? '#c0392b' : '#1e8449', padding: '12px 18px', borderRadius: '10px', marginBottom: '20px', fontWeight: 'bold', cursor: unassignedStudents.length > 0 ? 'pointer' : 'default', display: 'flex', justifyContent: 'space-between', gap: '10px', flexWrap: 'wrap' }}>
+        <span>
+          {unassignedStudents.length > 0 ? `⚠️ ${unassignedStudents.length} student${unassignedStudents.length === 1 ? '' : 's'} not assigned` : '✅ All students assigned'}
+          {mismatchCount > 0 && <span style={{ color: '#d35400' }}> · ⚠️ {mismatchCount} with a different teacher on the calendar</span>}
+        </span>
+        <span style={{ fontSize: '12px', fontWeight: 'normal' }}>
+          {calendarTeachers === null ? 'Checking the calendar...' : (unassignedStudents.length > 0 ? (showUnassignedOnly ? 'Showing only unassigned · click to show everyone' : 'Click to show them') : '')}
+        </span>
+      </div>
+
       {/* 📊 USERS TABLE */}
       <div style={{ backgroundColor: 'white', borderRadius: '12px', boxShadow: '0 5px 15px rgba(0,0,0,0.04)', overflow: 'auto' }}>
         <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
@@ -579,6 +626,21 @@ function UserList() {
                         {activeMakeups} Makeups
                       </span>
                     )}
+                    {/* 🧑‍🏫 Step 5: who teaches this student */}
+                    {user.role === 'student' && (() => {
+                      const assigned = assignedTeachersOf(user);
+                      const calendarOnly = calendarOnlyTeachersOf(user);
+                      return (
+                        <div style={{ fontSize: '12px', marginTop: '4px' }}>
+                          {assigned.length > 0
+                            ? <span style={{ color: '#636e72' }}>👨‍🏫 {assigned.map(t => t.name).join(', ')}</span>
+                            : <span style={{ color: '#d63031', fontWeight: 'bold' }}>⚠️ No teacher</span>}
+                          {calendarOnly.length > 0 && (
+                            <span style={{ color: '#d35400', fontWeight: 'bold' }}> · ⚠️ Calendar: {calendarOnly.map(c => c.name).join(', ')}</span>
+                          )}
+                        </div>
+                      );
+                    })()}
                   </td>
                   <td style={{ padding: '14px' }}>
                     <span style={{

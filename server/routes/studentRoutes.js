@@ -8,6 +8,7 @@ const {
   getExistingReport,
   getStudentReportStatuses // 👈 IMPORTED HERE
 } = require('../controllers/studentController');
+const { getMyDuties } = require('../controllers/reportDutyController'); // 📋 Step 5: plan & report deadlines
 const { protect } = require('../middleware/authMiddleware');
 const { allowRoles } = require('../middleware/roleMiddleware'); // 🔐 Role locks
 
@@ -22,6 +23,9 @@ router.post('/request-makeup', protect, studentOnly, requestMakeup);
 
 // ✨ NEW: Get all student report statuses for the current month (Must be above /reports/:id) (Teacher only)
 router.get('/reports-status', protect, teacherOnly, getStudentReportStatuses);
+
+// 📋 Step 5: the teacher's plan / report progress, class cards and red panel (Teacher only)
+router.get('/my-duties', protect, teacherOnly, getMyDuties);
 
 // ✨ DYNAMIC GRADING: Get an existing report (For Teacher Phase 2 Loading) (Teacher only)
 router.get('/reports/:studentIdentifier/:monthYear', protect, teacherOnly, getExistingReport);

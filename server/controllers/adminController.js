@@ -2,6 +2,7 @@ const asyncHandler = require('express-async-handler');
 const User = require('../models/User');
 const Subscription = require('../models/Subscription');
 const { sendMessage } = require('../utils/whatsappBot');
+const D = require('../utils/reportDuties'); // 📋 Step 5: who owes which plan / report
 const { google } = require('googleapis');
 const path = require('path');
 const fs = require('fs');
@@ -135,11 +136,31 @@ const getPendingReports = asyncHandler(async (req, res) => {
             arabic: report.arabic,
             islamicStudies: report.islamicStudies,
             totalScore: report.totalScore,
-            teacherNote: report.teacherNote
+            teacherNote: report.teacherNote,
+            lastSavedByName: report.lastSavedByName || '',
+            lastSavedAt: report.lastSavedAt || null
           });
         }
       });
     }
+  });
+
+  // 👥 Step 5: two-teacher students — how many teachers saved this part, and who we are still waiting for
+  const monthKeys = [...new Set(pending.map((p) => D.normMonth(p.monthYear)).filter((k) => k && k >= D.GO_LIVE.reports))];
+  const dutiesByMonth = {};
+  for (const key of monthKeys) {
+    try {
+      dutiesByMonth[key] = (await D.buildMonthDuties(key, { students: users })).duties;
+    } catch (error) {
+      console.error(`Could not check teachers for ${key}:`, error.message);
+    }
+  }
+  pending.forEach((p) => {
+    const duties = (dutiesByMonth[D.normMonth(p.monthYear)] || []).filter((d) => String(d.student._id) === String(p.studentId));
+    const field = p.isFinalized ? 'reportDone' : 'planDone';
+    p.teacherCount = duties.length;
+    p.doneCount = duties.filter((d) => d[field]).length;
+    p.waitingFor = duties.filter((d) => !d[field]).map((d) => d.teacher.name);
   });
   
   res.status(200).json(pending);
@@ -149,7 +170,7 @@ const getPendingReports = asyncHandler(async (req, res) => {
 // @route   PUT /api/admin/approve-report
 // @access  Private/Admin
 const approveReport = asyncHandler(async (req, res) => {
-  const { studentId, monthYear } = req.body;
+  const { studentId, monthYear, mode, waitingFor } = req.body;
   const user = await User.findById(studentId);
   
   if (!user) {
@@ -164,6 +185,19 @@ const approveReport = asyncHandler(async (req, res) => {
   }
 
   report.approvalStatus = 'approved';
+
+  // 👥 Step 5: "Approve and wait for {name}" → approved, but the student message waits for the other teacher
+  if (mode === 'wait') {
+    report.waitingForNames = Array.isArray(waitingFor) ? waitingFor : [];
+    await user.save();
+    return res.status(200).json({ message: `Approved. The student message will go out after ${report.waitingForNames.join(', ') || 'the other teacher'} saves and you approve.`, waiting: true });
+  }
+
+  // 📨 The student gets the message only once per phase (plan / report)
+  report.waitingForNames = [];
+  const sentField = report.isFinalized ? 'reportSentAt' : 'planSentAt';
+  const alreadySent = !!report[sentField];
+  if (!alreadySent) report[sentField] = new Date();
   await user.save();
 
   const commonPassword = "Lwa@123#"; 
@@ -179,14 +213,14 @@ const approveReport = asyncHandler(async (req, res) => {
     const codes = await extractGroupCodes(user.name);
     const targetJid = codes.student || user.studentGroupId || user.whatsappGroupId || user.whatsappNumber;
     
-    if (targetJid && sendMessage) {
+    if (targetJid && sendMessage && !alreadySent) {
       await sendMessage(targetJid, whatsappMessage).catch(err => console.log("Bot offline, skipping."));
     }
   } catch (err) {
     console.error("Failed to queue WhatsApp approval message:", err);
   }
 
-  res.status(200).json({ message: 'Report approved and published.', whatsappMessage });
+  res.status(200).json({ message: alreadySent ? "Approved. The student was already sent this month's message, so no new message was sent." : 'Report approved and published.', whatsappMessage, alreadySent });
 });
 
 // @desc    Reject a report and request edits from the teacher
@@ -271,30 +305,60 @@ const getHonorList = asyncHandler(async (req, res) => {
 // ==========================================
 const getMonthlyReportTracking = asyncHandler(async (req, res) => {
   const { monthYear } = req.params;
-  
-  const students = await User.find({ role: 'student' }).select('name email monthlyReports');
-  let trackingData = [];
+  const key = D.normMonth(monthYear);
+  if (!key) {
+    res.status(400);
+    throw new Error(`Unknown month "${monthYear}"`);
+  }
 
-  students.forEach(student => {
-    const report = student.monthlyReports.find(r => r.monthYear === monthYear);
-    
-    let status = 'Missing'; 
-    let approvalStatus = 'N/A';
-    
-    if (report) {
-      status = report.isFinalized ? 'Final Report' : 'Draft Plan';
-      approvalStatus = report.approvalStatus || 'pending';
+  // 📋 Step 5: only students who really owe something this month (a class on Google Calendar, not fully paused)
+  const m = await D.buildMonthDuties(key);
+  const rows = new Map();
+  m.duties.forEach((d) => {
+    const id = String(d.student._id);
+    if (!rows.has(id)) {
+      const r = d.record;
+      rows.set(id, {
+        studentId: d.student._id,
+        studentName: d.student.name,
+        status: r ? (r.isFinalized ? 'Final Report' : 'Draft Plan') : 'Missing',
+        approvalStatus: r ? (r.approvalStatus || 'pending') : 'N/A',
+        teachers: []
+      });
     }
-
-    trackingData.push({
-      studentId: student._id,
-      studentName: student.name,
-      status: status,
-      approvalStatus: approvalStatus 
+    rows.get(id).teachers.push({
+      teacherId: String(d.teacher._id),
+      name: d.teacher.name,
+      planDone: d.planDone,
+      reportDone: d.reportDone,
+      planOnTime: d.planOnTime,
+      reportOnTime: d.reportOnTime
     });
   });
 
+  const trackingData = [...rows.values()].map((r) => ({
+    ...r,
+    teacherCount: r.teachers.length,
+    plansDone: r.teachers.filter((t) => t.planDone).length,
+    reportsDone: r.teachers.filter((t) => t.reportDone).length
+  }));
   trackingData.sort((a, b) => a.studentName.localeCompare(b.studentName));
+
+  // ⏱️ On time vs late, per teacher
+  const stats = new Map();
+  m.duties.forEach((d) => {
+    const id = String(d.teacher._id);
+    if (!stats.has(id)) stats.set(id, { teacherId: id, name: d.teacher.name, students: 0, plansSaved: 0, plansOnTime: 0, plansLate: 0, reportsSaved: 0, reportsOnTime: 0, reportsLate: 0 });
+    const s = stats.get(id);
+    s.students += 1;
+    if (d.planDone) s.plansSaved += 1;
+    if (d.planOnTime === true) s.plansOnTime += 1;
+    if (d.planOnTime === false) s.plansLate += 1;
+    if (d.reportDone) s.reportsSaved += 1;
+    if (d.reportOnTime === true) s.reportsOnTime += 1;
+    if (d.reportOnTime === false) s.reportsLate += 1;
+  });
+  const teacherStats = [...stats.values()].sort((a, b) => a.name.localeCompare(b.name));
 
   const summary = {
     total: trackingData.length,
@@ -303,7 +367,7 @@ const getMonthlyReportTracking = asyncHandler(async (req, res) => {
     final: trackingData.filter(t => t.status === 'Final Report').length,
   };
 
-  res.status(200).json({ summary, trackingData });
+  res.status(200).json({ month: m.label, summary, trackingData, teacherStats });
 });
 
 module.exports = {

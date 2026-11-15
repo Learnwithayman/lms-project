@@ -127,9 +127,25 @@ const addOrUpdateReport = async (req, res) => {
         quran: finalQuran, 
         arabic: finalArabic, 
         islamicStudies: finalIslamic, 
-        totalScore, 
-        approvalStatus: 'pending' 
+        totalScore,
+        approvalStatus: 'pending'
     };
+
+    // 📋 Step 5: remember which teacher saved which part (first save time is kept for the on-time check)
+    const now = new Date();
+    const previousSavedBy = existingReportIndex >= 0 ? (student.monthlyReports[existingReportIndex].savedBy || []).map((e) => (e.toObject ? e.toObject() : e)) : [];
+    const savedBy = previousSavedBy.filter((e) => e.teacher);
+    let mine = savedBy.find((e) => String(e.teacher) === String(req.user._id));
+    if (!mine) {
+      mine = { teacher: req.user._id, teacherName: req.user.name };
+      savedBy.push(mine);
+    }
+    mine.teacherName = req.user.name;
+    if (!mine.planSavedAt) mine.planSavedAt = now;
+    if (isFinalized && !mine.reportSavedAt) mine.reportSavedAt = now;
+    reportData.savedBy = savedBy;
+    reportData.lastSavedByName = req.user.name;
+    reportData.lastSavedAt = now;
 
     if (existingReportIndex >= 0) {
       student.monthlyReports[existingReportIndex] = {
