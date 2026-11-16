@@ -265,6 +265,8 @@ function Dashboard() {
     const clsName = (cls.studentGroupName || '').toLowerCase().trim();
     return awayStudents.find(s => {
       if (code && s.code && s.code.length > 5 && (code.includes(s.code) || s.code.includes(code))) return true;
+      // 🔗 Group fix: any code in the class against any saved code (invite link or old ID)
+      if ((cls.studentCodes || []).some(c => (s.codes || []).some(m => m.length > 5 && (c.includes(m) || m.includes(c))))) return true;
       const n = (s.name || '').toLowerCase().trim();
       return clsName && n && (clsName === n || clsName.includes(n) || n.includes(clsName));
     });

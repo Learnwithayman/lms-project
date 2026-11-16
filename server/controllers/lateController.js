@@ -32,7 +32,7 @@ const resolveClassTarget = async (req) => {
       subject = session.subject || subject;
     }
   } else if (studentGroupId) {
-    studentDoc = await User.findOne({ $or: [{ studentGroupId }, { whatsappGroupId: studentGroupId }] });
+    studentDoc = await User.findOne({ $or: [{ studentGroupId }, { whatsappGroupId: studentGroupId }, { legacyGroupIds: studentGroupId }] }); // 🔗 + old group ID
   }
   if (studentDoc && studentDoc.name) studentName = studentDoc.name;
 

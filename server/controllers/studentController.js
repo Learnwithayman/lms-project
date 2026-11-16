@@ -61,7 +61,8 @@ const addOrUpdateReport = async (req, res) => {
       $or: [ 
         { name: { $regex: new RegExp(safeSearchName, 'i') } }, 
         { studentGroupId: studentIdentifier.trim() },
-        { whatsappGroupId: studentIdentifier.trim() }
+        { whatsappGroupId: studentIdentifier.trim() },
+        { legacyGroupIds: studentIdentifier.trim() } // 🔗 old group ID kept after the link fix
       ],
       role: 'student'
     });
@@ -230,7 +231,8 @@ const getExistingReport = asyncHandler(async (req, res) => {
     $or: [ 
       { name: { $regex: new RegExp(safeSearchName, 'i') } }, 
       { studentGroupId: studentIdentifier.trim() },
-      { whatsappGroupId: studentIdentifier.trim() }
+      { whatsappGroupId: studentIdentifier.trim() },
+      { legacyGroupIds: studentIdentifier.trim() } // 🔗 old group ID kept after the link fix
     ],
     role: 'student'
   });

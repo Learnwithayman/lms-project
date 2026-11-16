@@ -5,6 +5,7 @@ const MessageLog = require('../models/MessageLog');
 const MakeupRequest = require('../models/MakeupRequest'); 
 const whatsappClient = require('../utils/whatsappBot');
 const { google } = require('googleapis');
+const { userGroupCodes, codesMatch, eventTeacherCodes, eventStudentCodes, cleanCode } = require('../utils/classMatch'); // 🔗 old group IDs + invite links
 const mongoose = require('mongoose');
 const path = require('path');
 const fs = require('fs');
@@ -194,6 +195,7 @@ const endClass = async (req, res) => {
          $or: [
              { studentGroupId: studentGroupId || whatsappGroupId },
              { whatsappGroupId: studentGroupId || whatsappGroupId },
+             { legacyGroupIds: studentGroupId || whatsappGroupId }, // 🔗 old group ID kept after the link fix
              { name: finalStudentGroup }
          ]
       });
@@ -237,7 +239,7 @@ const markAttendance = async (req, res) => {
       session = await ClassSession.findById(classId).populate('student').populate('teacher', 'name');
       if (!session) return res.status(404).json({ message: 'Class not found' });
     } else {
-      const studentUser = await User.findOne({ $or: [{ studentGroupId }, { whatsappGroupId: studentGroupId }] });
+      const studentUser = await User.findOne({ $or: [{ studentGroupId }, { whatsappGroupId: studentGroupId }, { legacyGroupIds: studentGroupId }] }); // 🔗 + old group ID
       const teacherUser = await User.findById(req.user._id);
       session = {
         student: studentUser || { name: title || 'Student' },
@@ -310,6 +312,7 @@ const getCompletedClasses = async (req, res) => {
       user.studentGroupId,
       user.teacherGroupId,
       user.whatsappGroupId,
+      ...(user.legacyGroupIds || []), // 🔗 old group IDs kept after the link fix
       user.name
     ].filter(Boolean); 
 
@@ -505,6 +508,8 @@ const getTeacherSchedule = async (req, res) => {
       const classroomLink = classroomMatch ? (classroomMatch[1] || classroomMatch[2]) : null;
 
       return {
+        teacherCodes: eventTeacherCodes(event), // 🔗 every teacher code in the class (old ID + invite link)
+        studentCodes: eventStudentCodes(event), // 🔗 every student code in the class
         id: event.id,
         title: event.summary,
         startTime: new Date(start),
@@ -517,14 +522,16 @@ const getTeacherSchedule = async (req, res) => {
       };
     });
 
+    // 🔗 Group fix: match on ANY saved code of the user (invite link or old ID) against ANY code in the class
+    const myCodes = [...userGroupCodes(databaseUser, isTeacher ? 'teacherGroupId' : 'studentGroupId'), ...[databaseUser.groupId, databaseUser.whatsappGroup].map(cleanCode)].filter((c) => c && c.length > 5);
+
     const userSpecificClasses = processedClasses.filter((cls) => {
-      const isValidId = cleanSearch && cleanSearch.length > 5;
+      const isValidId = myCodes.length > 0;
 
       if (isTeacher) {
-        if (!cls.teacherGroupId) return false;
-        return isValidId ? (cls.teacherGroupId.includes(cleanSearch) || cleanSearch.includes(cls.teacherGroupId)) : false;
+        return isValidId ? codesMatch(cls.teacherCodes, myCodes) : false;
       } else {
-        const sMatch = isValidId && cls.studentGroupId && (cls.studentGroupId.includes(cleanSearch) || cleanSearch.includes(cls.studentGroupId));
+        const sMatch = isValidId && codesMatch(cls.studentCodes, myCodes);
         
         const dbName = databaseUser.name ? databaseUser.name.toLowerCase().trim() : '';
         const clsName = cls.studentGroupName ? cls.studentGroupName.toLowerCase().trim() : '';
@@ -538,6 +545,7 @@ const getTeacherSchedule = async (req, res) => {
       databaseUser.studentGroupId,
       databaseUser.teacherGroupId,
       databaseUser.whatsappGroupId,
+      ...(databaseUser.legacyGroupIds || []), // 🔗 old group IDs kept after the link fix
       databaseUser.name
     ].filter(Boolean);
 
@@ -607,6 +615,7 @@ const getAdminLiveMonitor = async (req, res) => {
       const zoomMatch = description.match(/(https:\/\/[^\s<"]*zoom\.us[^\s<"]*)/i);
       
       return {
+        teacherCodes: eventTeacherCodes(event), // 🔗 every teacher code in the class (old ID + invite link)
         id: event.id,
         title: event.summary,
         startTime: new Date(event.start.dateTime || event.start.date),
@@ -622,12 +631,12 @@ const getAdminLiveMonitor = async (req, res) => {
     }).populate('teacher', 'name');
 
     const liveMonitorData = teachers.map(teacher => {
-      const teacherId = teacher.whatsappGroupId || teacher.teacherGroupId || teacher.groupId;
-      const cleanSearch = teacherId ? teacherId.replace('https://chat.whatsapp.com/', '').trim() : null;
+      // 🔗 Group fix: any saved code of the teacher (invite link or old ID) against any code in the class
+      const teacherCodes = [...userGroupCodes(teacher, 'teacherGroupId'), cleanCode(teacher.groupId)].filter((c) => c && c.length > 5);
 
       const teacherGcal = processedClasses.filter(cls => {
-        if (!cls.teacherGroupId || !cleanSearch) return false;
-        return cls.teacherGroupId.includes(cleanSearch) || cleanSearch.includes(cls.teacherGroupId);
+        if (!teacherCodes.length) return false;
+        return codesMatch(cls.teacherCodes, teacherCodes);
       });
       const teacherDbClasses = dbClasses.filter(dbCls => dbCls.teacher && dbCls.teacher._id.toString() === teacher._id.toString());
 

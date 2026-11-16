@@ -19,7 +19,8 @@ const userSchema = mongoose.Schema(
 
     // --- CALENDAR & BOT LINKING ---
     teacherGroupId: { type: String, default: '' }, 
-    studentGroupId: { type: String, default: '' }, 
+    studentGroupId: { type: String, default: '' },
+    legacyGroupIds: [{ type: String }], // 🔗 old WhatsApp group IDs (1203…@g.us) kept after "Fix group links", still used to match classes
     
     // --- TEACHER PAYROLL ---
     hourlyRate: { type: Number, default: 3.0 },

@@ -22,7 +22,7 @@ cron.schedule('* * * * *', async () => {
     const now = new Date();
 
     // ⏸️ Step 3: students who are paused or away → no reminders at all for their classes
-    const pausedStudents = await User.find({ 'pause.kind': { $in: ['full', 'away'] } }, 'name studentGroupId pause');
+    const pausedStudents = await User.find({ 'pause.kind': { $in: ['full', 'away'] } }, 'name studentGroupId legacyGroupIds pause');
 
     for (const cls of classes) {
       if (cls.description && cls.description.toLowerCase().includes('do not send')) {

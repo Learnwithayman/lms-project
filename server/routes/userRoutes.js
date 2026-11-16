@@ -16,6 +16,7 @@ const {
 const { setPause, getPauseClasses, removePauseClasses, reactivateStudent } = require('../controllers/pauseController'); // ⏸️ Student pause (Step 3)
 const { getAssignmentCheck } = require('../controllers/reportDutyController'); // 📋 Step 5: calendar teacher check
 const { getClassChanges } = require('../controllers/rescheduleController'); // 📜 Step 7: class changes history
+const { previewGroupLinks, applyGroupLinks } = require('../controllers/groupLinkController'); // 🔗 Fix group links
 const { protect } = require('../middleware/authMiddleware');
 const { allowRoles } = require('../middleware/roleMiddleware'); // 🔐 Role locks
 
@@ -24,6 +25,10 @@ router.post('/', protect, allowRoles('admin'), registerUser);
 router.get('/', protect, allowRoles('admin'), getAllUsers);
 router.post('/login', loginUser);
 router.get('/me', protect, getMe);
+
+// 🔗 Fix group links: preview (nothing saved) and apply (Admin only)
+router.get('/group-links/preview', protect, allowRoles('admin'), previewGroupLinks);
+router.post('/group-links/apply', protect, allowRoles('admin'), applyGroupLinks);
 
 // 📋 Which teachers teach each student this month on Google Calendar (Admin only, Users page)
 router.get('/assignment-check', protect, allowRoles('admin'), getAssignmentCheck);

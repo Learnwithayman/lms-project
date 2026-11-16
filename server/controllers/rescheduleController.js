@@ -4,7 +4,7 @@ const ClassChange = require('../models/ClassChange');
 const { sendMessage } = require('../utils/whatsappBot');
 const A = require('../utils/availability');
 const M = require('../utils/rescheduleMessages');
-const { parseEventStudent, parseEventTeacher, classBelongsToStudent, classBelongsToTeacher } = require('../utils/classMatch');
+const { parseEventStudent, eventTeacherCodes, eventGroupLinks, classBelongsToStudent, classBelongsToTeacher } = require('../utils/classMatch');
 
 // ==========================================
 // 🔁 STEP 7: POSTPONE, MAKEUP BOOKING, ADMIN POSTPONE / CANCEL, TEACHER "MY SCHEDULE"
@@ -42,8 +42,16 @@ const send = async (target, text) => {
     return false;
   }
 };
-const toStudent = (student, text) => send(student && student.studentGroupId, text);
-const toTeacher = (teacher, text) => send(teacher && teacher.teacherGroupId, text);
+// 🔗 Group fix: send to the invite link written in the Google Calendar class first (like the older messages),
+// then to the link saved in the LMS
+const toStudent = (student, text, ev) => {
+  const fromClass = ev && ev.description ? eventGroupLinks(ev).student : null;
+  return send(fromClass || (student && student.studentGroupId), text);
+};
+const toTeacher = (teacher, text, ev) => {
+  const fromClass = ev && ev.description && classBelongsToTeacher(eventTeacherCodes(ev), teacher) ? eventGroupLinks(ev).teacher : null;
+  return send(fromClass || (teacher && teacher.teacherGroupId), text);
+};
 
 const studentTz = (ev) => (ev && ev.start && ev.start.timeZone) || A.STUDENT_TZ;
 const cairo = (date) => A.fmtTime(date, A.CAIRO_TZ);
@@ -93,7 +101,7 @@ const notifyWaitingStudents = async (teacher) => {
     if (!waiting.length) continue;
     waiting.forEach((c) => { c.waitingTeacherUpdate = false; });
     await s.save();
-    await toStudent(s, M.studentScheduleUpdated(s));
+    await toStudent(s, M.studentScheduleUpdated(s), waiting[0].template);
     notified.push(s.name);
   }
   return notified;
@@ -232,10 +240,10 @@ const studentPostpone = handle(async (req, res) => {
 
   logChange({ action: 'postpone', by: 'student', byUser: student._id, student: student._id, studentName: student.name, teacher: teacher && teacher._id, teacherName: teacher && teacher.name, eventId: ev.id, title: ev.summary, oldStart: start, reason: 'Postponed by student', credit: true });
 
-  await toStudent(student, M.studentPostponed(student, A.fmtTime(start, studentTz(ev))));
+  await toStudent(student, M.studentPostponed(student, A.fmtTime(start, studentTz(ev))), ev);
   if (teacher) {
-    if (fresh) await toTeacher(teacher, M.teacherChanged(teacher, student.name, cairo(start), 'postponed by the student. They will book a new time from your free hours'));
-    else await toTeacher(teacher, M.teacherUpdateNow(teacher, student.name, cairo(start)));
+    if (fresh) await toTeacher(teacher, M.teacherChanged(teacher, student.name, cairo(start), 'postponed by the student. They will book a new time from your free hours'), ev);
+    else await toTeacher(teacher, M.teacherUpdateNow(teacher, student.name, cairo(start)), ev);
   } else {
     await send(ADMIN_GROUP_TARGET, M.adminNoFreeTimes(student.name, 'their teacher (no teacher found for this class)'));
   }
@@ -275,8 +283,8 @@ const bookMakeup = handle(async (req, res) => {
     throw new HttpError(400, 'We could not prepare your class automatically. Please contact the admin.');
   }
   let description = template.description || '';
-  const oldCode = parseEventTeacher({ description });
-  if (!classBelongsToTeacher(oldCode, teacher)) description = A.swapTeacherLink(description, oldCode, teacher);
+  const oldCodes = eventTeacherCodes({ description });
+  if (!classBelongsToTeacher(oldCodes, teacher)) description = A.swapTeacherLink(description, oldCodes, teacher);
   const summary = (template.summary || student.name).startsWith('🎒 Makeup') ? template.summary : `🎒 Makeup: ${template.summary || student.name}`;
   const timeZone = template.timeZone || A.STUDENT_TZ;
 
@@ -297,8 +305,8 @@ const bookMakeup = handle(async (req, res) => {
 
   logChange({ action: 'book', by: 'student', byUser: student._id, student: student._id, studentName: student.name, teacher: teacher._id, teacherName: teacher.name, eventId: created.id, title: summary, oldStart: credit.originalClassDate, newStart: start, reason: 'Makeup booked by student', credit: true });
 
-  await toStudent(student, M.studentMakeupBooked(student, A.fmtTime(start, timeZone), teacher.name));
-  await toTeacher(teacher, M.teacherBooked(teacher, student.name, cairo(start), { makeup: true, oldTime: credit.source === 'postpone' || credit.source === 'admin-postpone' ? cairo(credit.originalClassDate) : null }));
+  await toStudent(student, M.studentMakeupBooked(student, A.fmtTime(start, timeZone), teacher.name), created);
+  await toTeacher(teacher, M.teacherBooked(teacher, student.name, cairo(start), { makeup: true, oldTime: credit.source === 'postpone' || credit.source === 'admin-postpone' ? cairo(credit.originalClassDate) : null }), created);
 
   res.status(200).json({ message: 'Makeup class booked!', start, eventId: created.id });
 });
@@ -368,10 +376,10 @@ const adminPostpone = handle(async (req, res) => {
     addCredit(student, { source: 'admin-postpone', teacher, ev, reason: reason || 'Postponed by admin', waiting: !!teacher && !fresh });
     await student.save();
     logChange({ ...base, action: 'postpone', credit: true });
-    await toStudent(student, M.studentPostponed(student, A.fmtTime(oldStart, tz)));
+    await toStudent(student, M.studentPostponed(student, A.fmtTime(oldStart, tz)), ev);
     if (teacher) {
-      if (fresh) await toTeacher(teacher, M.teacherChanged(teacher, student.name, cairo(oldStart), 'postponed by the admin. The student will book a new time from your free hours'));
-      else await toTeacher(teacher, M.teacherUpdateNow(teacher, student.name, cairo(oldStart)));
+      if (fresh) await toTeacher(teacher, M.teacherChanged(teacher, student.name, cairo(oldStart), 'postponed by the admin. The student will book a new time from your free hours'), ev);
+      else await toTeacher(teacher, M.teacherUpdateNow(teacher, student.name, cairo(oldStart)), ev);
     }
     return res.status(200).json({ message: fresh ? 'Postponed. The student can choose a new time now.' : "Postponed. The teacher was asked to update their schedule first; the student will be told when they can choose." });
   }
@@ -387,8 +395,8 @@ const adminPostpone = handle(async (req, res) => {
   if (mode === 'time') {
     await A.patchEvent(ev.id, when);
     logChange({ ...base, action: 'move', newStart: start });
-    await toStudent(student, M.studentMoved(student, A.fmtTime(oldStart, tz), A.fmtTime(start, tz), null));
-    if (teacher) await toTeacher(teacher, M.teacherChanged(teacher, student.name, cairo(oldStart), `moved to *${cairo(start)} Cairo*`));
+    await toStudent(student, M.studentMoved(student, A.fmtTime(oldStart, tz), A.fmtTime(start, tz), null), ev);
+    if (teacher) await toTeacher(teacher, M.teacherChanged(teacher, student.name, cairo(oldStart), `moved to *${cairo(start)} Cairo*`), ev);
     return res.status(200).json({ message: 'Class moved and both sides notified.' });
   }
 
@@ -397,12 +405,12 @@ const adminPostpone = handle(async (req, res) => {
   if (!newTeacher || !(newTeacher.teacherGroupId || '').trim()) {
     throw new HttpError(400, 'Choose a teacher who has a group link saved.');
   }
-  const description = A.swapTeacherLink(ev.description || '', parseEventTeacher(ev), newTeacher);
+  const description = A.swapTeacherLink(ev.description || '', eventTeacherCodes(ev), newTeacher);
   await A.patchEvent(ev.id, { ...when, description });
   logChange({ ...base, action: 'teacher-change', newStart: start, newTeacher: newTeacher._id, newTeacherName: newTeacher.name });
-  await toStudent(student, M.studentMoved(student, A.fmtTime(oldStart, tz), A.fmtTime(start, tz), newTeacher.name));
-  if (teacher && String(teacher._id) !== String(newTeacher._id)) await toTeacher(teacher, M.teacherChanged(teacher, student.name, cairo(oldStart), 'moved to another teacher'));
-  await toTeacher(newTeacher, M.teacherBooked(newTeacher, student.name, cairo(start), { byAdmin: true }));
+  await toStudent(student, M.studentMoved(student, A.fmtTime(oldStart, tz), A.fmtTime(start, tz), newTeacher.name), ev);
+  if (teacher && String(teacher._id) !== String(newTeacher._id)) await toTeacher(teacher, M.teacherChanged(teacher, student.name, cairo(oldStart), 'moved to another teacher'), ev);
+  await toTeacher(newTeacher, M.teacherBooked(newTeacher, student.name, cairo(start), { byAdmin: true }), { description });
   res.status(200).json({ message: `Class moved to ${newTeacher.name}. Please check the meeting link in Google Calendar.` });
 });
 
@@ -452,8 +460,8 @@ const adminCancel = handle(async (req, res) => {
 
   logChange({ action: 'cancel', by: 'admin', byUser: req.user._id, cancelledBy, student: student && student._id, studentName: student ? student.name : (parseEventStudent(ev).name || ''), teacher: teacher && teacher._id, teacherName: teacher && teacher.name, eventId: ev.id, title: ev.summary, oldStart: start, reason: reason || '', credit: giveCredit && !!student, countedUsed, teacherPaid: payTeacher && !!teacher });
 
-  if (student) await toStudent(student, M.studentCancelled(student, A.fmtTime(start, studentTz(ev)), giveCredit));
-  if (teacher) await toTeacher(teacher, M.teacherChanged(teacher, student ? student.name : (parseEventStudent(ev).name || 'the student'), cairo(start), 'cancelled'));
+  if (student) await toStudent(student, M.studentCancelled(student, A.fmtTime(start, studentTz(ev)), giveCredit), ev);
+  if (teacher) await toTeacher(teacher, M.teacherChanged(teacher, student ? student.name : (parseEventStudent(ev).name || 'the student'), cairo(start), 'cancelled'), ev);
 
   res.status(200).json({ message: 'Class cancelled and removed from Google Calendar.', credit: giveCredit && !!student, countedUsed, teacherPaid: payTeacher && !!teacher });
 });

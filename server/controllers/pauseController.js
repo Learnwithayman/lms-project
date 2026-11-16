@@ -1,6 +1,6 @@
 const User = require('../models/User');
 const { calendar } = require('./scheduleController');
-const { groupCode, parseEventStudent, classBelongsToStudent } = require('../utils/classMatch');
+const { groupCode, userGroupCodes, parseEventStudent, classBelongsToStudent } = require('../utils/classMatch');
 
 // ==========================================
 // ⏸️ STUDENT PAUSE (Step 3)
@@ -172,10 +172,11 @@ const reactivateStudent = async (req, res) => {
 // @access  Teacher
 const getAwayStudents = async (req, res) => {
   try {
-    const users = await User.find({ 'pause.kind': { $in: ['full', 'away'] } }, 'name studentGroupId pause');
+    const users = await User.find({ 'pause.kind': { $in: ['full', 'away'] } }, 'name studentGroupId legacyGroupIds pause');
     res.status(200).json(users.map((u) => ({
       name: u.name,
       code: groupCode(u.studentGroupId),
+      codes: userGroupCodes(u, 'studentGroupId'), // 🔗 invite link code + old IDs
       kind: u.pause.kind,
       returnDate: u.pause.returnDate
     })));

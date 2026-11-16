@@ -62,6 +62,10 @@ function AdminDashboard() {
   const [actionSlots, setActionSlots] = useState(null);
   const [isSubmittingAction, setIsSubmittingAction] = useState(false);
 
+  // 🔗 Fix group links (preview, then apply)
+  const [linkPlan, setLinkPlan] = useState(null);
+  const [loadingLinks, setLoadingLinks] = useState(false);
+
   // ✨ NEW: WhatsApp Bot Test State
   const [isTestingBot, setIsTestingBot] = useState(false);
 
@@ -153,6 +157,36 @@ function AdminDashboard() {
       alert('Failed to load the reminder preview.');
     } finally {
       setLoadingPreview(false);
+    }
+  };
+
+  // 🔗 Fix group links: preview (nothing saved)
+  const fetchLinkPlan = async () => {
+    setLoadingLinks(true);
+    try {
+      const res = await axios.get(`${API_URL}/api/users/group-links/preview`, { headers: { Authorization: `Bearer ${localStorage.getItem('token')}` } });
+      setLinkPlan(res.data);
+    } catch (error) {
+      alert(`❌ ${error.response?.data?.message || 'Could not check the group links.'}`);
+    } finally {
+      setLoadingLinks(false);
+    }
+  };
+
+  // 🔗 Fix group links: apply (saves the invite links; old IDs are kept for matching classes)
+  const applyLinkPlan = async () => {
+    if (!linkPlan?.fixable?.length) return;
+    if (!window.confirm(`Save the new group links for ${linkPlan.fixable.length} people?\n\nTheir old group IDs are kept, so their classes still match.`)) return;
+    setLoadingLinks(true);
+    try {
+      const res = await axios.post(`${API_URL}/api/users/group-links/apply`, {}, { headers: { Authorization: `Bearer ${localStorage.getItem('token')}` } });
+      alert(`✅ ${res.data.message}`);
+      const again = await axios.get(`${API_URL}/api/users/group-links/preview`, { headers: { Authorization: `Bearer ${localStorage.getItem('token')}` } });
+      setLinkPlan(again.data);
+    } catch (error) {
+      alert(`❌ ${error.response?.data?.message || 'Could not save the group links.'}`);
+    } finally {
+      setLoadingLinks(false);
     }
   };
 
@@ -762,6 +796,60 @@ function AdminDashboard() {
                 </div>
               </div>
             ))}
+          </div>
+        )}
+      </div>
+
+      {/* ========================================== */}
+      {/* 🔗 FIX GROUP LINKS (old WhatsApp group IDs → invite links from Google Calendar) */}
+      {/* ========================================== */}
+      <div style={{ backgroundColor: '#fff', padding: '25px', borderRadius: '15px', boxShadow: '0 10px 25px rgba(0,0,0,0.04)', marginTop: '40px', borderTop: '5px solid #00b894' }}>
+        <h2 style={{ margin: 0, color: '#2d3436', fontSize: '20px' }}>🔗 Fix group links</h2>
+        <p style={{ margin: '5px 0 15px 0', color: '#636e72', fontSize: '13px' }}>Finds students and teachers whose saved group is an old WhatsApp group ID, and copies the real invite link from their Google Calendar classes. Preview first; nothing is saved until you press Apply.</p>
+        <button onClick={fetchLinkPlan} disabled={loadingLinks} style={{ padding: '10px 20px', backgroundColor: '#00b894', color: 'white', border: 'none', borderRadius: '8px', fontWeight: 'bold', cursor: 'pointer' }}>
+          {loadingLinks ? 'Checking...' : '🔍 Preview'}
+        </button>
+        {linkPlan && (
+          <div style={{ marginTop: '15px' }}>
+            {linkPlan.fixable.length === 0 ? (
+              <p style={{ color: '#00b894', fontWeight: 'bold' }}>✅ Nothing to fix: every saved group is already a link{linkPlan.notFound.length ? ' (except the ones below)' : ''}.</p>
+            ) : (
+              <>
+                <p style={{ fontWeight: 'bold', margin: '0 0 8px 0' }}>{linkPlan.fixable.length} can be fixed:</p>
+                <div style={{ maxHeight: '320px', overflow: 'auto', border: '1px solid #dfe6e9', borderRadius: '8px' }}>
+                  <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px' }}>
+                    <thead>
+                      <tr style={{ backgroundColor: '#f8f9fa', textAlign: 'left' }}>
+                        <th style={{ padding: '8px' }}>Name</th>
+                        <th style={{ padding: '8px' }}>Old value</th>
+                        <th style={{ padding: '8px' }}>New link (from calendar)</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {linkPlan.fixable.map(r => (
+                        <tr key={r.id} style={{ borderTop: '1px solid #f1f2f6' }}>
+                          <td style={{ padding: '8px' }}><strong>{r.name}</strong><br /><small style={{ color: '#636e72' }}>{r.role}{r.status ? ` · ${r.status}` : ''} · {r.classesFound} classes</small></td>
+                          <td style={{ padding: '8px', color: '#d63031', wordBreak: 'break-all' }}>{r.oldValue || '(empty)'}</td>
+                          <td style={{ padding: '8px', color: '#00b894', wordBreak: 'break-all' }}>
+                            {r.newLink}
+                            {r.otherLinks?.length > 0 && <div style={{ color: '#d35400' }}>⚠️ Also seen: {r.otherLinks.join(', ')}</div>}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+                <button onClick={applyLinkPlan} disabled={loadingLinks} style={{ marginTop: '12px', padding: '10px 20px', backgroundColor: '#0984e3', color: 'white', border: 'none', borderRadius: '8px', fontWeight: 'bold', cursor: 'pointer' }}>
+                  ✅ Apply to {linkPlan.fixable.length} people
+                </button>
+              </>
+            )}
+            {linkPlan.notFound.length > 0 && (
+              <div style={{ marginTop: '15px', backgroundColor: '#fff3cd', border: '1px solid #ffe69c', color: '#856404', padding: '12px 15px', borderRadius: '8px', fontSize: '13px' }}>
+                <strong>⚠️ No link found in Google Calendar for {linkPlan.notFound.length} (no classes in the last 60 days or next 30 days). Please edit these by hand in Users:</strong>
+                <div style={{ marginTop: '6px' }}>{linkPlan.notFound.map(r => `${r.name} (${r.role}${r.status ? `, ${r.status}` : ''})`).join(' · ')}</div>
+              </div>
+            )}
           </div>
         )}
       </div>

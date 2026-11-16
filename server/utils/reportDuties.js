@@ -5,7 +5,7 @@
 
 const User = require('../models/User');
 const { calendar } = require('../controllers/scheduleController');
-const { parseEventStudent, classBelongsToStudent, parseEventTeacher, classBelongsToTeacher } = require('./classMatch');
+const { parseEventStudent, classBelongsToStudent, eventTeacherCodes, classBelongsToTeacher } = require('./classMatch');
 
 const CALENDAR_ID = 'admin@learnwithayman.com';
 const STUDENT_TZ = 'America/New_York';
@@ -77,9 +77,9 @@ const listMonthEvents = async (key) => {
 };
 
 // Prefer a group-code match, then a name match
-const findStudentFor = ({ code, name }, students) =>
-  students.find((s) => classBelongsToStudent({ code, name: null }, s)) ||
-  students.find((s) => classBelongsToStudent({ code: null, name }, s)) || null;
+const findStudentFor = ({ codes, name }, students) =>
+  students.find((s) => classBelongsToStudent({ codes, name: null }, s)) ||
+  students.find((s) => classBelongsToStudent({ codes: [], name }, s)) || null;
 
 // ------------------------------------------------------------
 // Duties of one month: one row per (student, teacher)
@@ -95,7 +95,7 @@ const buildMonthDuties = async (key, opts = {}) => {
   const unmatched = [];
   for (const ev of events) {
     const start = new Date(ev.start.dateTime);
-    const teacher = teachers.find((t) => classBelongsToTeacher(parseEventTeacher(ev), t));
+    const teacher = teachers.find((t) => classBelongsToTeacher(eventTeacherCodes(ev), t));
     const student = findStudentFor(parseEventStudent(ev), students);
     if (!teacher || !student) {
       unmatched.push({ title: ev.summary || '(no title)', start, missing: !teacher ? 'teacher' : 'student' });

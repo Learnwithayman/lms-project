@@ -4,7 +4,7 @@
 
 const User = require('../models/User');
 const { calendar } = require('../controllers/scheduleController');
-const { parseEventStudent, classBelongsToStudent, parseEventTeacher, classBelongsToTeacher, groupCode } = require('./classMatch');
+const { parseEventStudent, classBelongsToStudent, eventTeacherCodes, classBelongsToTeacher, cleanCode, isOldGroupId } = require('./classMatch');
 
 const CALENDAR_ID = 'admin@learnwithayman.com';
 const CAIRO_TZ = 'Africa/Cairo';
@@ -94,11 +94,11 @@ const eventEnd = (ev) => new Date((ev.end && ev.end.dateTime) || eventStart(ev).
 const eventMinutes = (ev) => Math.max(15, Math.round((eventEnd(ev) - eventStart(ev)) / MIN));
 
 // Who teaches / who studies in this class
-const teacherOfEvent = (ev, teachers) => teachers.find((t) => classBelongsToTeacher(parseEventTeacher(ev), t)) || null;
+const teacherOfEvent = (ev, teachers) => teachers.find((t) => classBelongsToTeacher(eventTeacherCodes(ev), t)) || null;
 const studentOfEvent = (ev, students) => {
   const parsed = parseEventStudent(ev);
-  return students.find((s) => classBelongsToStudent({ code: parsed.code, name: null }, s)) ||
-    students.find((s) => classBelongsToStudent({ code: null, name: parsed.name }, s)) || null;
+  return students.find((s) => classBelongsToStudent({ codes: parsed.codes, name: null }, s)) ||
+    students.find((s) => classBelongsToStudent({ codes: [], name: parsed.name }, s)) || null;
 };
 
 // Copy of a class, used later to book the makeup in the same format
@@ -113,7 +113,7 @@ const templateOf = (ev) => ({
 // A recent / upcoming class of this student with this teacher (for credits that have no copy)
 const findTemplateEvent = async (student, teacher, now = new Date()) => {
   const events = await listEvents(now.getTime() - 45 * DAY, now.getTime() + 30 * DAY);
-  const mine = events.filter((ev) => classBelongsToStudent(parseEventStudent(ev), student) && (!teacher || classBelongsToTeacher(parseEventTeacher(ev), teacher)));
+  const mine = events.filter((ev) => classBelongsToStudent(parseEventStudent(ev), student) && (!teacher || classBelongsToTeacher(eventTeacherCodes(ev), teacher)));
   return mine.length ? mine[mine.length - 1] : null;
 };
 
@@ -125,7 +125,7 @@ const freeSlots = ({ teacher, student, durationMin = 60, from, to, events }) => 
   const extra = av.extra || [];
   const blocked = new Set(av.blocked || []);
   const busy = events
-    .filter((ev) => classBelongsToTeacher(parseEventTeacher(ev), teacher) || (student && classBelongsToStudent(parseEventStudent(ev), student)))
+    .filter((ev) => classBelongsToTeacher(eventTeacherCodes(ev), teacher) || (student && classBelongsToStudent(parseEventStudent(ev), student)))
     .map((ev) => [eventStart(ev).getTime(), eventEnd(ev).getTime()]);
   const dur = durationMin * MIN;
   const slots = new Set();
@@ -154,11 +154,18 @@ const bookableSlots = async ({ teacher, student, durationMin, now = new Date(), 
   return freeSlots({ teacher, student, durationMin, from, to, events });
 };
 
-// Swap the teacher group link inside a class description (move to another teacher)
-const swapTeacherLink = (description, oldCode, newTeacher) => {
-  const newCode = groupCode(newTeacher.teacherGroupId);
-  if (!oldCode || !newCode) return description;
-  return description.split(oldCode).join(newCode);
+// Swap the teacher inside a class description (move to another teacher):
+// the old teacher's group ID → the new teacher's group ID, the old invite code → the new invite code
+const swapTeacherLink = (description, oldCodes, newTeacher) => {
+  const mine = [newTeacher.teacherGroupId, ...(newTeacher.legacyGroupIds || [])].map(cleanCode).filter((c) => c.length > 5);
+  const newId = mine.find((c) => isOldGroupId(c));
+  const newLink = mine.find((c) => !isOldGroupId(c));
+  let out = description;
+  (Array.isArray(oldCodes) ? oldCodes : [oldCodes]).filter(Boolean).map(cleanCode).forEach((old) => {
+    const replacement = isOldGroupId(old) ? (newId || newLink) : (newLink || newId);
+    if (old && replacement) out = out.split(old).join(replacement);
+  });
+  return out;
 };
 
 const loadPeople = async () => {
