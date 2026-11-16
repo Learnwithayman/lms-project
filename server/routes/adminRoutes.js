@@ -11,6 +11,7 @@ const {
   getMonthlyReportTracking // ✨ NEW: Tracker Import
 } = require('../controllers/adminController');
 const { getReminderPreview } = require('../controllers/reportDutyController'); // 📋 Step 5: preview reminders
+const { previewGroupIds, applyGroupIds, checkGroupIds } = require('../controllers/groupIdController'); // 🔄 Step 8: switch to new IDs
 const { protect, admin } = require('../middleware/authMiddleware');
 
 // All routes here are protected (Must be Logged In + Must be Admin)
@@ -41,5 +42,10 @@ router.get('/report-tracking/:monthYear', protect, admin, getMonthlyReportTracki
 
 // 📋 Step 5: preview today's plan / report reminders (sends nothing)
 router.get('/reminder-preview', protect, admin, getReminderPreview);
+
+// 🔄 Step 8: switch to new group IDs (preview → apply) + old-ID checker
+router.get('/group-ids/preview', protect, admin, previewGroupIds);
+router.post('/group-ids/apply', protect, admin, applyGroupIds);
+router.get('/group-ids/check', protect, admin, checkGroupIds);
 
 module.exports = router;

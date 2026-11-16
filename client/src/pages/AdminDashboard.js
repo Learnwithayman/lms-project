@@ -62,9 +62,12 @@ function AdminDashboard() {
   const [actionSlots, setActionSlots] = useState(null);
   const [isSubmittingAction, setIsSubmittingAction] = useState(false);
 
-  // 🔗 Fix group links (preview, then apply)
-  const [linkPlan, setLinkPlan] = useState(null);
-  const [loadingLinks, setLoadingLinks] = useState(false);
+  // 🔄 Step 8: Switch to new IDs (preview → choices → apply) + old-ID warning
+  const [idPlan, setIdPlan] = useState(null);
+  const [idChoices, setIdChoices] = useState({});
+  const [idPeople, setIdPeople] = useState({});
+  const [loadingIds, setLoadingIds] = useState(false);
+  const [idCheck, setIdCheck] = useState(null);
 
   // ✨ NEW: WhatsApp Bot Test State
   const [isTestingBot, setIsTestingBot] = useState(false);
@@ -108,6 +111,7 @@ function AdminDashboard() {
       fetchPendingMakeups(token); 
       fetchPendingReports(token);
       fetchStudents(token);
+      fetchIdCheck(token);
     }
   }, [navigate]);
 
@@ -160,33 +164,48 @@ function AdminDashboard() {
     }
   };
 
-  // 🔗 Fix group links: preview (nothing saved)
-  const fetchLinkPlan = async () => {
-    setLoadingLinks(true);
+  // 🔄 Step 8: is anything still using old IDs? (warning at the top)
+  const fetchIdCheck = async (token) => {
     try {
-      const res = await axios.get(`${API_URL}/api/users/group-links/preview`, { headers: { Authorization: `Bearer ${localStorage.getItem('token')}` } });
-      setLinkPlan(res.data);
+      const res = await axios.get(`${API_URL}/api/admin/group-ids/check`, { headers: { Authorization: `Bearer ${token}` } });
+      setIdCheck(res.data);
     } catch (error) {
-      alert(`❌ ${error.response?.data?.message || 'Could not check the group links.'}`);
-    } finally {
-      setLoadingLinks(false);
+      console.error('Group ID check failed:', error);
     }
   };
 
-  // 🔗 Fix group links: apply (saves the invite links; old IDs are kept for matching classes)
-  const applyLinkPlan = async () => {
-    if (!linkPlan?.fixable?.length) return;
-    if (!window.confirm(`Save the new group links for ${linkPlan.fixable.length} people?\n\nTheir old group IDs are kept, so their classes still match.`)) return;
-    setLoadingLinks(true);
+  // 🔄 Step 8: preview (nothing is changed)
+  const fetchIdPlan = async () => {
+    setLoadingIds(true);
     try {
-      const res = await axios.post(`${API_URL}/api/users/group-links/apply`, {}, { headers: { Authorization: `Bearer ${localStorage.getItem('token')}` } });
-      alert(`✅ ${res.data.message}`);
-      const again = await axios.get(`${API_URL}/api/users/group-links/preview`, { headers: { Authorization: `Bearer ${localStorage.getItem('token')}` } });
-      setLinkPlan(again.data);
+      const res = await axios.get(`${API_URL}/api/admin/group-ids/preview`, { headers: { Authorization: `Bearer ${localStorage.getItem('token')}` } });
+      setIdPlan(res.data);
+      setIdChoices({});
+      setIdPeople({});
     } catch (error) {
-      alert(`❌ ${error.response?.data?.message || 'Could not save the group links.'}`);
+      alert(`❌ ${error.response?.data?.message || 'Could not build the preview.'}`);
     } finally {
-      setLoadingLinks(false);
+      setLoadingIds(false);
+    }
+  };
+
+  // 🔄 Step 8: apply (backup → Google Calendar → LMS)
+  const applyIdPlan = async () => {
+    if (!idPlan) return;
+    const unclearLeft = idPlan.classes.filter(c => c.status === 'unclear' && Object.entries(c.sides).some(([role, side]) => side.unclear && !idChoices[c.id]?.[role])).length;
+    const msg = `Switch to new IDs now?\n\n• ${idPlan.counts.ready} classes are ready${unclearLeft ? `\n• ${unclearLeft} unclear classes have no choice and will be SKIPPED` : ''}\n• ${idPlan.lmsUpdates.length} saved groups in the LMS become links\n• ${idPlan.people.length} people without classes: pasted links are saved, empty ones are cleared\n\nA backup of every class description is kept.`;
+    if (!window.confirm(msg)) return;
+    setLoadingIds(true);
+    try {
+      const res = await axios.post(`${API_URL}/api/admin/group-ids/apply`, { choices: idChoices, people: idPeople }, { headers: { Authorization: `Bearer ${localStorage.getItem('token')}` } });
+      const r = res.data;
+      alert(`✅ Done!\n\nClasses changed: ${r.classesChanged}\nClasses skipped: ${r.classesSkipped.length}${r.classErrors.length ? `\nErrors: ${r.classErrors.length}` : ''}\nLMS groups updated: ${r.lmsChanged}\nPeople saved / cleared: ${r.peopleSaved} / ${r.peopleCleared}`);
+      fetchIdCheck(localStorage.getItem('token'));
+      fetchIdPlan();
+    } catch (error) {
+      alert(`❌ ${error.response?.data?.message || 'Could not apply the switch.'}`);
+    } finally {
+      setLoadingIds(false);
     }
   };
 
@@ -589,6 +608,14 @@ function AdminDashboard() {
         `}
       </style>
 
+      {/* 🔄 STEP 8: OLD-ID WARNING */}
+      {idCheck && (idCheck.classes > 0 || idCheck.people > 0) && (
+        <div style={{ backgroundColor: '#fff3cd', border: '2px solid #f39c12', color: '#856404', padding: '12px 18px', borderRadius: '10px', marginBottom: '15px', fontWeight: 'bold' }}>
+          ⚠️ {idCheck.classes} upcoming class{idCheck.classes === 1 ? '' : 'es'} and {idCheck.people} saved group{idCheck.people === 1 ? '' : 's'} still use old IDs. Open "🔄 Switch to new IDs" below to fix them.
+          {idCheck.classTitles?.length > 0 && <div style={{ fontWeight: 'normal', fontSize: '12px', marginTop: '4px' }}>{idCheck.classTitles.join(' · ')}</div>}
+        </div>
+      )}
+
       <div className="dashboard-header">
         <h1>🛡️ Admin Control Panel</h1>
         <button onClick={handleLogout} className="logout-btn">Logout</button>
@@ -801,57 +828,104 @@ function AdminDashboard() {
       </div>
 
       {/* ========================================== */}
-      {/* 🔗 FIX GROUP LINKS (old WhatsApp group IDs → invite links from Google Calendar) */}
+      {/* 🔄 STEP 8: SWITCH TO NEW IDS (old WhatsApp IDs → invite codes, Google Calendar + LMS) */}
       {/* ========================================== */}
       <div style={{ backgroundColor: '#fff', padding: '25px', borderRadius: '15px', boxShadow: '0 10px 25px rgba(0,0,0,0.04)', marginTop: '40px', borderTop: '5px solid #00b894' }}>
-        <h2 style={{ margin: 0, color: '#2d3436', fontSize: '20px' }}>🔗 Fix group links</h2>
-        <p style={{ margin: '5px 0 15px 0', color: '#636e72', fontSize: '13px' }}>Finds students and teachers whose saved group is an old WhatsApp group ID, and copies the real invite link from their Google Calendar classes. Preview first; nothing is saved until you press Apply.</p>
-        <button onClick={fetchLinkPlan} disabled={loadingLinks} style={{ padding: '10px 20px', backgroundColor: '#00b894', color: 'white', border: 'none', borderRadius: '8px', fontWeight: 'bold', cursor: 'pointer' }}>
-          {loadingLinks ? 'Checking...' : '🔍 Preview'}
+        <h2 style={{ margin: 0, color: '#2d3436', fontSize: '20px' }}>🔄 Switch to new IDs</h2>
+        <p style={{ margin: '5px 0 15px 0', color: '#636e72', fontSize: '13px' }}>New ID = the last part of the group invite link. Changes the running weekly classes and upcoming classes in Google Calendar, and the saved groups in the LMS. Preview first: nothing changes until you press Apply. A backup of every class description is kept.</p>
+        <button onClick={fetchIdPlan} disabled={loadingIds} style={{ padding: '10px 20px', backgroundColor: '#00b894', color: 'white', border: 'none', borderRadius: '8px', fontWeight: 'bold', cursor: 'pointer' }}>
+          {loadingIds ? 'Working... (this can take a minute)' : '🔍 Preview'}
         </button>
-        {linkPlan && (
-          <div style={{ marginTop: '15px' }}>
-            {linkPlan.fixable.length === 0 ? (
-              <p style={{ color: '#00b894', fontWeight: 'bold' }}>✅ Nothing to fix: every saved group is already a link{linkPlan.notFound.length ? ' (except the ones below)' : ''}.</p>
-            ) : (
-              <>
-                <p style={{ fontWeight: 'bold', margin: '0 0 8px 0' }}>{linkPlan.fixable.length} can be fixed:</p>
-                <div style={{ maxHeight: '320px', overflow: 'auto', border: '1px solid #dfe6e9', borderRadius: '8px' }}>
-                  <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px' }}>
-                    <thead>
-                      <tr style={{ backgroundColor: '#f8f9fa', textAlign: 'left' }}>
-                        <th style={{ padding: '8px' }}>Name</th>
-                        <th style={{ padding: '8px' }}>Old value</th>
-                        <th style={{ padding: '8px' }}>New link (from calendar)</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {linkPlan.fixable.map(r => (
-                        <tr key={r.id} style={{ borderTop: '1px solid #f1f2f6' }}>
-                          <td style={{ padding: '8px' }}><strong>{r.name}</strong><br /><small style={{ color: '#636e72' }}>{r.role}{r.status ? ` · ${r.status}` : ''} · {r.classesFound} classes</small></td>
-                          <td style={{ padding: '8px', color: '#d63031', wordBreak: 'break-all' }}>{r.oldValue || '(empty)'}</td>
-                          <td style={{ padding: '8px', color: '#00b894', wordBreak: 'break-all' }}>
-                            {r.newLink}
-                            {r.otherLinks?.length > 0 && <div style={{ color: '#d35400' }}>⚠️ Also seen: {r.otherLinks.join(', ')}</div>}
-                          </td>
-                        </tr>
+
+        {idPlan && (() => {
+          const unclear = idPlan.classes.filter(c => c.status === 'unclear');
+          const manual = idPlan.classes.filter(c => c.status === 'manual');
+          const ready = idPlan.classes.filter(c => c.status === 'ready');
+          const fmt = (d) => d ? new Date(d).toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' }) : '';
+          const kindLabel = (k) => k === 'series' ? 'weekly series' : k === 'exception' ? 'single changed class' : 'single class';
+          const choose = (id, role, code) => setIdChoices(prev => ({ ...prev, [id]: { ...(prev[id] || {}), [role]: code } }));
+          return (
+            <div style={{ marginTop: '18px' }}>
+              <p style={{ fontWeight: 'bold', margin: '0 0 10px 0' }}>✅ {idPlan.counts.ready} ready · ❓ {idPlan.counts.unclear} unclear · ✋ {idPlan.counts.manual} edit by hand · 👥 {idPlan.lmsUpdates.length} LMS groups · 📝 {idPlan.people.length} people without classes</p>
+
+              {unclear.length > 0 && (
+                <div style={{ marginBottom: '18px' }}>
+                  <h3 style={{ fontSize: '16px', margin: '0 0 8px 0' }}>❓ Unclear classes: please choose (unanswered ones are skipped)</h3>
+                  {unclear.map(c => (
+                    <div key={c.id} style={{ border: '1px solid #ffe69c', backgroundColor: '#fffdf3', borderRadius: '8px', padding: '10px 12px', marginBottom: '8px', fontSize: '13px' }}>
+                      <strong>{c.title}</strong> <span style={{ color: '#636e72' }}>({kindLabel(c.kind)}{c.start ? `, from ${fmt(c.start)}` : ''})</span>
+                      {['teacher', 'student'].filter(role => c.sides[role]?.unclear).map(role => (
+                        <div key={role} style={{ marginTop: '6px' }}>
+                          <div style={{ color: '#d35400' }}>{role === 'teacher' ? '👨‍🏫 Teacher group' : '👤 Student group'}: {c.sides[role].reason}</div>
+                          {c.sides[role].options.map(o => (
+                            <label key={o.code} style={{ display: 'block', cursor: 'pointer', padding: '2px 0' }}>
+                              <input type="radio" name={`${c.id}-${role}`} checked={idChoices[c.id]?.[role] === o.code} onChange={() => choose(c.id, role, o.code)} /> {o.label}{o.matchesTitle ? ' ✓ matches the class name' : ''}
+                            </label>
+                          ))}
+                        </div>
                       ))}
-                    </tbody>
-                  </table>
+                      {['teacher', 'student'].filter(role => c.sides[role] && !c.sides[role].unclear).map(role => (
+                        <div key={role} style={{ color: '#636e72', marginTop: '4px' }}>{role === 'teacher' ? '👨‍🏫' : '👤'} {c.sides[role].label} (clear)</div>
+                      ))}
+                    </div>
+                  ))}
                 </div>
-                <button onClick={applyLinkPlan} disabled={loadingLinks} style={{ marginTop: '12px', padding: '10px 20px', backgroundColor: '#0984e3', color: 'white', border: 'none', borderRadius: '8px', fontWeight: 'bold', cursor: 'pointer' }}>
-                  ✅ Apply to {linkPlan.fixable.length} people
-                </button>
-              </>
-            )}
-            {linkPlan.notFound.length > 0 && (
-              <div style={{ marginTop: '15px', backgroundColor: '#fff3cd', border: '1px solid #ffe69c', color: '#856404', padding: '12px 15px', borderRadius: '8px', fontSize: '13px' }}>
-                <strong>⚠️ No link found in Google Calendar for {linkPlan.notFound.length} (no classes in the last 60 days or next 30 days). Please edit these by hand in Users:</strong>
-                <div style={{ marginTop: '6px' }}>{linkPlan.notFound.map(r => `${r.name} (${r.role}${r.status ? `, ${r.status}` : ''})`).join(' · ')}</div>
-              </div>
-            )}
-          </div>
-        )}
+              )}
+
+              {manual.length > 0 && (
+                <div style={{ marginBottom: '18px', fontSize: '13px' }}>
+                  <h3 style={{ fontSize: '16px', margin: '0 0 8px 0' }}>✋ Edit by hand in Google Calendar</h3>
+                  {manual.map(c => <div key={c.id}>• <strong>{c.title}</strong>: {c.note}</div>)}
+                </div>
+              )}
+
+              {ready.length > 0 && (
+                <details style={{ marginBottom: '18px', fontSize: '13px' }}>
+                  <summary style={{ cursor: 'pointer', fontWeight: 'bold' }}>✅ {ready.length} classes ready (click to see)</summary>
+                  <div style={{ maxHeight: '260px', overflowY: 'auto', marginTop: '6px' }}>
+                    {ready.map(c => (
+                      <div key={c.id} style={{ padding: '4px 0', borderBottom: '1px solid #f1f2f6' }}>
+                        <strong>{c.title}</strong> <span style={{ color: '#636e72' }}>({kindLabel(c.kind)})</span>
+                        {['teacher', 'student'].filter(role => c.sides[role]).map(role => (
+                          <span key={role} style={{ color: '#636e72' }}> · {role === 'teacher' ? '👨‍🏫' : '👤'} {c.sides[role].label}{c.sides[role].addLink ? ' (+ link line)' : ''}</span>
+                        ))}
+                      </div>
+                    ))}
+                  </div>
+                </details>
+              )}
+
+              {idPlan.lmsUpdates.length > 0 && (
+                <details style={{ marginBottom: '18px', fontSize: '13px' }}>
+                  <summary style={{ cursor: 'pointer', fontWeight: 'bold' }}>👥 {idPlan.lmsUpdates.length} saved groups in the LMS become links (click to see)</summary>
+                  <div style={{ maxHeight: '220px', overflowY: 'auto', marginTop: '6px' }}>
+                    {idPlan.lmsUpdates.map(u => <div key={u.id}>• {u.name} ({u.role}): <span style={{ color: '#00b894' }}>{u.newLink}</span></div>)}
+                  </div>
+                </details>
+              )}
+
+              {idPlan.people.length > 0 && (
+                <div style={{ marginBottom: '18px', fontSize: '13px' }}>
+                  <h3 style={{ fontSize: '16px', margin: '0 0 8px 0' }}>📝 People without a link found: paste their group invite link, or leave empty to remove the old ID</h3>
+                  {idPlan.people.map(p => (
+                    <div key={p.id} style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap', marginBottom: '6px' }}>
+                      <span style={{ minWidth: '170px' }}><strong>{p.name}</strong> <small style={{ color: '#636e72' }}>({p.role}{p.status ? `, ${p.status}` : ''})</small></span>
+                      <input type="text" placeholder="https://chat.whatsapp.com/..." value={idPeople[p.id] || ''} onChange={(e) => setIdPeople(prev => ({ ...prev, [p.id]: e.target.value }))} style={{ flex: 1, minWidth: '220px', padding: '6px', borderRadius: '6px', border: '1px solid #dfe6e9' }} />
+                      {p.suggestion && !idPeople[p.id] && (
+                        <button type="button" onClick={() => setIdPeople(prev => ({ ...prev, [p.id]: p.suggestion }))} style={{ fontSize: '12px', padding: '5px 8px', cursor: 'pointer', borderRadius: '5px', border: '1px solid #00b894', backgroundColor: '#eafaf1' }}>Use link from their classes</button>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              <button onClick={applyIdPlan} disabled={loadingIds} style={{ padding: '12px 22px', backgroundColor: '#0984e3', color: 'white', border: 'none', borderRadius: '8px', fontWeight: 'bold', cursor: loadingIds ? 'not-allowed' : 'pointer' }}>
+                {loadingIds ? 'Working...' : '✅ Apply the switch'}
+              </button>
+              {idPlan.switchedAt && <p style={{ fontSize: '12px', color: '#636e72', margin: '8px 0 0 0' }}>Last applied: {new Date(idPlan.switchedAt).toLocaleString()}</p>}
+            </div>
+          );
+        })()}
       </div>
 
       {/* ========================================== */}
