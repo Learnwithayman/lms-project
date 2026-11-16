@@ -121,10 +121,48 @@ const userSchema = mongoose.Schema(
       {
         originalClassDate: { type: Date, required: true },
         expirationDate: { type: Date, required: true }, 
-        reason: { type: String }, 
-        isUsed: { type: Boolean, default: false } 
+        reason: { type: String },
+        isUsed: { type: Boolean, default: false },
+
+        // 🔁 Step 7: postpone / cancel credits and self-booking
+        source: { type: String },                    // 'postpone' | 'admin-postpone' | 'cancel' | 'admin'
+        teacher: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+        teacherName: { type: String },
+        durationMinutes: { type: Number },
+        template: {                                  // copy of the original class, used to book the makeup
+          summary: { type: String },
+          description: { type: String },
+          timeZone: { type: String },
+          location: { type: String },
+          colorId: { type: String }
+        },
+        waitingTeacherUpdate: { type: Boolean, default: false }, // teacher asked to update hours first
+        usedAt: { type: Date },
+        usedForEventId: { type: String },
+        expiryWarnedAt: { type: Date },
+        noSlotsAlertAt: { type: Date }
       }
     ],
+
+    // 🗓️ Step 7: teacher free hours ("My Schedule"), all times in Cairo time
+    availability: {
+      weekly: [
+        {
+          day: { type: Number },        // 0 = Sunday … 6 = Saturday
+          start: { type: String },      // "16:00"
+          end: { type: String }         // "21:00"
+        }
+      ],
+      blocked: [{ type: String }],      // whole days off, "YYYY-MM-DD"
+      extra: [
+        {
+          date: { type: String },       // "YYYY-MM-DD"
+          start: { type: String },
+          end: { type: String }
+        }
+      ],
+      confirmedAt: { type: Date }       // last "My hours are correct" / save
+    },
 
     // ==========================================
     // ✨ DYNAMIC STUDY PLANS & REPORTS ENGINE

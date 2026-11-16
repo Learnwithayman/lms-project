@@ -15,6 +15,7 @@ const {
 } = require('../controllers/userController');
 const { setPause, getPauseClasses, removePauseClasses, reactivateStudent } = require('../controllers/pauseController'); // ⏸️ Student pause (Step 3)
 const { getAssignmentCheck } = require('../controllers/reportDutyController'); // 📋 Step 5: calendar teacher check
+const { getClassChanges } = require('../controllers/rescheduleController'); // 📜 Step 7: class changes history
 const { protect } = require('../middleware/authMiddleware');
 const { allowRoles } = require('../middleware/roleMiddleware'); // 🔐 Role locks
 
@@ -45,6 +46,9 @@ router.post('/:id/pause', protect, allowRoles('admin'), setPause);
 router.get('/:id/pause/classes', protect, allowRoles('admin'), getPauseClasses);
 router.post('/:id/pause/remove-classes', protect, allowRoles('admin'), removePauseClasses);
 router.post('/:id/reactivate', protect, allowRoles('admin'), reactivateStudent);
+
+// 📜 Class changes history (Admin only, student profile)
+router.get('/:id/class-changes', protect, allowRoles('admin'), getClassChanges);
 
 // ✨ Assign Teachers Route (Admin only)
 router.put('/:id/assign', protect, allowRoles('admin'), assignTeachers);

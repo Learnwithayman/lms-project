@@ -18,7 +18,6 @@ const {
     resendNotes,         
     joinClass,          
     grantMakeupCredit,  
-    cancelUpcomingClass, 
     getMessageLogs,      
     adminForceEndClass,
     getPendingMakeups,
@@ -27,6 +26,7 @@ const {
 } = require('../controllers/scheduleController');
 const { sendLateReminder, markStudentJoined, getLateProgress } = require('../controllers/lateController'); // ⏰ Late flow (Step 2)
 const { getAwayStudents } = require('../controllers/pauseController'); // ⏸️ Student pause (Step 3)
+const R = require('../controllers/rescheduleController'); // 🔁 Step 7: postpone, makeups, teacher schedule
 
 // Import your authentication middleware
 const { protect } = require('../middleware/authMiddleware');
@@ -36,6 +36,7 @@ const { allowRoles } = require('../middleware/roleMiddleware'); // 🔐 Role loc
 const adminOnly = allowRoles('admin');
 const teacherOnly = allowRoles('teacher');
 const teacherOrStudent = allowRoles('teacher', 'student');
+const studentOnly = allowRoles('student');
 
 // 🚨 THE FIXED ROUTE 🚨 (Teachers & Students: their own schedule)
 router.get('/google-calendar', protect, teacherOrStudent, getTeacherSchedule);
@@ -60,6 +61,17 @@ router.post('/student-joined', protect, teacherOnly, markStudentJoined);
 router.get('/late-progress', protect, teacherOnly, getLateProgress);
 router.get('/away-students', protect, teacherOnly, getAwayStudents); // ⏸️ 'Student away until…' on teacher classes
 
+// 🗓️ Step 7: teacher "My Schedule" (free hours)
+router.get('/my-availability', protect, teacherOnly, R.getMyAvailability);
+router.put('/my-availability', protect, teacherOnly, R.saveMyAvailability);
+router.post('/my-availability/confirm', protect, teacherOnly, R.confirmMyAvailability);
+
+// 🔁 Step 7: student postpone + makeup self-booking
+router.get('/makeup-info', protect, studentOnly, R.getMakeupInfo);
+router.get('/free-slots', protect, studentOnly, R.getStudentFreeSlots);
+router.post('/postpone', protect, studentOnly, R.studentPostpone);
+router.post('/book-makeup', protect, studentOnly, R.bookMakeup);
+
 // ==========================================
 // 📡 ADMIN COMMAND CENTER & SUBSCRIPTIONS
 // ==========================================
@@ -68,7 +80,10 @@ router.post('/resend-reminder', protect, adminOnly, resendReminder);
 router.post('/resend-notes', protect, adminOnly, resendNotes);
 router.post('/join', protect, teacherOnly, joinClass);          
 router.post('/makeup', protect, adminOnly, grantMakeupCredit); 
-router.post('/admin-cancel', protect, adminOnly, cancelUpcomingClass); 
+router.post('/admin-cancel', protect, adminOnly, R.adminCancel); // 🚫 Step 7: who cancelled + credit / pay choices, removes the class from Google Calendar
+router.post('/admin-postpone', protect, adminOnly, R.adminPostpone); // 🔁 Step 7: student chooses / admin picks / another teacher
+router.get('/admin/free-slots', protect, adminOnly, R.getAdminFreeSlots);
+router.get('/admin/class-info/:eventId', protect, adminOnly, R.getAdminClassInfo);
 router.get('/message-logs', protect, adminOnly, getMessageLogs); 
 
 // ✨ NEW: Route for Timezone Sync

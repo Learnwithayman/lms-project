@@ -3,6 +3,8 @@ const User = require('../models/User');
 const Subscription = require('../models/Subscription');
 const { sendMessage } = require('../utils/whatsappBot');
 const D = require('../utils/reportDuties'); // 📋 Step 5: who owes which plan / report
+const { STUDENT_PASSWORD } = require('../utils/studentLogin'); // 🔐 shared student password
+const ClassChange = require('../models/ClassChange'); // 📜 Step 7: postpone / cancel counts
 const { google } = require('googleapis');
 const path = require('path');
 const fs = require('fs');
@@ -200,7 +202,7 @@ const approveReport = asyncHandler(async (req, res) => {
   if (!alreadySent) report[sentField] = new Date();
   await user.save();
 
-  const commonPassword = "Lwa@123#"; 
+  const commonPassword = STUDENT_PASSWORD; // 🔐 shared value (utils/studentLogin.js)
 
   let whatsappMessage = '';
   if (report.isFinalized) {
@@ -359,6 +361,20 @@ const getMonthlyReportTracking = asyncHandler(async (req, res) => {
     if (d.reportOnTime === false) s.reportsLate += 1;
   });
   const teacherStats = [...stats.values()].sort((a, b) => a.name.localeCompare(b.name));
+
+  // 📜 Step 7: postponed / cancelled classes this month (by the class date), per student and per teacher
+  const [y, mo] = key.split('-').map(Number);
+  const changes = await ClassChange.find({
+    action: { $in: ['postpone', 'move', 'teacher-change', 'cancel'] },
+    oldStart: { $gte: new Date(Date.UTC(y, mo - 1, 1) - 86400000), $lt: new Date(Date.UTC(y, mo, 1) + 86400000) }
+  });
+  const changeCount = (list) => ({
+    postponed: list.filter((c) => c.action !== 'cancel').length,
+    cancelled: list.filter((c) => c.action === 'cancel').length
+  });
+  const monthChanges = changes.filter((c) => D.monthIn(c.oldStart, D.STUDENT_TZ) === key);
+  trackingData.forEach((row) => { row.changes = changeCount(monthChanges.filter((c) => String(c.student) === String(row.studentId))); });
+  teacherStats.forEach((t) => { t.changes = changeCount(monthChanges.filter((c) => String(c.teacher) === String(t.teacherId))); });
 
   const summary = {
     total: trackingData.length,

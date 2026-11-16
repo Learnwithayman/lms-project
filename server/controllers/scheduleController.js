@@ -421,6 +421,14 @@ const addTeacherAdjustment = async (req, res) => {
   }
 };
 
+// 🔁 Step 7: a saved class record belongs to a calendar class only when its time is close
+// (started / cancelled records use the class start; End Class saves the end time, up to 3 hours later)
+const sameClassTime = (dbStart, gcalStart) => {
+  const db = new Date(dbStart).getTime();
+  const cal = new Date(gcalStart).getTime();
+  return db >= cal - 15 * 60 * 1000 && db <= cal + 3 * 60 * 60 * 1000;
+};
+
 const getTeacherSchedule = async (req, res) => {
   try {
     const targetUserId = req.user?.id || req.user?._id;
@@ -552,7 +560,7 @@ const getTeacherSchedule = async (req, res) => {
         return (
           (dbClass.studentGroupName && gcalClass.studentGroupName && dbClass.studentGroupName === gcalClass.studentGroupName) || 
           (dbClass.subject && dbClass.subject === gcalClass.title)
-        );
+        ) && sameClassTime(dbClass.startTime, gcalClass.startTime); // 🔁 Step 7: hide only that one class
       });
       if (alreadyDone) return false; 
       return true; 
@@ -628,8 +636,8 @@ const getAdminLiveMonitor = async (req, res) => {
 
       const upcoming = teacherGcal.filter(gcalClass => {
         const isInDb = teacherDbClasses.some(dbClass => 
-          (dbClass.studentGroupName && gcalClass.studentGroupName && dbClass.studentGroupName === gcalClass.studentGroupName) || 
-          (dbClass.subject === gcalClass.title)
+          ((dbClass.studentGroupName && gcalClass.studentGroupName && dbClass.studentGroupName === gcalClass.studentGroupName) || 
+          (dbClass.subject === gcalClass.title)) && sameClassTime(dbClass.startTime, gcalClass.startTime) // 🔁 Step 7: hide only that one class
         );
         return !isInDb;
       });
@@ -738,70 +746,7 @@ const grantMakeupCredit = async (req, res) => {
   }
 };
 
-const cancelUpcomingClass = async (req, res) => {
-  try {
-    const { title, studentGroupName, teacherGroupName, startTime, canceledBy } = req.body;
-    
-    let actualTeacherId = req.user?._id || req.user?.id; 
-
-    const codes = await extractGroupCodes(title);
-    
-    const fallbackUser = await User.findOne({});
-    actualTeacherId = actualTeacherId || fallbackUser._id;
-
-    await ClassSession.create({
-      teacher: actualTeacherId, 
-      subject: title || 'Google Calendar Lesson',
-      studentGroupName: studentGroupName || '',
-      teacherGroupName: teacherGroupName || '',
-      startTime: startTime || new Date(),
-      status: 'cancelled' 
-    });
-
-    let studentSearchTerm = codes.student || studentGroupName;
-
-    if (canceledBy === 'teacher' || canceledBy === 'admin') {
-      const student = await User.findOne({ 
-        $or: [
-          { studentGroupId: studentSearchTerm }, 
-          { whatsappGroupId: studentSearchTerm },
-          { name: studentGroupName }
-        ] 
-      });
-
-      if (student) {
-        studentSearchTerm = studentSearchTerm || student.studentGroupId || student.whatsappGroupId;
-        const expDate = new Date();
-        expDate.setDate(expDate.getDate() + 90); 
-        
-        student.makeupBank.push({
-          originalClassDate: startTime || new Date(),
-          expirationDate: expDate,
-          reason: `Auto-Credit: Canceled by ${canceledBy}`,
-          isUsed: false
-        });
-        await student.save();
-      }
-    }
-
-    let teacherSearchTerm = codes.teacher || teacherGroupName;
-    
-    if (teacherSearchTerm) {
-      const teacherMessage = `⚠️ *Class Canceled Alert*\n\nالسلام عليكم / Assalamu Alaikum,\n\nYour upcoming class *${title}* has been canceled by the Admin.\n\nPlease check your dashboard for updates. \n*Learn With Ayman Admin Team*`;
-      whatsappClient.sendMessage(teacherSearchTerm, teacherMessage);
-    }
-
-    if (studentSearchTerm) {
-      const studentMessage = `⚠️ *Class Canceled Alert*\n\nالسلام عليكم / Assalamu Alaikum,\n\nYour upcoming class *${title}* has been canceled. A makeup credit has been applied to your account if applicable.\n\n*Learn With Ayman Admin Team*`;
-      whatsappClient.sendMessage(studentSearchTerm, studentMessage);
-    }
-
-    res.status(200).json({ message: 'Class officially canceled, notifications queued, and makeup logic applied!' });
-  } catch (error) {
-    console.error('Error canceling class:', error);
-    res.status(500).json({ message: 'Server error while canceling class.' });
-  }
-};
+// 🚫 Cancel moved to rescheduleController.adminCancel (Step 7)
 
 const getMessageLogs = async (req, res) => {
   try {
@@ -961,7 +906,7 @@ module.exports = {
   endClass, markAttendance, getCompletedClasses, getTeacherEarnings,
   getAdminPayrollReport, addTeacherAdjustment, getTeacherSchedule,
   getAdminLiveMonitor, resendReminder, resendNotes, joinClass,
-  grantMakeupCredit, cancelUpcomingClass, getMessageLogs, adminForceEndClass,
+  grantMakeupCredit, getMessageLogs, adminForceEndClass,
   getPendingMakeups, resolveMakeupRequest, syncStudentTimezoneToGoogleCalendar,
   extractGroupCodes, // ⏰ Shared with lateController (Step 2)
   calendar // ⏸️ Shared with pauseController (Step 3)

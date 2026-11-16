@@ -65,6 +65,9 @@ function UserList() {
   const [calendarTeachers, setCalendarTeachers] = useState(null);
   const [showUnassignedOnly, setShowUnassignedOnly] = useState(false);
 
+  // 📜 Step 7: class changes history (student profile)
+  const [classChanges, setClassChanges] = useState(null);
+
   const [isAssignModalOpen, setIsAssignModalOpen] = useState(false);
   const [assignStudent, setAssignStudent] = useState(null);
   const [selectedTeachers, setSelectedTeachers] = useState([]); 
@@ -486,6 +489,20 @@ function UserList() {
     setRecurringSlots(student.recurringSlots || []);
     
     setIsWalletOpen(true);
+    loadClassChanges(student._id);
+  };
+
+  // 📜 Step 7: every postpone / move / cancel / makeup booking of this student
+  const loadClassChanges = async (studentId) => {
+    setClassChanges(null);
+    try {
+      const token = localStorage.getItem('token');
+      const res = await axios.get(`${API_URL}/api/users/${studentId}/class-changes`, { headers: { Authorization: `Bearer ${token}` } });
+      setClassChanges(res.data || []);
+    } catch (error) {
+      console.error('Failed to load class changes:', error);
+      setClassChanges([]);
+    }
   };
 
   const openAssignModal = (student) => {
@@ -914,6 +931,44 @@ function UserList() {
                   <button type="button" onClick={handleSavePause} disabled={isPauseBusy} style={{ width: '100%', marginTop: '10px', padding: '10px', backgroundColor: isPauseBusy ? '#95a5a6' : '#8e44ad', color: 'white', border: 'none', borderRadius: '5px', cursor: isPauseBusy ? 'not-allowed' : 'pointer', fontWeight: 'bold' }}>
                     ⏸️ Save Pause
                   </button>
+                </div>
+              )}
+            </div>
+
+            {/* 📜 STEP 7: CLASS CHANGES HISTORY */}
+            <div style={{ backgroundColor: '#f8f9fa', padding: '20px', borderRadius: '8px', marginBottom: '20px', borderLeft: '4px solid #636e72' }}>
+              <h3 style={{ margin: '0 0 10px 0', color: '#2d3436', fontSize: '16px' }}>📜 Class changes</h3>
+              {classChanges === null ? <p style={{ margin: 0, fontSize: '13px' }}>Loading...</p> : classChanges.length === 0 ? (
+                <p style={{ margin: 0, fontSize: '13px', color: '#636e72' }}>No postponed, moved or cancelled classes yet.</p>
+              ) : (
+                <div style={{ maxHeight: '220px', overflowY: 'auto' }}>
+                  {classChanges.map((c) => {
+                    const fmt = (d) => d ? new Date(d).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }) : '';
+                    const label = {
+                      postpone: '🔁 Postponed',
+                      move: '🔁 Moved',
+                      'teacher-change': '👨‍🏫 Moved to another teacher',
+                      cancel: '🚫 Cancelled',
+                      book: '📅 Makeup booked'
+                    }[c.action] || c.action;
+                    return (
+                      <div key={c._id} style={{ padding: '8px 0', borderBottom: '1px solid #e9ecef', fontSize: '13px' }}>
+                        <div><strong>{label}</strong>{c.action === 'cancel' && c.cancelledBy ? ` (by ${c.cancelledBy})` : ''} · by {c.by} · {fmt(c.createdAt)}</div>
+                        <div style={{ color: '#636e72' }}>
+                          {c.oldStart && <>Class: {fmt(c.oldStart)}</>}
+                          {c.newStart && <> → {fmt(c.newStart)}</>}
+                          {c.teacherName && <> · {c.teacherName}</>}
+                          {c.newTeacherName && <> → {c.newTeacherName}</>}
+                        </div>
+                        <div style={{ color: '#636e72' }}>
+                          {c.credit ? '🎒 Credit given' : (c.action === 'cancel' ? 'No credit' : '')}
+                          {c.countedUsed ? ' · Counted from package' : ''}
+                          {c.action === 'cancel' ? (c.teacherPaid ? ' · Teacher paid' : ' · Teacher not paid') : ''}
+                          {c.reason ? ` · "${c.reason}"` : ''}
+                        </div>
+                      </div>
+                    );
+                  })}
                 </div>
               )}
             </div>

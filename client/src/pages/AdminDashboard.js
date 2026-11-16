@@ -57,6 +57,11 @@ function AdminDashboard() {
   const [previewData, setPreviewData] = useState(null);
   const [loadingPreview, setLoadingPreview] = useState(false);
 
+  // 🔁 Step 7: Postpone / Cancel boxes in the live monitor
+  const [classAction, setClassAction] = useState(null); // { type: 'cancel' | 'postpone', cls, info, ... }
+  const [actionSlots, setActionSlots] = useState(null);
+  const [isSubmittingAction, setIsSubmittingAction] = useState(false);
+
   // ✨ NEW: WhatsApp Bot Test State
   const [isTestingBot, setIsTestingBot] = useState(false);
 
@@ -379,35 +384,59 @@ function AdminDashboard() {
     }
   };
 
-  const handleCancelClass = async (classData) => {
-    if (!window.confirm(`Are you sure you want to cancel "${classData.title}"?\n\nThis will send a WhatsApp notification to both the teacher and the student.`)) return;
+  // ==========================================
+  // 🔁 STEP 7: POSTPONE + CANCEL (live monitor)
+  // ==========================================
+  const adminConfig = () => ({ headers: { Authorization: `Bearer ${localStorage.getItem('token')}` } });
 
+  const openClassAction = async (type, cls) => {
+    const minutesUntil = (new Date(cls.startTime).getTime() - Date.now()) / 60000;
+    setActionSlots(null);
+    setClassAction({ type, cls, info: null, cancelledBy: '', giveCredit: null, payTeacher: minutesUntil < 30, reason: '', mode: 'student', newStart: '', manualTime: '', newTeacherId: '' });
     try {
-      const token = localStorage.getItem('token');
-      const response = await fetch(`${API_URL}/api/schedule/admin-cancel`, {
-        method: 'POST',
-        headers: { 
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}` 
-        },
-        body: JSON.stringify({
-          title: classData.title,
-          studentGroupName: classData.studentGroupName,
-          teacherGroupName: classData.teacherGroupId,
-          startTime: classData.startTime
-        })
-      });
-      
-      if (response.ok) {
-        alert('🚫 Class canceled successfully! Notifications have been sent.');
-        fetchLiveClasses(token);
-        fetchMessageLogs(token); 
-      } else {
-        alert('❌ Failed to cancel class.');
-      }
+      const res = await axios.get(`${API_URL}/api/schedule/admin/class-info/${encodeURIComponent(cls.id)}`, adminConfig());
+      setClassAction(prev => prev && ({ ...prev, info: res.data }));
     } catch (error) {
-      console.error(error);
-      alert('❌ Server error while canceling class.');
+      setClassAction(prev => prev && ({ ...prev, info: { error: error.response?.data?.message || 'Could not load this class.' } }));
+    }
+  };
+
+  const loadActionSlots = async (teacherId) => {
+    setActionSlots(null);
+    if (!teacherId || !classAction?.info) return;
+    try {
+      const res = await axios.get(`${API_URL}/api/schedule/admin/free-slots?teacherId=${teacherId}&durationMinutes=${classAction.info.durationMinutes || 60}&eventId=${encodeURIComponent(classAction.cls.id)}`, adminConfig());
+      setActionSlots(res.data);
+    } catch (error) {
+      setActionSlots({ error: error.response?.data?.message || 'Could not load free times.' });
+    }
+  };
+
+  const submitClassAction = async () => {
+    const a = classAction;
+    if (!a) return;
+    const token = localStorage.getItem('token');
+    setIsSubmittingAction(true);
+    try {
+      let res;
+      if (a.type === 'cancel') {
+        if (!a.cancelledBy) return alert('Please choose who cancelled.');
+        if (a.giveCredit === null) return alert('Please choose whether to give a makeup credit.');
+        res = await axios.post(`${API_URL}/api/schedule/admin-cancel`, { eventId: a.cls.id, cancelledBy: a.cancelledBy, giveCredit: a.giveCredit, payTeacher: a.payTeacher, reason: a.reason }, adminConfig());
+      } else {
+        const newStart = a.manualTime ? new Date(a.manualTime).toISOString() : a.newStart;
+        if (a.mode === 'time' && !newStart) return alert('Please choose the new time.');
+        if (a.mode === 'teacher' && !a.newTeacherId) return alert('Please choose the new teacher.');
+        res = await axios.post(`${API_URL}/api/schedule/admin-postpone`, { eventId: a.cls.id, mode: a.mode, newStart: newStart || undefined, newTeacherId: a.newTeacherId || undefined, reason: a.reason }, adminConfig());
+      }
+      alert(`✅ ${res.data.message}`);
+      setClassAction(null);
+      fetchLiveClasses(token);
+      fetchMessageLogs(token);
+    } catch (error) {
+      alert(`❌ ${error.response?.data?.message || 'Something went wrong.'}`);
+    } finally {
+      setIsSubmittingAction(false);
     }
   };
 
@@ -854,6 +883,9 @@ function AdminDashboard() {
                         {row.teacherCount > 1 && (
                           <div style={{ color: '#d35400', fontWeight: 'bold', marginTop: '3px' }}>👥 Plans {row.plansDone} of {row.teacherCount} done · Reports {row.reportsDone} of {row.teacherCount} done</div>
                         )}
+                        {row.changes && (row.changes.postponed > 0 || row.changes.cancelled > 0) && (
+                          <div style={{ color: '#6c5ce7', marginTop: '3px' }}>🔁 {row.changes.postponed} postponed · 🚫 {row.changes.cancelled} cancelled</div>
+                        )}
                       </td>
                       <td style={{ padding: '12px 15px' }}>
                         {row.status === 'Missing' && <span style={{ color: '#d63031', fontWeight: 'bold' }}>❌ Missing</span>}
@@ -878,7 +910,7 @@ function AdminDashboard() {
                 <h3 style={{ margin: '0 0 10px 0', fontSize: '16px', color: '#2d3436' }}>⏱️ On time this month</h3>
                 {trackData.teacherStats.filter(t => !trackTeacher || t.teacherId === trackTeacher).map(t => (
                   <p key={t.teacherId} style={{ margin: '5px 0', fontSize: '14px', color: '#2d3436' }}>
-                    <strong>{t.name}:</strong> Plans {t.plansOnTime}/{t.students} on time{t.plansLate ? `, ${t.plansLate} late` : ''} · Reports {t.reportsOnTime}/{t.students} on time{t.reportsLate ? `, ${t.reportsLate} late` : ''}
+                    <strong>{t.name}:</strong> Plans {t.plansOnTime}/{t.students} on time{t.plansLate ? `, ${t.plansLate} late` : ''} · Reports {t.reportsOnTime}/{t.students} on time{t.reportsLate ? `, ${t.reportsLate} late` : ''}{t.changes && (t.changes.postponed > 0 || t.changes.cancelled > 0) ? ` · 🔁 ${t.changes.postponed} postponed · 🚫 ${t.changes.cancelled} cancelled` : ''}
                   </p>
                 ))}
                 <p style={{ margin: '8px 0 0 0', fontSize: '12px', color: '#636e72' }}>On time = plan saved by the student's first class day, report saved by the student's last class day.</p>
@@ -988,7 +1020,12 @@ function AdminDashboard() {
                         
                         <div style={{ display: 'flex', gap: '8px' }}>
                           <button 
-                            onClick={() => handleCancelClass(cls)} 
+                            onClick={() => openClassAction('postpone', cls)}
+                            style={{ padding: '6px 12px', backgroundColor: '#6c5ce7', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer', fontSize: '0.85em' }}>
+                            🔁 Postpone
+                          </button>
+                          <button
+                            onClick={() => openClassAction('cancel', cls)} 
                             style={{ padding: '6px 12px', backgroundColor: '#e74c3c', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer', fontSize: '0.85em' }}>
                             🚫 Cancel
                           </button>
@@ -1080,6 +1117,113 @@ function AdminDashboard() {
           </div>
         )}
       </div>
+
+      {/* 🔁 STEP 7: POSTPONE / CANCEL BOX */}
+      {classAction && (() => {
+        const a = classAction;
+        const info = a.info;
+        const set = (patch) => setClassAction(prev => ({ ...prev, ...patch }));
+        const radio = (name, value, label, current, onPick) => (
+          <label key={value} style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '6px 0', cursor: 'pointer' }}>
+            <input type="radio" name={name} checked={current === value} onChange={() => onPick(value)} /> {label}
+          </label>
+        );
+        const slotPicker = () => {
+          if (!actionSlots) return <p style={{ fontSize: '13px' }}>Loading free times...</p>;
+          if (actionSlots.error) return <p style={{ color: '#d63031' }}>{actionSlots.error}</p>;
+          const groups = {};
+          (actionSlots.slots || []).forEach(slot => {
+            const k = new Date(slot).toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' });
+            (groups[k] = groups[k] || []).push(slot);
+          });
+          return (
+            <div style={{ marginTop: '8px' }}>
+              {!actionSlots.hasHours && <p style={{ color: '#d35400', fontSize: '13px', margin: '0 0 6px 0' }}>⚠️ {actionSlots.teacher?.name} has not set their free hours yet.</p>}
+              {actionSlots.hasHours && !actionSlots.fresh && <p style={{ color: '#d35400', fontSize: '13px', margin: '0 0 6px 0' }}>⚠️ {actionSlots.teacher?.name} has not confirmed their hours since Monday.</p>}
+              {Object.keys(groups).length === 0 && <p style={{ fontSize: '13px', color: '#636e72' }}>No free times in the next 14 days.</p>}
+              <div style={{ maxHeight: '220px', overflowY: 'auto' }}>
+                {Object.entries(groups).map(([dayLabel, daySlots]) => (
+                  <div key={dayLabel} style={{ marginBottom: '8px' }}>
+                    <div style={{ fontWeight: 'bold', fontSize: '13px', marginBottom: '4px' }}>{dayLabel}</div>
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '5px' }}>
+                      {daySlots.map(slot => (
+                        <button key={slot} type="button" onClick={() => set({ newStart: slot, manualTime: '' })} style={{ padding: '4px 8px', borderRadius: '5px', border: a.newStart === slot && !a.manualTime ? '2px solid #00b894' : '1px solid #dfe6e9', backgroundColor: a.newStart === slot && !a.manualTime ? '#eafaf1' : 'white', cursor: 'pointer', fontSize: '12px', fontWeight: 'bold' }}>
+                          {new Date(slot).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                ))}
+              </div>
+              <label style={{ display: 'block', fontSize: '13px', marginTop: '8px' }}>Or type a time (your time):
+                <input type="datetime-local" value={a.manualTime} onChange={(e) => set({ manualTime: e.target.value })} style={{ marginLeft: '6px', padding: '4px', borderRadius: '5px', border: '1px solid #dfe6e9' }} />
+              </label>
+            </div>
+          );
+        };
+
+        return (
+          <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.6)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, padding: '16px' }}>
+            <div style={{ backgroundColor: 'white', padding: '25px', borderRadius: '12px', width: '520px', maxWidth: '100%', maxHeight: '90vh', overflowY: 'auto', color: '#2d3436' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <h2 style={{ margin: 0 }}>{a.type === 'cancel' ? '🚫 Cancel class' : '🔁 Postpone class'}</h2>
+                <button onClick={() => setClassAction(null)} style={{ background: 'none', border: 'none', fontSize: '20px', cursor: 'pointer' }}>✖</button>
+              </div>
+              <p style={{ margin: '8px 0 15px 0', color: '#636e72' }}>
+                <strong>{a.cls.title}</strong><br />
+                🕒 {new Date(a.cls.startTime).toLocaleString(undefined, { weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}
+                {info && !info.error && <><br />👨‍🏫 {info.teacher?.name || 'Teacher not found'} · 👤 {info.student?.name || 'Student not found'}</>}
+              </p>
+
+              {!info ? <p>Loading...</p> : info.error ? <p style={{ color: '#d63031' }}>{info.error}</p> : a.type === 'cancel' ? (
+                <>
+                  <h4 style={{ margin: '0 0 4px 0' }}>Who cancelled?</h4>
+                  {[['student', 'Student'], ['teacher', 'Teacher'], ['admin', 'Admin']].map(([v, l]) => radio('cancelledBy', v, l, a.cancelledBy, (val) => set({ cancelledBy: val })))}
+                  <h4 style={{ margin: '12px 0 4px 0' }}>Give makeup credit?</h4>
+                  {radio('giveCredit', true, 'Yes, add a makeup credit', a.giveCredit, (val) => set({ giveCredit: val }))}
+                  {radio('giveCredit', false, 'No, count it from the package', a.giveCredit, (val) => set({ giveCredit: val }))}
+                  <h4 style={{ margin: '12px 0 4px 0' }}>Pay the teacher for this class?</h4>
+                  {radio('payTeacher', true, 'Yes', a.payTeacher, (val) => set({ payTeacher: val }))}
+                  {radio('payTeacher', false, 'No', a.payTeacher, (val) => set({ payTeacher: val }))}
+                  <p style={{ fontSize: '12px', color: '#636e72', margin: '2px 0 0 0' }}>Suggested by the 30-minute rule. You can change it.</p>
+                </>
+              ) : (
+                <>
+                  {radio('mode', 'student', '1. Let the student choose (makeup credit + "choose a new time" message)', a.mode, (val) => { set({ mode: val, newStart: '', manualTime: '' }); setActionSlots(null); })}
+                  {radio('mode', 'time', "2. I'll pick the new time", a.mode, (val) => { set({ mode: val, newStart: '', manualTime: '' }); if (info.teacher) loadActionSlots(info.teacher.id); })}
+                  {radio('mode', 'teacher', '3. Move to another teacher', a.mode, (val) => { set({ mode: val, newStart: '', manualTime: '', newTeacherId: '' }); setActionSlots(null); })}
+
+                  {a.mode === 'time' && (info.teacher ? slotPicker() : <p style={{ color: '#d63031' }}>The teacher of this class was not found.</p>)}
+
+                  {a.mode === 'teacher' && (
+                    <div style={{ marginTop: '8px' }}>
+                      <select value={a.newTeacherId} onChange={(e) => { set({ newTeacherId: e.target.value, newStart: '', manualTime: '' }); loadActionSlots(e.target.value); }} style={{ width: '100%', padding: '8px', borderRadius: '6px', border: '1px solid #dfe6e9' }}>
+                        <option value="">-- Choose the new teacher --</option>
+                        {(info.teachers || []).filter(t => t.id !== info.teacher?.id).map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
+                      </select>
+                      {a.newTeacherId && (
+                        <>
+                          <p style={{ fontSize: '13px', margin: '8px 0 0 0' }}>Keep the same time, or choose a new one below. {(a.newStart || a.manualTime) && <button type="button" onClick={() => set({ newStart: '', manualTime: '' })} style={{ marginLeft: '6px', fontSize: '12px', cursor: 'pointer' }}>↩ Keep same time</button>}</p>
+                          {slotPicker()}
+                        </>
+                      )}
+                    </div>
+                  )}
+                </>
+              )}
+
+              {info && !info.error && (
+                <>
+                  <input type="text" placeholder="Reason (optional, saved in the history)" value={a.reason} onChange={(e) => set({ reason: e.target.value })} style={{ width: '100%', boxSizing: 'border-box', padding: '8px', borderRadius: '6px', border: '1px solid #dfe6e9', marginTop: '15px' }} />
+                  <button onClick={submitClassAction} disabled={isSubmittingAction} style={{ width: '100%', marginTop: '12px', padding: '12px', backgroundColor: isSubmittingAction ? '#b2bec3' : (a.type === 'cancel' ? '#e74c3c' : '#6c5ce7'), color: 'white', border: 'none', borderRadius: '8px', cursor: isSubmittingAction ? 'not-allowed' : 'pointer', fontWeight: 'bold' }}>
+                    {isSubmittingAction ? 'Working...' : a.type === 'cancel' ? '🚫 Cancel this class' : '🔁 Postpone this class'}
+                  </button>
+                </>
+              )}
+            </div>
+          </div>
+        );
+      })()}
 
       {/* VIEW NOTES MODAL */}
       {viewNotesModal.isOpen && (

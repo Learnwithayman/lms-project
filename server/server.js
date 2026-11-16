@@ -13,6 +13,7 @@ require('./utils/whatsappBot');
 require('./utils/cronJobs'); // Turns on the automated time-based WhatsApp alerts
 require('./utils/pauseCrons'); // ⏸️ Return-day alerts for paused / away students (10 AM Cairo admin, 10 AM Eastern student)
 require('./utils/reportDeadlines'); // 📋 Plan & report deadline reminders + approval nudge (10 AM Cairo)
+require('./utils/rescheduleCrons'); // 🗓️ Monday schedule check (10 AM Cairo) + makeup credit expiry warnings (10 AM Eastern)
 
 // 💰 Turn on the new Monthly Payroll Robotic Accountant
 const { startPayrollCron } = require('./utils/payrollCron');

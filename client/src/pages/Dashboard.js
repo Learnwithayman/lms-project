@@ -70,10 +70,20 @@ function Dashboard() {
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   const [isMakeupModalOpen, setIsMakeupModalOpen] = useState(false);
-  const [selectedOriginalDate, setSelectedOriginalDate] = useState('');
-  const [preferredMakeupDate, setPreferredMakeupDate] = useState('');
-  const [makeupRequestNotes, setMakeupRequestNotes] = useState('');
-  const [isRequestingMakeup, setIsRequestingMakeup] = useState(false);
+  // 🔁 STEP 7: makeup self-booking (students) + 🗓️ My Schedule (teachers)
+  const [makeupInfo, setMakeupInfo] = useState(null);
+  const [bookTeacherId, setBookTeacherId] = useState('');
+  const [freeSlots, setFreeSlots] = useState(null);
+  const [selectedSlot, setSelectedSlot] = useState('');
+  const [isBooking, setIsBooking] = useState(false);
+  const [postponingId, setPostponingId] = useState(null);
+  const [mySchedule, setMySchedule] = useState(null);
+  const [isScheduleOpen, setIsScheduleOpen] = useState(false);
+  const [scheduleDraft, setScheduleDraft] = useState({ weekly: [], blocked: [], extra: [] });
+  const [newWeekly, setNewWeekly] = useState({ day: '0', start: '16:00', end: '21:00' });
+  const [newBlocked, setNewBlocked] = useState('');
+  const [newExtra, setNewExtra] = useState({ date: '', start: '16:00', end: '21:00' });
+  const [isSavingSchedule, setIsSavingSchedule] = useState(false);
 
   const [isPlanModalOpen, setIsPlanModalOpen] = useState(false);
   const [planStudentIdentifier, setPlanStudentIdentifier] = useState('');
@@ -208,6 +218,7 @@ function Dashboard() {
       fetchLateProgress(token);
       fetchAwayStudents(token);
       fetchMyDuties(token);
+      fetchMySchedule(token);
     } else {
       fetchSubSummary(token);
     }
@@ -509,29 +520,119 @@ function Dashboard() {
     }
   };
 
-  const handleRequestMakeup = async (e) => {
-    e.preventDefault();
-    setIsRequestingMakeup(true);
+  // ==========================================
+  // 🔁 STEP 7: POSTPONE + MAKEUP SELF-BOOKING (students)
+  // ==========================================
+  const authConfig = () => ({ headers: { Authorization: `Bearer ${localStorage.getItem('token')}` } });
+
+  const loadFreeSlots = async (teacherId) => {
+    setBookTeacherId(teacherId);
+    setFreeSlots(null);
+    setSelectedSlot('');
+    if (!teacherId) return;
     try {
-      const token = localStorage.getItem('token');
-      const config = { headers: { Authorization: `Bearer ${token}` } };
-      
-      await axios.post(`${API_URL}/api/student/request-makeup`, {
-        originalDate: selectedOriginalDate,
-        preferredDate: preferredMakeupDate,
-        reason: makeupRequestNotes
-      }, config);
-      
-      alert('✅ Makeup request submitted successfully! Admin will contact you shortly.');
-      setIsMakeupModalOpen(false);
-      setSelectedOriginalDate('');
-      setPreferredMakeupDate('');
-      setMakeupRequestNotes('');
+      const res = await axios.get(`${API_URL}/api/schedule/free-slots?teacherId=${teacherId}`, authConfig());
+      setFreeSlots(res.data);
     } catch (error) {
-      console.error('Error requesting makeup:', error);
-      alert('❌ Failed to submit makeup request.');
+      setFreeSlots({ error: error.response?.data?.message || 'Could not load free times.' });
+    }
+  };
+
+  const openBooking = async (preferredTeacherId = null) => {
+    setIsMakeupModalOpen(true);
+    setMakeupInfo(null);
+    setFreeSlots(null);
+    setSelectedSlot('');
+    try {
+      const res = await axios.get(`${API_URL}/api/schedule/makeup-info`, authConfig());
+      setMakeupInfo(res.data);
+      const teachers = res.data.teachers || [];
+      const pick = preferredTeacherId || (teachers.length === 1 ? teachers[0].id : '');
+      if (pick) loadFreeSlots(pick);
+    } catch (error) {
+      setMakeupInfo({ error: error.response?.data?.message || 'Could not load your makeup credits.' });
+    }
+  };
+
+  const handlePostpone = async (cls) => {
+    if (!window.confirm(`Postpone "${cls.title}"?\n\nYou will get a makeup credit and choose a new time with your teacher.`)) return;
+    setPostponingId(cls.id);
+    try {
+      const res = await axios.post(`${API_URL}/api/schedule/postpone`, { eventId: cls.id }, authConfig());
+      const token = localStorage.getItem('token');
+      fetchClasses(token);
+      fetchSubSummary(token);
+      if (res.data.fresh) {
+        openBooking(res.data.teacherId);
+      } else {
+        alert("✅ Class postponed.\n\nYour teacher is updating their schedule. You will get a WhatsApp message when you can choose your new time.");
+      }
+    } catch (error) {
+      alert(`❌ ${error.response?.data?.message || 'Could not postpone this class.'}`);
     } finally {
-      setIsRequestingMakeup(false);
+      setPostponingId(null);
+    }
+  };
+
+  const handleBookSlot = async () => {
+    if (!selectedSlot || !bookTeacherId) return;
+    setIsBooking(true);
+    try {
+      await axios.post(`${API_URL}/api/schedule/book-makeup`, { teacherId: bookTeacherId, start: selectedSlot }, authConfig());
+      alert(`✅ Your makeup class is booked for ${new Date(selectedSlot).toLocaleString(undefined, { weekday: 'long', month: 'long', day: 'numeric', hour: 'numeric', minute: '2-digit' })}!`);
+      setIsMakeupModalOpen(false);
+      const token = localStorage.getItem('token');
+      fetchClasses(token);
+      fetchSubSummary(token);
+    } catch (error) {
+      alert(`❌ ${error.response?.data?.message || 'Could not book this time.'}`);
+      if (error.response?.status === 409) loadFreeSlots(bookTeacherId);
+    } finally {
+      setIsBooking(false);
+    }
+  };
+
+  // ==========================================
+  // 🗓️ STEP 7: MY SCHEDULE (teachers)
+  // ==========================================
+  const WEEKDAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+
+  const fetchMySchedule = async (token) => {
+    try {
+      const res = await axios.get(`${API_URL}/api/schedule/my-availability`, { headers: { Authorization: `Bearer ${token}` } });
+      setMySchedule(res.data);
+    } catch (error) {
+      console.error('Failed to fetch my schedule:', error);
+    }
+  };
+
+  const openScheduleEditor = () => {
+    const av = mySchedule?.availability || {};
+    setScheduleDraft({ weekly: [...(av.weekly || [])], blocked: [...(av.blocked || [])], extra: [...(av.extra || [])] });
+    setIsScheduleOpen(true);
+  };
+
+  const handleSaveSchedule = async () => {
+    setIsSavingSchedule(true);
+    try {
+      const res = await axios.put(`${API_URL}/api/schedule/my-availability`, scheduleDraft, authConfig());
+      setMySchedule(res.data);
+      setIsScheduleOpen(false);
+      alert(res.data.notified?.length ? `✅ Schedule saved. ${res.data.notified.join(', ')} can now choose a new time.` : '✅ Schedule saved.');
+    } catch (error) {
+      alert(`❌ ${error.response?.data?.message || 'Could not save your schedule.'}`);
+    } finally {
+      setIsSavingSchedule(false);
+    }
+  };
+
+  const handleConfirmSchedule = async () => {
+    try {
+      const res = await axios.post(`${API_URL}/api/schedule/my-availability/confirm`, {}, authConfig());
+      setMySchedule(res.data);
+      alert(res.data.notified?.length ? `✅ Thank you! ${res.data.notified.join(', ')} can now choose a new time.` : '✅ Thank you! Your hours are confirmed for this week.');
+    } catch (error) {
+      alert(`❌ ${error.response?.data?.message || 'Could not confirm your schedule.'}`);
     }
   };
 
@@ -729,6 +830,36 @@ function Dashboard() {
         </div>
       )}
 
+      {/* 🗓️ MY SCHEDULE (Step 7): weekly check + students waiting for an update */}
+      {user?.role?.toLowerCase() === 'teacher' && mySchedule && (() => {
+        const waiting = mySchedule.waitingStudents || [];
+        const needsAction = !mySchedule.fresh || waiting.length > 0;
+        return (
+          <div style={{ backgroundColor: needsAction ? '#fff3cd' : 'white', border: needsAction ? '2px solid #f39c12' : '1px solid #dfe6e9', padding: '15px 20px', borderRadius: '10px', marginBottom: '20px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
+            <div style={{ color: '#2d3436' }}>
+              {waiting.length > 0 ? (
+                <strong>🔁 {waiting.join(', ')} postponed and {waiting.length === 1 ? 'is' : 'are'} waiting for your schedule update.</strong>
+              ) : !mySchedule.fresh ? (
+                <strong>🗓️ Weekly schedule check: please review your free hours for this week.</strong>
+              ) : (
+                <strong>🗓️ My Schedule</strong>
+              )}
+              <div style={{ fontSize: '12px', color: '#636e72', marginTop: '4px' }}>
+                {mySchedule.availability?.confirmedAt ? `Last confirmed: ${new Date(mySchedule.availability.confirmedAt).toLocaleString(undefined, { weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}` : 'Not set yet. Please add your free hours.'}
+              </div>
+            </div>
+            <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+              <button onClick={openScheduleEditor} style={{ backgroundColor: '#0984e3', color: 'white', padding: '9px 14px', border: 'none', borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold' }}>🗓️ My Schedule</button>
+              {needsAction && (
+                <button onClick={handleConfirmSchedule} style={{ backgroundColor: '#00b894', color: 'white', padding: '9px 14px', border: 'none', borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold' }}>
+                  {waiting.length > 0 ? '✅ Schedule updated' : '✅ My hours are correct'}
+                </button>
+              )}
+            </div>
+          </div>
+        );
+      })()}
+
       {/* 📋 PLAN & REPORT DEADLINES (Step 5): red panel + progress bars */}
       {user?.role?.toLowerCase() === 'teacher' && myDuties && (
         <div style={{ marginBottom: '20px' }}>
@@ -842,7 +973,7 @@ function Dashboard() {
                   </ul>
                 </div>
                 <button 
-                  onClick={() => setIsMakeupModalOpen(true)}
+                  onClick={() => openBooking()}
                   style={{ width: '100%', padding: '12px', backgroundColor: '#d35400', color: 'white', border: 'none', borderRadius: '8px', cursor: 'pointer', fontWeight: 'bold', transition: 'all 0.2s' }}>
                   📅 Schedule Makeup
                 </button>
@@ -1069,6 +1200,17 @@ function Dashboard() {
                       <button onClick={() => handleAttendance(cls, 'Absent')} style={{ backgroundColor: '#636e72', color: 'white', padding: '10px 15px', border: 'none', borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold' }}>❌ Absent</button>
                       <button onClick={() => { setCurrentClassId(classIdentifier); setIsModalOpen(true); }} style={{ backgroundColor: '#d63031', color: 'white', padding: '10px 15px', border: 'none', borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold' }}>🛑 End Class</button>
                     </>
+                  )}
+
+                  {/* 🔁 STEP 7: student postpone (5+ hours before the class) */}
+                  {user?.role?.toLowerCase() === 'student' && cls.id && (
+                    startDateObj.getTime() - nowTick >= 5 * 60 * 60 * 1000 ? (
+                      <button onClick={() => handlePostpone(cls)} disabled={postponingId === cls.id} style={{ backgroundColor: '#6c5ce7', color: 'white', padding: '10px 15px', border: 'none', borderRadius: '6px', cursor: postponingId === cls.id ? 'not-allowed' : 'pointer', fontWeight: 'bold' }}>
+                        {postponingId === cls.id ? 'Postponing...' : '🔁 Postpone'}
+                      </button>
+                    ) : (
+                      <span title="Classes can be postponed online up to 5 hours before they start. For an emergency, please contact the admin." style={{ color: '#b2bec3', fontSize: '13px', fontWeight: 'bold' }}>🔒 Postpone closed (under 5 hours)</span>
+                    )
                   )}
                 </div>
 
@@ -1342,42 +1484,132 @@ function Dashboard() {
         </div>
       )}
 
-      {/* REQUEST MAKEUP MODAL */}
-      {isMakeupModalOpen && subSummary && (
-        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.6)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 }}>
-          <div style={{ backgroundColor: 'white', padding: '30px', borderRadius: '15px', width: '450px', color: '#2d3436' }}>
-            <h2 style={{ margin: '0 0 20px 0' }}>📅 Request Makeup Class</h2>
-            
-            <form onSubmit={handleRequestMakeup} style={{ display: 'flex', flexDirection: 'column', gap: '15px' }}>
-              <div>
-                <label style={{ fontWeight: 'bold', fontSize: '14px' }}>Which missed class are you replacing?</label>
-                <select required value={selectedOriginalDate} onChange={(e) => setSelectedOriginalDate(e.target.value)} style={{ width: '100%', padding: '10px', borderRadius: '5px', border: '1px solid #dfe6e9', marginTop: '5px', boxSizing: 'border-box' }}>
-                  <option value="">-- Select Missed Class --</option>
-                  {subSummary.activeMakeups.map((makeup, i) => (
-                    <option key={i} value={makeup.originalClassDate}>
-                      Missed on {new Date(makeup.originalClassDate).toLocaleDateString()}
-                    </option>
-                  ))}
-                </select>
-              </div>
+      {/* 📅 STEP 7: BOOK A MAKEUP CLASS (students) */}
+      {isMakeupModalOpen && (
+        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.6)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, padding: '16px' }}>
+          <div style={{ backgroundColor: 'white', padding: '25px', borderRadius: '15px', width: '520px', maxWidth: '100%', maxHeight: '90vh', overflowY: 'auto', color: '#2d3436' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '15px' }}>
+              <h2 style={{ margin: 0 }}>📅 Book a makeup class</h2>
+              <button onClick={() => setIsMakeupModalOpen(false)} style={{ background: 'none', border: 'none', fontSize: '20px', cursor: 'pointer' }}>✖</button>
+            </div>
 
-              <div>
-                <label style={{ fontWeight: 'bold', fontSize: '14px' }}>Preferred Makeup Date & Time:</label>
-                <input type="datetime-local" required value={preferredMakeupDate} onChange={(e) => setPreferredMakeupDate(e.target.value)} style={{ width: '100%', padding: '10px', borderRadius: '5px', border: '1px solid #dfe6e9', marginTop: '5px', boxSizing: 'border-box' }} />
-              </div>
+            {!makeupInfo ? <p>Loading...</p> : makeupInfo.error ? <p style={{ color: '#d63031' }}>{makeupInfo.error}</p> : (
+              <>
+                <p style={{ margin: '0 0 15px 0', color: '#636e72' }}>
+                  🎒 You have <strong>{makeupInfo.credits.length}</strong> makeup credit{makeupInfo.credits.length === 1 ? '' : 's'}.
+                  {makeupInfo.credits[0] && ` The first expires on ${new Date(makeupInfo.credits[0].expirationDate).toLocaleDateString(undefined, { month: 'long', day: 'numeric' })}.`}
+                </p>
 
-              <div>
-                <label style={{ fontWeight: 'bold', fontSize: '14px' }}>Additional Notes (Optional):</label>
-                <input type="text" placeholder="e.g., Only available after 5 PM" value={makeupRequestNotes} onChange={(e) => setMakeupRequestNotes(e.target.value)} style={{ width: '100%', padding: '10px', borderRadius: '5px', border: '1px solid #dfe6e9', marginTop: '5px', boxSizing: 'border-box' }} />
-              </div>
+                {makeupInfo.credits.length > 0 && makeupInfo.teachers.length > 1 && (
+                  <div style={{ marginBottom: '15px' }}>
+                    <label style={{ fontWeight: 'bold', fontSize: '14px' }}>Choose your teacher:</label>
+                    <select value={bookTeacherId} onChange={(e) => loadFreeSlots(e.target.value)} style={{ width: '100%', padding: '10px', borderRadius: '6px', border: '1px solid #dfe6e9', marginTop: '5px' }}>
+                      <option value="">-- Select teacher --</option>
+                      {makeupInfo.teachers.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
+                    </select>
+                  </div>
+                )}
 
-              <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '15px' }}>
-                <button type="button" onClick={() => setIsMakeupModalOpen(false)} disabled={isRequestingMakeup} style={{ padding: '10px 15px', cursor: isRequestingMakeup ? 'not-allowed' : 'pointer', border: '1px solid #b2bec3', borderRadius: '6px', backgroundColor: 'transparent', fontWeight: 'bold', color: '#636e72' }}>Cancel</button>
-                <button type="submit" disabled={isRequestingMakeup} style={{ padding: '10px 15px', cursor: isRequestingMakeup ? 'not-allowed' : 'pointer', backgroundColor: isRequestingMakeup ? '#b2bec3' : '#d35400', color: 'white', border: 'none', borderRadius: '6px', fontWeight: 'bold' }}>
-                  {isRequestingMakeup ? 'Submitting...' : 'Submit Request'}
-                </button>
+                {makeupInfo.credits.length > 0 && makeupInfo.teachers.length === 0 && (
+                  <p style={{ color: '#d35400' }}>We couldn't find your teacher automatically. Please contact the admin to book your makeup class.</p>
+                )}
+
+                {bookTeacherId && (
+                  !freeSlots ? <p>Loading free times...</p>
+                  : freeSlots.error ? <p style={{ color: '#d63031' }}>{freeSlots.error}</p>
+                  : freeSlots.noCredit ? <p style={{ color: '#636e72' }}>You have no makeup credit to use.</p>
+                  : !freeSlots.fresh ? <p style={{ color: '#d35400', fontWeight: 'bold' }}>⏳ Your teacher is updating their schedule. You will get a WhatsApp message when you can choose a time.</p>
+                  : freeSlots.slots.length === 0 ? <p style={{ color: '#d35400', fontWeight: 'bold' }}>No free times yet, the admin will help you. 🌿</p>
+                  : (() => {
+                    const groups = {};
+                    freeSlots.slots.forEach(slot => {
+                      const k = new Date(slot).toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric' });
+                      (groups[k] = groups[k] || []).push(slot);
+                    });
+                    return (
+                      <>
+                        <p style={{ margin: '0 0 10px 0', fontSize: '13px', color: '#636e72' }}>Times are shown in your own time zone. Choose one:</p>
+                        {Object.entries(groups).map(([dayLabel, daySlots]) => (
+                          <div key={dayLabel} style={{ marginBottom: '12px' }}>
+                            <div style={{ fontWeight: 'bold', fontSize: '14px', marginBottom: '6px' }}>{dayLabel}</div>
+                            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
+                              {daySlots.map(slot => (
+                                <button key={slot} type="button" onClick={() => setSelectedSlot(slot)} style={{ padding: '6px 10px', borderRadius: '6px', border: selectedSlot === slot ? '2px solid #00b894' : '1px solid #dfe6e9', backgroundColor: selectedSlot === slot ? '#eafaf1' : 'white', cursor: 'pointer', fontWeight: 'bold', fontSize: '13px' }}>
+                                  {new Date(slot).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}
+                                </button>
+                              ))}
+                            </div>
+                          </div>
+                        ))}
+                        <button onClick={handleBookSlot} disabled={!selectedSlot || isBooking} style={{ width: '100%', marginTop: '10px', padding: '12px', backgroundColor: !selectedSlot || isBooking ? '#b2bec3' : '#00b894', color: 'white', border: 'none', borderRadius: '8px', cursor: !selectedSlot || isBooking ? 'not-allowed' : 'pointer', fontWeight: 'bold' }}>
+                          {isBooking ? 'Booking...' : selectedSlot ? `✅ Book ${new Date(selectedSlot).toLocaleString(undefined, { weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}` : 'Choose a time'}
+                        </button>
+                      </>
+                    );
+                  })()
+                )}
+              </>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* 🗓️ STEP 7: MY SCHEDULE EDITOR (teachers) */}
+      {isScheduleOpen && (
+        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.6)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, padding: '16px' }}>
+          <div style={{ backgroundColor: 'white', padding: '25px', borderRadius: '15px', width: '560px', maxWidth: '100%', maxHeight: '90vh', overflowY: 'auto', color: '#2d3436' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '5px' }}>
+              <h2 style={{ margin: 0 }}>🗓️ My Schedule</h2>
+              <button onClick={() => setIsScheduleOpen(false)} style={{ background: 'none', border: 'none', fontSize: '20px', cursor: 'pointer' }}>✖</button>
+            </div>
+            <p style={{ margin: '0 0 15px 0', fontSize: '13px', color: '#636e72' }}>Your working hours with Learn With Ayman, in <strong>Cairo time</strong>. Classes already on your calendar are blocked automatically. Please keep this updated every week.</p>
+
+            <h3 style={{ fontSize: '16px', margin: '0 0 8px 0' }}>Weekly hours</h3>
+            {scheduleDraft.weekly.length === 0 && <p style={{ fontSize: '13px', color: '#b2bec3', margin: '0 0 8px 0' }}>No weekly hours yet.</p>}
+            {[...scheduleDraft.weekly].map((w, i) => ({ ...w, i })).sort((a, b) => a.day - b.day || a.start.localeCompare(b.start)).map(w => (
+              <div key={w.i} style={{ display: 'flex', justifyContent: 'space-between', padding: '6px 10px', backgroundColor: '#f8f9fa', borderRadius: '6px', marginBottom: '5px', fontSize: '14px' }}>
+                <span><strong>{WEEKDAYS[w.day]}</strong> {w.start} – {w.end}</span>
+                <button onClick={() => setScheduleDraft({ ...scheduleDraft, weekly: scheduleDraft.weekly.filter((_, j) => j !== w.i) })} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#d63031' }}>✖</button>
               </div>
-            </form>
+            ))}
+            <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', margin: '8px 0 18px 0' }}>
+              <select value={newWeekly.day} onChange={(e) => setNewWeekly({ ...newWeekly, day: e.target.value })} style={{ padding: '6px', borderRadius: '6px', border: '1px solid #dfe6e9' }}>
+                {WEEKDAYS.map((d, i) => <option key={d} value={i}>{d}</option>)}
+              </select>
+              <input type="time" value={newWeekly.start} onChange={(e) => setNewWeekly({ ...newWeekly, start: e.target.value })} style={{ padding: '6px', borderRadius: '6px', border: '1px solid #dfe6e9' }} />
+              <input type="time" value={newWeekly.end} onChange={(e) => setNewWeekly({ ...newWeekly, end: e.target.value })} style={{ padding: '6px', borderRadius: '6px', border: '1px solid #dfe6e9' }} />
+              <button onClick={() => { if (!newWeekly.start || !newWeekly.end || newWeekly.start >= newWeekly.end) return alert('The end time must be after the start time.'); setScheduleDraft({ ...scheduleDraft, weekly: [...scheduleDraft.weekly, { day: Number(newWeekly.day), start: newWeekly.start, end: newWeekly.end }] }); }} style={{ padding: '6px 12px', backgroundColor: '#0984e3', color: 'white', border: 'none', borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold' }}>➕ Add</button>
+            </div>
+
+            <h3 style={{ fontSize: '16px', margin: '0 0 8px 0' }}>Days off</h3>
+            {scheduleDraft.blocked.map(d => (
+              <div key={d} style={{ display: 'flex', justifyContent: 'space-between', padding: '6px 10px', backgroundColor: '#fdecea', borderRadius: '6px', marginBottom: '5px', fontSize: '14px' }}>
+                <span>🚫 {new Date(`${d}T12:00:00Z`).toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric', timeZone: 'UTC' })}</span>
+                <button onClick={() => setScheduleDraft({ ...scheduleDraft, blocked: scheduleDraft.blocked.filter(x => x !== d) })} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#d63031' }}>✖</button>
+              </div>
+            ))}
+            <div style={{ display: 'flex', gap: '6px', margin: '8px 0 18px 0' }}>
+              <input type="date" value={newBlocked} onChange={(e) => setNewBlocked(e.target.value)} style={{ padding: '6px', borderRadius: '6px', border: '1px solid #dfe6e9' }} />
+              <button onClick={() => { if (!newBlocked) return; setScheduleDraft({ ...scheduleDraft, blocked: [...new Set([...scheduleDraft.blocked, newBlocked])].sort() }); setNewBlocked(''); }} style={{ padding: '6px 12px', backgroundColor: '#d63031', color: 'white', border: 'none', borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold' }}>➕ Add day off</button>
+            </div>
+
+            <h3 style={{ fontSize: '16px', margin: '0 0 8px 0' }}>Extra hours on a date</h3>
+            {scheduleDraft.extra.map((x, i) => (
+              <div key={i} style={{ display: 'flex', justifyContent: 'space-between', padding: '6px 10px', backgroundColor: '#eafaf1', borderRadius: '6px', marginBottom: '5px', fontSize: '14px' }}>
+                <span>➕ {new Date(`${x.date}T12:00:00Z`).toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric', timeZone: 'UTC' })} {x.start} – {x.end}</span>
+                <button onClick={() => setScheduleDraft({ ...scheduleDraft, extra: scheduleDraft.extra.filter((_, j) => j !== i) })} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#d63031' }}>✖</button>
+              </div>
+            ))}
+            <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', margin: '8px 0 20px 0' }}>
+              <input type="date" value={newExtra.date} onChange={(e) => setNewExtra({ ...newExtra, date: e.target.value })} style={{ padding: '6px', borderRadius: '6px', border: '1px solid #dfe6e9' }} />
+              <input type="time" value={newExtra.start} onChange={(e) => setNewExtra({ ...newExtra, start: e.target.value })} style={{ padding: '6px', borderRadius: '6px', border: '1px solid #dfe6e9' }} />
+              <input type="time" value={newExtra.end} onChange={(e) => setNewExtra({ ...newExtra, end: e.target.value })} style={{ padding: '6px', borderRadius: '6px', border: '1px solid #dfe6e9' }} />
+              <button onClick={() => { if (!newExtra.date || newExtra.start >= newExtra.end) return alert('Choose a date and an end time after the start time.'); setScheduleDraft({ ...scheduleDraft, extra: [...scheduleDraft.extra, { ...newExtra }] }); setNewExtra({ ...newExtra, date: '' }); }} style={{ padding: '6px 12px', backgroundColor: '#00b894', color: 'white', border: 'none', borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold' }}>➕ Add</button>
+            </div>
+
+            <button onClick={handleSaveSchedule} disabled={isSavingSchedule} style={{ width: '100%', padding: '12px', backgroundColor: isSavingSchedule ? '#b2bec3' : '#0984e3', color: 'white', border: 'none', borderRadius: '8px', cursor: isSavingSchedule ? 'not-allowed' : 'pointer', fontWeight: 'bold' }}>
+              {isSavingSchedule ? 'Saving...' : '💾 Save my schedule'}
+            </button>
           </div>
         </div>
       )}
