@@ -72,6 +72,13 @@ function AdminDashboard() {
   // ✨ NEW: WhatsApp Bot Test State
   const [isTestingBot, setIsTestingBot] = useState(false);
 
+  // 📣 Step 9: Send updates (bottom of the page)
+  const [bcRecipients, setBcRecipients] = useState(null);
+  const [bcMessage, setBcMessage] = useState('');
+  const [bcSelected, setBcSelected] = useState({});
+  const [bcTeacherFilter, setBcTeacherFilter] = useState('');
+  const [bcBusy, setBcBusy] = useState(false);
+
   // Helper to generate recent months for the dropdown
   const getRecentMonths = () => {
     const months = [];
@@ -112,6 +119,7 @@ function AdminDashboard() {
       fetchPendingReports(token);
       fetchStudents(token);
       fetchIdCheck(token);
+      fetchBroadcastRecipients(token);
     }
   }, [navigate]);
 
@@ -161,6 +169,61 @@ function AdminDashboard() {
       alert('Failed to load the reminder preview.');
     } finally {
       setLoadingPreview(false);
+    }
+  };
+
+  // 📣 Step 9: students shown in the list (teacher filter); paused / away are listed but never sent
+  const visibleStudents = () => (bcRecipients?.students || []).filter(s => !bcTeacherFilter || s.assignedTeacherIds.includes(bcTeacherFilter));
+
+  // 📣 Step 9: who can receive updates
+  const fetchBroadcastRecipients = async (token) => {
+    try {
+      const res = await axios.get(`${API_URL}/api/admin/broadcast/recipients`, { headers: { Authorization: `Bearer ${token}` } });
+      setBcRecipients(res.data);
+    } catch (error) {
+      console.error('Could not load recipients:', error);
+    }
+  };
+
+  const bcAuth = () => ({ headers: { Authorization: `Bearer ${localStorage.getItem('token')}` } });
+
+  const toggleTeacherActive = async (teacher) => {
+    try {
+      await axios.put(`${API_URL}/api/admin/broadcast/teacher/${teacher.id}`, { active: !teacher.active }, bcAuth());
+      fetchBroadcastRecipients(localStorage.getItem('token'));
+    } catch (error) {
+      alert(`❌ ${error.response?.data?.message || 'Could not update this teacher.'}`);
+    }
+  };
+
+  const sendToTeachers = async () => {
+    if (!bcMessage.trim()) return alert('Please write the message first.');
+    const activeCount = (bcRecipients?.teachers || []).filter(t => t.active).length;
+    if (!window.confirm(`Send this update to ${activeCount} active teacher(s)?\n\nOne message every 20 seconds.`)) return;
+    setBcBusy(true);
+    try {
+      const res = await axios.post(`${API_URL}/api/admin/broadcast/teachers`, { message: bcMessage }, bcAuth());
+      alert(`✅ ${res.data.message}`);
+    } catch (error) {
+      alert(`❌ ${error.response?.data?.message || 'Could not send.'}`);
+    } finally {
+      setBcBusy(false);
+    }
+  };
+
+  const sendToStudents = async () => {
+    if (!bcMessage.trim()) return alert('Please write the message first.');
+    const ids = Object.keys(bcSelected).filter(id => bcSelected[id]);
+    if (!ids.length) return alert('Choose at least one student.');
+    if (!window.confirm(`Send this update to ${ids.length} student(s)?\n\nLogin details are added automatically. One message every 20 seconds.`)) return;
+    setBcBusy(true);
+    try {
+      const res = await axios.post(`${API_URL}/api/admin/broadcast/students`, { message: bcMessage, studentIds: ids }, bcAuth());
+      alert(`✅ ${res.data.message}`);
+    } catch (error) {
+      alert(`❌ ${error.response?.data?.message || 'Could not send.'}`);
+    } finally {
+      setBcBusy(false);
     }
   };
 
@@ -1467,6 +1530,54 @@ function AdminDashboard() {
           </div>
         </div>
       )}
+
+      {/* 📣 STEP 9: SEND UPDATES */}
+      <div style={{ backgroundColor: '#fff', padding: '25px', borderRadius: '15px', boxShadow: '0 10px 25px rgba(0,0,0,0.04)', marginTop: '40px', marginBottom: '40px', borderTop: '5px solid #6c5ce7' }}>
+        <h2 style={{ margin: 0, color: '#2d3436', fontSize: '20px' }}>📣 Send updates</h2>
+        <p style={{ margin: '5px 0 15px 0', color: '#636e72', fontSize: '13px' }}>Send a message to the teachers marked Active, or to chosen students (paused and away students are never sent). Messages go out one every 20 seconds, in order.</p>
+
+        <textarea value={bcMessage} onChange={(e) => setBcMessage(e.target.value)} placeholder="Write the update here…" style={{ width: '100%', height: '120px', padding: '10px', boxSizing: 'border-box', borderRadius: '8px', border: '1px solid #dfe6e9', marginBottom: '15px' }} />
+
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '20px' }}>
+          <div>
+            <h3 style={{ fontSize: '16px', margin: '0 0 8px 0' }}>👨‍🏫 Teachers</h3>
+            {(bcRecipients?.teachers || []).map(t => (
+              <label key={t.id} style={{ display: 'block', padding: '4px 0', fontSize: '14px', cursor: 'pointer' }}>
+                <input type="checkbox" checked={t.active} onChange={() => toggleTeacherActive(t)} /> {t.name}
+                {!t.hasGroup && <span style={{ color: '#d35400', fontSize: '12px' }}> (no group link)</span>}
+              </label>
+            ))}
+            <button onClick={sendToTeachers} disabled={bcBusy} style={{ marginTop: '10px', padding: '10px 16px', backgroundColor: bcBusy ? '#b2bec3' : '#6c5ce7', color: 'white', border: 'none', borderRadius: '8px', fontWeight: 'bold', cursor: bcBusy ? 'not-allowed' : 'pointer' }}>
+              📣 Send to active teachers
+            </button>
+          </div>
+
+          <div>
+            <h3 style={{ fontSize: '16px', margin: '0 0 8px 0' }}>👩‍🎓 Students</h3>
+            <select value={bcTeacherFilter} onChange={(e) => setBcTeacherFilter(e.target.value)} style={{ width: '100%', padding: '8px', borderRadius: '6px', border: '1px solid #dfe6e9', marginBottom: '8px' }}>
+              <option value="">All teachers</option>
+              {(bcRecipients?.teachers || []).map(t => <option key={t.id} value={t.id}>Assigned to {t.name}</option>)}
+            </select>
+            <div style={{ display: 'flex', gap: '8px', marginBottom: '8px', fontSize: '12px' }}>
+              <button type="button" onClick={() => { const next = { ...bcSelected }; visibleStudents().forEach(s => { next[s.id] = true; }); setBcSelected(next); }} style={{ cursor: 'pointer', padding: '4px 8px' }}>Select all shown</button>
+              <button type="button" onClick={() => { const next = { ...bcSelected }; visibleStudents().forEach(s => { next[s.id] = false; }); setBcSelected(next); }} style={{ cursor: 'pointer', padding: '4px 8px' }}>Clear shown</button>
+            </div>
+            <div style={{ maxHeight: '260px', overflowY: 'auto', border: '1px solid #f1f2f6', borderRadius: '8px', padding: '6px 10px' }}>
+              {visibleStudents().map(s => (
+                <label key={s.id} style={{ display: 'block', padding: '3px 0', fontSize: '14px', cursor: 'pointer' }}>
+                  <input type="checkbox" checked={!!bcSelected[s.id]} onChange={() => setBcSelected(prev => ({ ...prev, [s.id]: !prev[s.id] }))} /> {s.name}
+                  {!s.hasGroup && <span style={{ color: '#d35400', fontSize: '12px' }}> (no group link)</span>}
+                </label>
+              ))}
+              {visibleStudents().length === 0 && <p style={{ fontSize: '13px', color: '#b2bec3' }}>No students to show.</p>}
+            </div>
+            <p style={{ fontSize: '12px', color: '#636e72', margin: '6px 0' }}>{Object.values(bcSelected).filter(Boolean).length} selected · login details added automatically</p>
+            <button onClick={sendToStudents} disabled={bcBusy} style={{ marginTop: '4px', padding: '10px 16px', backgroundColor: bcBusy ? '#b2bec3' : '#6c5ce7', color: 'white', border: 'none', borderRadius: '8px', fontWeight: 'bold', cursor: bcBusy ? 'not-allowed' : 'pointer' }}>
+              📣 Send to selected students
+            </button>
+          </div>
+        </div>
+      </div>
 
     </div>
   );

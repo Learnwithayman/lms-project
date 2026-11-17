@@ -16,6 +16,7 @@ const userSchema = mongoose.Schema(
     phone: { type: String, required: false },
     whatsappNumber: { type: String, required: false }, 
     timezone: { type: String, default: 'Africa/Cairo' },
+    broadcastActive: { type: Boolean, default: false }, // 📣 Step 9: teacher receives "Send updates" (ticked in the admin panel)
 
     // --- CALENDAR & BOT LINKING ---
     teacherGroupId: { type: String, default: '' }, 

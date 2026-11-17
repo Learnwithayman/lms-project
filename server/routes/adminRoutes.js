@@ -12,6 +12,7 @@ const {
 } = require('../controllers/adminController');
 const { getReminderPreview } = require('../controllers/reportDutyController'); // 📋 Step 5: preview reminders
 const { previewGroupIds, applyGroupIds, checkGroupIds } = require('../controllers/groupIdController'); // 🔄 Step 8: switch to new IDs
+const { getRecipients, setTeacherActive, sendTeachers, sendStudents } = require('../controllers/broadcastController'); // 📣 Step 9: send updates
 const { protect, admin } = require('../middleware/authMiddleware');
 
 // All routes here are protected (Must be Logged In + Must be Admin)
@@ -47,5 +48,11 @@ router.get('/reminder-preview', protect, admin, getReminderPreview);
 router.get('/group-ids/preview', protect, admin, previewGroupIds);
 router.post('/group-ids/apply', protect, admin, applyGroupIds);
 router.get('/group-ids/check', protect, admin, checkGroupIds);
+
+// 📣 Step 9: send updates (teachers marked Active, or chosen students)
+router.get('/broadcast/recipients', protect, admin, getRecipients);
+router.put('/broadcast/teacher/:id', protect, admin, setTeacherActive);
+router.post('/broadcast/teachers', protect, admin, sendTeachers);
+router.post('/broadcast/students', protect, admin, sendStudents);
 
 module.exports = router;
