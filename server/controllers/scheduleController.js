@@ -479,23 +479,17 @@ const getTeacherSchedule = async (req, res) => {
       const cleanDesc = description.replace(/<[^>]*>?/gm, ' ').replace(/&nbsp;/g, ' ');
       
       if (!extractedTeacherId) {
-          const tLink = cleanDesc.match(/TeacherGroupLink[\s\S]*?chat\.whatsapp\.com\/([a-zA-Z0-9_-]+)/i);
+          const tLink = cleanDesc.match(/Teacher\s*Group\s*Link[^a-zA-Z0-9]{0,30}?(?:https?:\/\/)?chat\.whatsapp\.com\/([a-zA-Z0-9_-]+)/i);
           const tAlpha = cleanDesc.match(/(?:TeacherGroupID|TeacherGroup|Teacher ID|Group ID)[\s*:-]*([a-zA-Z0-9_-]{10,})/i);
           if (tLink && tLink[1] !== 'null') extractedTeacherId = tLink[1].trim();
           else if (tAlpha && tAlpha[1] !== 'null') extractedTeacherId = tAlpha[1].trim();
       }
 
       if (!studentGroupId) {
-          const sLink = cleanDesc.match(/StudentGroupLink[\s\S]*?chat\.whatsapp\.com\/([a-zA-Z0-9_-]+)/i);
+          const sLink = cleanDesc.match(/Student\s*Group\s*Link[^a-zA-Z0-9]{0,30}?(?:https?:\/\/)?chat\.whatsapp\.com\/([a-zA-Z0-9_-]+)/i);
           const sAlpha = cleanDesc.match(/(?:StudentGroupID|StudentGroup|Student ID)[\s*:-]*([a-zA-Z0-9_-]{10,})/i);
           if (sLink && sLink[1] !== 'null') studentGroupId = sLink[1].trim();
           else if (sAlpha && sAlpha[1] !== 'null') studentGroupId = sAlpha[1].trim();
-      }
-
-      if (!extractedTeacherId || !studentGroupId) {
-          const allLinks = [...cleanDesc.matchAll(/chat\.whatsapp\.com\/([a-zA-Z0-9_-]+)/gi)];
-          if (allLinks.length > 0 && !extractedTeacherId) extractedTeacherId = allLinks[0][1].trim();
-          if (allLinks.length > 1 && !studentGroupId) studentGroupId = allLinks[1][1].trim();
       }
 
       const studentNameMatch = description.match(/StudentGroupName[\s*:-]*([^\n<]+)/i);
