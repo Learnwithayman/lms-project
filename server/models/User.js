@@ -46,7 +46,7 @@ const userSchema = mongoose.Schema(
     paypal: {
       billingType: { 
         type: String, 
-        enum: ['subscription', 'recurring_invoice', 'none'], 
+        enum: ['subscription', 'recurring_invoice', 'none', 'class_package', 'after_pay_monthly'], // 📦🧾 Step 18: package by classes / monthly after-pay (26th → 25th)
         default: 'none' 
       },
       subscriptionId: { type: String, trim: true, index: true },   // For I-...
@@ -77,6 +77,8 @@ const userSchema = mongoose.Schema(
       cycleCount: { type: Number },           //    and count, e.g. DAY × 28, WEEK × 48, YEAR × 1
       currentCyclePaid: { type: Boolean, default: null }, // paid for the current cycle (read from PayPal); null = unknown
       lastSyncedAt: { type: Date },           // last "PayPal cycles" sync
+      packagesPaid: { type: Number },         // 📦 Step 18: "Package by classes": packages paid since the package start (Mark as paid adds 1)
+      packageAlertFor: { type: Number },      //    admin "package finished" alert already sent for this packagesPaid value
       processedEventIds: [{ type: String }]   // Recent PayPal event IDs already handled (duplicate protection)
     },
 

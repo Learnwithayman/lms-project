@@ -162,7 +162,8 @@ const updateSubscription = asyncHandler(async (req, res) => {
     if (paypal.invoiceId !== undefined) user.paypal.invoiceId = paypal.invoiceId;
     if (paypal.planName) user.paypal.planName = paypal.planName;
     if (paypal.amount !== undefined) user.paypal.amount = Number(paypal.amount);
-    if (['monthly', 'quarterly', 'semiannual', 'yearly'].includes(paypal.billingCycle)) user.paypal.billingCycle = paypal.billingCycle; // ⏳ Billing cycle length
+    if (['monthly', 'quarterly', 'semiannual', 'yearly', 'calendar_year'].includes(paypal.billingCycle)) user.paypal.billingCycle = paypal.billingCycle; // ⏳ Billing cycle length (+ calendar year, Step 17)
+    if (paypal.packagesPaid !== undefined && Number(paypal.packagesPaid) >= 1) user.paypal.packagesPaid = Math.floor(Number(paypal.packagesPaid)); // 📦 Step 18
   }
 
   // ✨ Recurring Slots updates

@@ -45,6 +45,7 @@ function UserList() {
   const [invoiceId, setInvoiceId] = useState('');
   const [recurringSeriesId, setRecurringSeriesId] = useState('');
   const [billingCycle, setBillingCycle] = useState('monthly'); // ⏳ 28 / 84 / 168 / 336 days
+  const [packagesPaid, setPackagesPaid] = useState(1); // 📦 Step 18: "Package by classes"
 
   // ⏸️ STUDENT PAUSE STATES (Step 3)
   const [pauseKind, setPauseKind] = useState('full');
@@ -208,7 +209,8 @@ function UserList() {
           subscriptionId,
           invoiceId,
           recurringSeriesId,
-          billingCycle
+          billingCycle,
+          packagesPaid
         },
         recurringSlots
       };
@@ -227,13 +229,18 @@ function UserList() {
 
   // ✅ Manual-payment students: mark as paid & start a new 28-day cycle
   const handleManualRenew = async () => {
-    if (!window.confirm(`Mark ${selectedStudent.name} as paid and start a new cycle from today (length: saved Billing Cycle)? Classes used will reset to 0.`)) return;
+    const isPackage = billingType === 'class_package';
+    if ((selectedStudent.paypal?.billingType || 'none') !== billingType) return alert('Please save the new Billing Type first (Update button), then press Mark as paid.');
+    if (!window.confirm(isPackage
+      ? `Mark ${selectedStudent.name}'s next package as paid? (Packages paid: ${packagesPaid} → ${packagesPaid + 1})`
+      : `Mark ${selectedStudent.name} as paid and start a new cycle from today (length: saved Billing Cycle)? Classes used will reset to 0.`)) return;
     setIsSubUpdating(true);
     try {
       const token = localStorage.getItem('token');
       const config = { headers: { Authorization: `Bearer ${token}` } };
       const res = await axios.post(`${API_URL}/api/paypal/manual-renew/${selectedStudent._id}`, {}, config);
       const sub = res.data.subscription || {};
+      if (res.data.packagesPaid) setPackagesPaid(res.data.packagesPaid); // 📦 Step 18
       setSubStatus(sub.status || subStatus);
       setSubUsed(sub.classesUsed || 0);
       setSubStart(sub.startDate ? sub.startDate.split('T')[0] : '');
@@ -486,7 +493,8 @@ function UserList() {
     setInvoiceId(student.paypal?.invoiceId || '');
     setRecurringSeriesId(student.paypal?.recurringSeriesId || '');
     setBillingCycle(student.paypal?.billingCycle || 'monthly');
-    
+    setPackagesPaid(student.paypal?.packagesPaid || 1);
+
     // Scheduling Fields
     setRecurringSlots(student.recurringSlots || []);
     
@@ -889,6 +897,12 @@ function UserList() {
                 <>
                   <p style={{ margin: '0 0 4px 0' }}><b>{cycleInfo.done} done / {cycleInfo.total}</b> · {cycleInfo.remaining} left · cycle {new Date(cycleInfo.cycleStart).toLocaleDateString()} → {new Date(cycleInfo.cycleEnd).toLocaleDateString()}</p>
                   <p style={{ margin: '0 0 4px 0', color: '#555' }}>Weekly pattern (New York time): {(cycleInfo.pattern || []).join(', ')} · {cycleInfo.patternCount} classes this cycle</p>
+                  {cycleInfo.billing === 'class_package' && (
+                    <p style={{ margin: '0 0 4px 0', color: '#555' }}>📦 Packages paid: {cycleInfo.packagesPaid} · classes since the start: {cycleInfo.classesSinceStart}{cycleInfo.owed ? ` · ${cycleInfo.owed} taken after the paid packages` : ''}</p>
+                  )}
+                  {cycleInfo.billing === 'after_pay_monthly' && (
+                    <p style={{ margin: '0 0 4px 0', color: '#555' }}>🧾 After-pay month (26th → 25th): invoice reminder to the admin group on the 26th.</p>
+                  )}
                 </>
               )}
               {cycleInfo && cycleInfo.mode === 'paused' && <p style={{ margin: 0 }}>⏸️ Fully paused: nothing is counted.</p>}
@@ -1038,8 +1052,29 @@ function UserList() {
                     <option value="none">None / Manual Payment</option>
                     <option value="subscription">Auto-Subscription (I-...)</option>
                     <option value="recurring_invoice">Recurring Invoice Series (INV2-...)</option>
+                    <option value="class_package">📦 Package by classes (renews after every N classes, paid outside PayPal)</option>
+                    <option value="after_pay_monthly">🧾 Monthly after-pay (26th → 25th, invoice sent by hand)</option>
                   </select>
                 </div>
+
+                {/* 📦 Step 18: package by classes */}
+                {billingType === 'class_package' && (
+                  <div style={{ backgroundColor: '#fff', padding: '12px', borderRadius: '6px', border: '1px solid #dfe6e9', fontSize: '13px' }}>
+                    <p style={{ margin: '0 0 8px 0' }}>Package size = <b>Total classes</b> below (e.g. 4). <b>Start date</b> below = the date of the first class of the current package. Classes are counted from the calendar; when the package is used up the student sees "Payment due" and the admin group gets one alert.</p>
+                    <label style={{ display: 'block', marginBottom: '5px', fontWeight: 'bold' }}>Packages paid since the start date:</label>
+                    <input type="number" min="1" value={packagesPaid} onChange={(e) => setPackagesPaid(Math.max(1, Number(e.target.value) || 1))} style={{ width: '120px', padding: '8px', borderRadius: '5px', border: '1px solid #ccc' }} />
+                    <button type="button" onClick={handleManualRenew} disabled={isSubUpdating} style={{ display: 'block', width: '100%', marginTop: '10px', padding: '10px', backgroundColor: isSubUpdating ? '#95a5a6' : '#16a085', color: 'white', border: 'none', borderRadius: '5px', cursor: isSubUpdating ? 'not-allowed' : 'pointer', fontWeight: 'bold' }}>
+                      ✅ Mark next package as paid
+                    </button>
+                  </div>
+                )}
+
+                {/* 🧾 Step 18: monthly after-pay */}
+                {billingType === 'after_pay_monthly' && (
+                  <div style={{ backgroundColor: '#fff', padding: '12px', borderRadius: '6px', border: '1px solid #dfe6e9', fontSize: '13px' }}>
+                    The month runs from the 26th to the 25th. Classes are counted from the calendar; the student never sees "Payment due". On the 26th the admin group gets the number of classes done, to send the invoice.
+                  </div>
+                )}
 
                 {billingType === 'subscription' && (
                   <div>
@@ -1061,7 +1096,7 @@ function UserList() {
                   </div>
                 )}
 
-                <div style={{ marginTop: '15px' }}>
+                <div style={{ marginTop: '15px', display: ['class_package', 'after_pay_monthly'].includes(billingType) ? 'none' : 'block' }}>
                   <label style={{ display: 'block', marginBottom: '5px', fontWeight: 'bold', fontSize: '14px' }}>⏳ Billing Cycle (length of each new cycle):</label>
                   <select value={billingCycle} onChange={(e) => setBillingCycle(e.target.value)} style={{ width: '100%', padding: '10px', borderRadius: '5px', border: '1px solid #ccc' }}>
                     <option value="monthly">Monthly (28 days)</option>

@@ -169,24 +169,88 @@ const paymentInfo = (s, cycle) => {
 
 const fmtDay = (d) => new Date(d).toLocaleDateString('en-US', { timeZone: TZ, dateStyle: 'medium' });
 
+// 🧾 Step 18: "Monthly after-pay" (e.g. Joud and Layan): the month runs from the 26th to the 25th (New York time)
+const pad2 = (n) => String(n).padStart(2, '0');
+const afterPayCycle = (now) => {
+  const [y, m, d] = A.dayIn(now, TZ).split('-').map(Number);
+  let sy = y; let sm = m;
+  if (d < 26) { sm -= 1; if (sm === 0) { sm = 12; sy -= 1; } }
+  let ey = sy; let em = sm + 1;
+  if (em === 13) { em = 1; ey += 1; }
+  return { start: A.zonedToUtc(`${sy}-${pad2(sm)}-26`, '00:00', TZ), end: A.zonedToUtc(`${ey}-${pad2(em)}-26`, '00:00', TZ), rolled: 0 };
+};
+
+const PACKAGE_LOOK_AHEAD_DAYS = 120;
+const DEFAULT_PACKAGE_SIZE = 4;
+
+// 📦 Step 18: "Package by classes" (e.g. Hamza Hamwi): renews after every N completed classes, paid outside PayPal.
+// Classes are counted from the saved start (first class of the first tracked package). "Mark as paid" adds one package.
+const packageResult = async (s, { base, flags, slots, now, opts }) => {
+  const size = base.savedTotal > 0 ? base.savedTotal : DEFAULT_PACKAGE_SIZE;
+  if (!(base.savedTotal > 0)) flags.push(`No package size saved; using ${DEFAULT_PACKAGE_SIZE}.`);
+  const paidPackages = Math.max(1, Number(s.paypal && s.paypal.packagesPaid) || 1);
+  const start = new Date(s.subscription.startDate);
+  const times = expectedTimes(slots, { start, end: new Date(now.getTime() + PACKAGE_LOOK_AHEAD_DAYS * DAY) });
+  const changes = opts.changes || await ClassChange.find({ student: s._id, oldStart: { $gte: new Date(start.getTime() - DAY) } });
+  const counted = applyChanges(times, changes).filter((c) => !c.removed).sort((a, b) => a.at - b.at);
+  const used = counted.filter((c) => c.at < now).length;           // classes done since the start
+  const paidUpTo = paidPackages * size;
+  const index = Math.min(Math.floor(used / size), paidPackages - 1); // the package we are in now
+  const first = index * size;
+  const done = Math.min(used - first, size);
+  const owed = Math.max(used - paidUpTo, 0);
+  if (owed) flags.push(`${owed} class(es) taken after the paid package(s) ended.`);
+  const inPackage = counted.slice(first, first + size);
+  return {
+    ...base,
+    mode: 'calculated',
+    billing: 'class_package',
+    cycleStart: inPackage[0] ? inPackage[0].at : start,
+    cycleEnd: inPackage[size - 1] ? inPackage[size - 1].at : null,
+    rolled: 0,
+    total: size,
+    done,
+    remaining: Math.max(size - done, 0),
+    packagesPaid: paidPackages,
+    classesSinceStart: used,
+    owed,
+    patternCount: size,
+    pattern: slots.map((p) => `${WEEKDAYS[p.weekday]} ${p.hm}`),
+    paymentDue: used >= paidUpTo,
+    payLink: null,
+    lastClassAt: used ? counted[used - 1].at : null,
+    classes: inPackage.map((c) => ({ at: c.at, done: c.at < now, counted: true, note: c.note })),
+    flags
+  };
+};
+
 // Main: works out the student's current cycle. Never throws for calendar problems (falls back).
 // Options let callers pass already-loaded events / students (and tests pass fakes).
 const buildCycle = async (student, opts = {}) => {
   const now = opts.now || new Date();
   const s = student;
   const sub = s.subscription || {};
-  const base = { savedUsed: sub.classesUsed || 0, savedTotal: sub.totalClassesBought || 0, savedStatus: sub.status || 'none' };
+  const type = (s.paypal && s.paypal.billingType) || 'none';
+  const base = { savedUsed: sub.classesUsed || 0, savedTotal: sub.totalClassesBought || 0, savedStatus: sub.status || 'none', billing: type };
 
   if (s.pause && s.pause.kind === 'full') return { ...base, mode: 'paused', flags: [] };
 
-  const cycle = currentCycle(s, now);
-  if (!cycle) return { ...base, mode: 'no-start', flags: ['No cycle start date saved yet (set it in the wallet, or it comes with the next PayPal notice).'] };
-
-  const pay = paymentInfo(s, cycle);
   const flags = [];
-  if (cycle.rolled && !pay.known && s.paypal && s.paypal.billingType && s.paypal.billingType !== 'none') {
-    flags.push('No PayPal notice received for this cycle yet; please check PayPal.');
+  let cycle = null;
+  let pay = { due: false, known: true, link: null };
+  if (type === 'class_package') {
+    if (!sub.startDate) return { ...base, mode: 'no-start', flags: ['No package start date saved yet (set the date of the first class of the current package in the wallet).'] };
+  } else if (type === 'after_pay_monthly') {
+    cycle = afterPayCycle(now); // pays after the month: never "Payment due"
+  } else {
+    cycle = currentCycle(s, now);
+    if (!cycle) return { ...base, mode: 'no-start', flags: ['No cycle start date saved yet (set it in the wallet, or it comes with the next PayPal notice).'] };
+    pay = paymentInfo(s, cycle);
+    if (cycle.rolled && !pay.known && type !== 'none') {
+      flags.push('No PayPal notice received for this cycle yet; please check PayPal.');
+    }
   }
+  const cycleInfo = cycle ? { cycleStart: cycle.start, cycleEnd: cycle.end } : {};
 
   let mine = [];
   try {
@@ -195,13 +259,15 @@ const buildCycle = async (student, opts = {}) => {
     mine = events.filter((ev) => belongsTo(ev, s, students));
   } catch (err) {
     console.error('Cycle calculation: calendar error:', err.message);
-    return { ...base, mode: 'error', cycleStart: cycle.start, cycleEnd: cycle.end, paymentDue: pay.due, payLink: pay.link || null, flags: ['Could not read Google Calendar right now.'] };
+    return { ...base, mode: 'error', ...cycleInfo, paymentDue: pay.due, payLink: pay.link || null, flags: ['Could not read Google Calendar right now.'] };
   }
 
   const pattern = findPattern(mine, now);
   if (!pattern.slots.length) {
-    return { ...base, mode: 'no-pattern', cycleStart: cycle.start, cycleEnd: cycle.end, paymentDue: pay.due, payLink: pay.link || null, flags: [...flags, 'No repeating weekly class found on the calendar (5 before + 5 after today).'] };
+    return { ...base, mode: 'no-pattern', ...cycleInfo, paymentDue: pay.due, payLink: pay.link || null, flags: [...flags, 'No repeating weekly class found on the calendar (5 before + 5 after today).'] };
   }
+
+  if (type === 'class_package') return packageResult(s, { base, flags, slots: pattern.slots, now, opts });
 
   const times = expectedTimes(pattern.slots, cycle);
   const changes = opts.changes || await ClassChange.find({ student: s._id, oldStart: { $gte: new Date(cycle.start.getTime() - DAY), $lt: cycle.end } });
@@ -209,17 +275,23 @@ const buildCycle = async (student, opts = {}) => {
   const counted = list.filter((c) => !c.removed);
   const done = counted.filter((c) => c.at < now).length;
   const patternCount = times.length;
-  const total = base.savedTotal > 0 ? base.savedTotal : patternCount;
-  if (base.savedTotal > 0 && patternCount !== base.savedTotal) {
-    flags.push(`The calendar pattern gives ${patternCount} classes this cycle, but the package is ${base.savedTotal}. Please check.`);
+  let total;
+  if (type === 'after_pay_monthly') {
+    total = counted.length; // they pay for the classes of the month, so the month's classes are the total
+  } else {
+    total = base.savedTotal > 0 ? base.savedTotal : patternCount;
+    if (base.savedTotal > 0 && patternCount !== base.savedTotal) {
+      flags.push(`The calendar pattern gives ${patternCount} classes this cycle, but the package is ${base.savedTotal}. Please check.`);
+    }
+    if (base.savedTotal <= 0) flags.push(`No package number saved; using the calendar pattern (${patternCount}).`);
   }
-  if (base.savedTotal <= 0) flags.push(`No package number saved; using the calendar pattern (${patternCount}).`);
 
   return {
     ...base,
     mode: 'calculated',
     cycleStart: cycle.start,
-    cycleEnd: cycle.end,
+    // after-pay: show the last day (the 25th), not the 26th the next month starts on
+    cycleEnd: type === 'after_pay_monthly' ? new Date(cycle.end.getTime() - 60 * 1000) : cycle.end,
     rolled: cycle.rolled,
     total,
     done: Math.min(done, total),
@@ -240,11 +312,11 @@ const shownSubscription = (student, result) => {
   if (result.mode !== 'calculated') {
     return result.cycleStart ? { ...sub, status: sub.status === 'expired' ? 'active' : sub.status, startDate: result.cycleStart, endDate: result.cycleEnd } : sub;
   }
-  return { ...sub, status: 'active', classesUsed: result.done, totalClassesBought: result.total, startDate: result.cycleStart, endDate: result.cycleEnd };
+  return { ...sub, status: 'active', classesUsed: result.done, totalClassesBought: result.total, startDate: result.cycleStart, endDate: result.cycleEnd || sub.endDate };
 };
 
 module.exports = {
   buildCycle, shownSubscription,
   // exported for tests
-  currentCycle, findPattern, expectedTimes, applyChanges, paymentInfo, belongsTo, fmtDay, CYCLE_DAYS, shiftInterval
+  currentCycle, findPattern, expectedTimes, applyChanges, paymentInfo, belongsTo, fmtDay, CYCLE_DAYS, shiftInterval, afterPayCycle
 };

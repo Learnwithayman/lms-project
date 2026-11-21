@@ -365,6 +365,14 @@ const manualRenew = async (req, res) => {
     const user = await User.findById(req.params.id);
     if (!user) return res.status(404).json({ message: 'Student not found' });
 
+    // 📦 Step 18: "Package by classes": paying adds one package (the classes keep counting from the package start)
+    if (user.paypal?.billingType === 'class_package') {
+      user.paypal.packagesPaid = (Number(user.paypal.packagesPaid) || 1) + 1;
+      user.paypal.lastPaidAt = new Date();
+      await user.save();
+      return res.status(200).json({ message: `Marked as paid. Packages paid: ${user.paypal.packagesPaid}.`, subscription: user.subscription, packagesPaid: user.paypal.packagesPaid });
+    }
+
     const now = new Date();
     const { start, end } = startNewCycle(user, now);
     user.paypal.lastPaidAt = now;

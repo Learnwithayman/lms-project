@@ -16,6 +16,7 @@ require('./utils/reportDeadlines'); // 📋 Plan & report deadline reminders + a
 require('./utils/rescheduleCrons'); // 🗓️ Monday schedule check (10 AM Cairo) + makeup credit expiry warnings (10 AM Eastern)
 require('./utils/groupIds').loadSwitchFlag(); // 🔄 Step 8: old group IDs are understood until "Switch to new IDs" is applied
 require('./utils/paypalSyncCron'); // 💳 Step 17: daily PayPal cycles sync (9 AM Cairo), only when switched on in the admin panel
+require('./utils/billingAlerts'); // 📦🧾 Step 18: "package finished" (9:15 AM Cairo daily) + after-pay invoice reminder (26th, 9:30 AM Cairo)
 
 // 💰 Turn on the new Monthly Payroll Robotic Accountant
 const { startPayrollCron } = require('./utils/payrollCron');
