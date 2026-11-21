@@ -29,15 +29,37 @@ const WEEKDAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
 const cycleDaysOf = (s) => CYCLE_DAYS[s.paypal && s.paypal.billingCycle] || CYCLE_DAYS.monthly;
 
-// The cycle we are in now: from the saved start, moved forward one cycle at a time (it always renews)
+// Moves a date by one PayPal interval (DAY / WEEK / MONTH / YEAR × count); calendar-aware for months and years
+const shiftInterval = (date, unit, count, dir = 1) => {
+  const d = new Date(date);
+  const n = (Number(count) || 1) * dir;
+  if (unit === 'DAY') return new Date(d.getTime() + n * DAY);
+  if (unit === 'WEEK') return new Date(d.getTime() + n * 7 * DAY);
+  if (unit === 'MONTH') { d.setUTCMonth(d.getUTCMonth() + n); return d; }
+  if (unit === 'YEAR') { d.setUTCFullYear(d.getUTCFullYear() + n); return d; }
+  return null;
+};
+
+// One cycle step for this student: PayPal's own interval when synced, else the saved billing cycle
+const stepOf = (s) => {
+  const p = s.paypal || {};
+  if (p.cycleUnit && p.cycleCount) return (d, dir = 1) => shiftInterval(d, p.cycleUnit, p.cycleCount, dir);
+  if (p.billingCycle === 'calendar_year') return (d, dir = 1) => shiftInterval(d, 'YEAR', 1, dir);
+  return (d, dir = 1) => new Date(new Date(d).getTime() + dir * cycleDaysOf(s) * DAY);
+};
+
+// The cycle we are in now: saved start → saved end (PayPal's next billing date), then moved forward
+// one cycle at a time if PayPal has not been read since (the cycle always renews on its date)
 const currentCycle = (s, now) => {
   const saved = s.subscription && s.subscription.startDate;
   if (!saved) return null;
-  const len = cycleDaysOf(s) * DAY;
-  let start = new Date(saved).getTime();
+  const step = stepOf(s);
+  let start = new Date(saved);
+  const savedEnd = s.subscription.endDate ? new Date(s.subscription.endDate) : null;
+  let end = savedEnd && savedEnd > start ? savedEnd : step(start, 1);
   let rolled = 0;
-  while (start + len <= now.getTime()) { start += len; rolled++; }
-  return { start: new Date(start), end: new Date(start + len), rolled };
+  while (end <= now && rolled < 500) { start = end; end = step(end, 1); rolled++; }
+  return { start, end, rolled };
 };
 
 const lower = (t) => (t || '').toLowerCase().trim();
@@ -125,6 +147,11 @@ const paymentInfo = (s, cycle) => {
   const p = s.paypal || {};
   const type = p.billingType;
   if (!cycle || !type || type === 'none') return { due: false, known: false };
+  // 💳 Read from PayPal by the sync (paid / not paid for THIS cycle); only while that cycle is still current
+  if (p.lastSyncedAt && !cycle.rolled && (p.currentCyclePaid === true || p.currentCyclePaid === false)) {
+    const due = p.currentCyclePaid === false;
+    return { due, known: true, link: due ? (p.lastInvoiceUrl || null) : null };
+  }
   const paid = p.lastPaidAt ? new Date(p.lastPaidAt).getTime() : null;
   const sent = p.lastInvoiceSentAt ? new Date(p.lastInvoiceSentAt).getTime() : null;
   const from = cycle.start.getTime() - PAY_GRACE_DAYS * DAY;
@@ -219,5 +246,5 @@ const shownSubscription = (student, result) => {
 module.exports = {
   buildCycle, shownSubscription,
   // exported for tests
-  currentCycle, findPattern, expectedTimes, applyChanges, paymentInfo, belongsTo, fmtDay, CYCLE_DAYS
+  currentCycle, findPattern, expectedTimes, applyChanges, paymentInfo, belongsTo, fmtDay, CYCLE_DAYS, shiftInterval
 };

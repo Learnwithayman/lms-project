@@ -64,7 +64,7 @@ const userSchema = mongoose.Schema(
       amount: { type: Number },
       billingCycle: {                         // ⏳ Length of a new cycle when PayPal bills (4-week months)
         type: String,
-        enum: ['monthly', 'quarterly', 'semiannual', 'yearly'], // 28 / 84 / 168 / 336 days
+        enum: ['monthly', 'quarterly', 'semiannual', 'yearly', 'calendar_year'], // 28 / 84 / 168 / 336 days / same date next year (Step 17)
         default: 'monthly'
       },
 
@@ -73,6 +73,10 @@ const userSchema = mongoose.Schema(
       lastInvoiceSentAt: { type: Date },      // When PayPal sent that invoice
       lastPaidAt: { type: Date },             // Last time a payment was received
       lastInvoiceUrl: { type: String },       // 🔄 Step 17: pay link of the last invoice ("Pay here" on the student dashboard)
+      cycleUnit: { type: String },            // 💳 Step 17: PayPal interval unit (DAY / WEEK / MONTH / YEAR)
+      cycleCount: { type: Number },           //    and count, e.g. DAY × 28, WEEK × 48, YEAR × 1
+      currentCyclePaid: { type: Boolean, default: null }, // paid for the current cycle (read from PayPal); null = unknown
+      lastSyncedAt: { type: Date },           // last "PayPal cycles" sync
       processedEventIds: [{ type: String }]   // Recent PayPal event IDs already handled (duplicate protection)
     },
 

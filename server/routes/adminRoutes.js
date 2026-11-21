@@ -13,6 +13,7 @@ const {
 const { getReminderPreview } = require('../controllers/reportDutyController'); // 📋 Step 5: preview reminders
 const { previewGroupIds, applyGroupIds, checkGroupIds } = require('../controllers/groupIdController'); // 🔄 Step 8: switch to new IDs
 const { getRecipients, setTeacherActive, sendTeachers, sendStudents } = require('../controllers/broadcastController'); // 📣 Step 9: send updates
+const { getSyncStatus, previewSync, applySync, setDailySync } = require('../controllers/paypalSyncController'); // 💳 Step 17: PayPal cycles
 const { protect, admin } = require('../middleware/authMiddleware');
 
 // All routes here are protected (Must be Logged In + Must be Admin)
@@ -54,5 +55,11 @@ router.get('/broadcast/recipients', protect, admin, getRecipients);
 router.put('/broadcast/teacher/:id', protect, admin, setTeacherActive);
 router.post('/broadcast/teachers', protect, admin, sendTeachers);
 router.post('/broadcast/students', protect, admin, sendStudents);
+
+// 💳 Step 17: PayPal cycles (preview reads PayPal only; apply saves on the students with a backup)
+router.get('/paypal-sync/status', protect, admin, getSyncStatus);
+router.get('/paypal-sync/preview', protect, admin, previewSync);
+router.post('/paypal-sync/apply', protect, admin, applySync);
+router.put('/paypal-sync/daily', protect, admin, setDailySync);
 
 module.exports = router;

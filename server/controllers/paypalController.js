@@ -84,7 +84,8 @@ const cycleDaysFor = (user) => CYCLE_DAYS[user.paypal?.billingCycle] || CYCLE_DA
 // Starts a fresh cycle (length from the student's billing cycle) and resets Phase 1 (classes completed) to 0
 const startNewCycle = (user, startDate) => {
   const start = new Date(startDate);
-  const end = new Date(start.getTime() + cycleDaysFor(user) * 24 * 60 * 60 * 1000);
+  let end = new Date(start.getTime() + cycleDaysFor(user) * 24 * 60 * 60 * 1000);
+  if (user.paypal?.billingCycle === 'calendar_year') { end = new Date(start); end.setUTCFullYear(end.getUTCFullYear() + 1); } // 💳 Step 17: same date next year
 
   if (!user.subscription) user.subscription = {};
   user.subscription.startDate = start;
@@ -96,6 +97,7 @@ const startNewCycle = (user, startDate) => {
   user.paypal.cycleStartDate = start;
   user.paypal.cycleEndDate = end;
   user.paypal.status = 'active';
+  user.paypal.currentCyclePaid = null; // 💳 Step 17: paid / not paid for the NEW cycle is unknown until the next PayPal read
 
   return { start, end };
 };

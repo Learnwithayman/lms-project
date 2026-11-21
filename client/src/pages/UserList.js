@@ -1068,6 +1068,7 @@ function UserList() {
                     <option value="quarterly">Quarterly (84 days)</option>
                     <option value="semiannual">Half-year (168 days)</option>
                     <option value="yearly">Yearly (336 days)</option>
+                    <option value="calendar_year">Calendar year (same date next year)</option>
                   </select>
                 </div>
 

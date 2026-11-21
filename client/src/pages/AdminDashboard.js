@@ -79,6 +79,11 @@ function AdminDashboard() {
   const [bcTeacherFilter, setBcTeacherFilter] = useState('');
   const [bcBusy, setBcBusy] = useState(false);
 
+  // 💳 Step 17: PayPal cycles (preview → apply, daily switch)
+  const [ppStatus, setPpStatus] = useState(null);
+  const [ppPreview, setPpPreview] = useState(null);
+  const [ppBusy, setPpBusy] = useState(false);
+
   // Helper to generate recent months for the dropdown
   const getRecentMonths = () => {
     const months = [];
@@ -120,6 +125,7 @@ function AdminDashboard() {
       fetchStudents(token);
       fetchIdCheck(token);
       fetchBroadcastRecipients(token);
+      fetchPaypalStatus(token);
     }
   }, [navigate]);
 
@@ -169,6 +175,57 @@ function AdminDashboard() {
       alert('Failed to load the reminder preview.');
     } finally {
       setLoadingPreview(false);
+    }
+  };
+
+  // 💳 Step 17: PayPal cycles
+  const ppAuth = () => ({ headers: { Authorization: `Bearer ${localStorage.getItem('token')}` } });
+
+  const fetchPaypalStatus = async (token) => {
+    try {
+      const res = await axios.get(`${API_URL}/api/admin/paypal-sync/status`, { headers: { Authorization: `Bearer ${token}` } });
+      setPpStatus(res.data);
+    } catch (error) {
+      console.error('Could not load PayPal sync status:', error);
+    }
+  };
+
+  const previewPaypal = async () => {
+    setPpBusy(true);
+    try {
+      const res = await axios.get(`${API_URL}/api/admin/paypal-sync/preview`, ppAuth());
+      setPpPreview(res.data);
+    } catch (error) {
+      alert(`❌ ${error.response?.data?.message || 'Could not read PayPal.'}`);
+    } finally {
+      setPpBusy(false);
+    }
+  };
+
+  const applyPaypal = async () => {
+    if (!ppPreview) return;
+    if (!window.confirm(`Save PayPal's current cycle on ${ppPreview.counts.willUpdate} students?\n\nOld values are kept as a backup. PayPal itself is not changed.`)) return;
+    setPpBusy(true);
+    try {
+      const res = await axios.post(`${API_URL}/api/admin/paypal-sync/apply`, {}, ppAuth());
+      alert(`✅ ${res.data.message}`);
+      setPpPreview(null);
+      fetchPaypalStatus(localStorage.getItem('token'));
+    } catch (error) {
+      alert(`❌ ${error.response?.data?.message || 'Could not save.'}`);
+    } finally {
+      setPpBusy(false);
+    }
+  };
+
+  const toggleDailyPaypal = async () => {
+    const on = !ppStatus?.dailyOn;
+    if (on && !window.confirm('Turn on the daily PayPal sync?\n\nEvery day at 9:00 AM Cairo the app reads PayPal and saves each student\'s current cycle (with a backup).')) return;
+    try {
+      const res = await axios.put(`${API_URL}/api/admin/paypal-sync/daily`, { on }, ppAuth());
+      setPpStatus(res.data);
+    } catch (error) {
+      alert(`❌ ${error.response?.data?.message || 'Could not change the daily sync.'}`);
     }
   };
 
@@ -1530,6 +1587,61 @@ function AdminDashboard() {
           </div>
         </div>
       )}
+
+      {/* 💳 STEP 17: PAYPAL CYCLES */}
+      <div style={{ backgroundColor: '#fff', padding: '25px', borderRadius: '15px', boxShadow: '0 10px 25px rgba(0,0,0,0.04)', marginTop: '40px', borderTop: '5px solid #0070ba' }}>
+        <h2 style={{ margin: 0, color: '#2d3436', fontSize: '20px' }}>💳 PayPal cycles</h2>
+        <p style={{ margin: '5px 0 15px 0', color: '#636e72', fontSize: '13px' }}>Reads each student's current cycle and paid / not paid from PayPal (any length: 28 days, quarter, year). Preview first; Apply saves it on the students with a backup. PayPal itself is never changed.</p>
+        {ppStatus && !ppStatus.keys && <p style={{ color: '#d63031', fontWeight: 'bold' }}>⚠️ PayPal keys are missing on the server.</p>}
+        <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap', alignItems: 'center', marginBottom: '10px' }}>
+          <button onClick={previewPaypal} disabled={ppBusy} style={{ padding: '10px 16px', backgroundColor: ppBusy ? '#b2bec3' : '#0070ba', color: 'white', border: 'none', borderRadius: '8px', fontWeight: 'bold', cursor: ppBusy ? 'not-allowed' : 'pointer' }}>
+            {ppBusy ? '⏳ Reading PayPal…' : '🔍 Preview from PayPal'}
+          </button>
+          <button onClick={applyPaypal} disabled={ppBusy || !ppPreview} style={{ padding: '10px 16px', backgroundColor: ppBusy || !ppPreview ? '#b2bec3' : '#00b894', color: 'white', border: 'none', borderRadius: '8px', fontWeight: 'bold', cursor: ppBusy || !ppPreview ? 'not-allowed' : 'pointer' }}>
+            ✅ Apply
+          </button>
+          <label style={{ fontSize: '14px', cursor: 'pointer', marginLeft: '10px' }}>
+            <input type="checkbox" checked={!!ppStatus?.dailyOn} onChange={toggleDailyPaypal} /> Daily sync (9:00 AM Cairo)
+          </label>
+        </div>
+        {ppStatus?.last && (
+          <p style={{ fontSize: '12px', color: '#636e72', margin: '0 0 10px 0' }}>
+            Last saved: {new Date(ppStatus.last.at).toLocaleString()} ({ppStatus.last.source}) · {ppStatus.last.updated} updated · {ppStatus.last.unpaid} not paid · {(ppStatus.last.problems || []).length} to check
+          </p>
+        )}
+        {ppPreview && (
+          <>
+            <p style={{ fontSize: '14px', margin: '10px 0' }}>
+              <b>{ppPreview.counts.willUpdate}</b> will be updated · <b style={{ color: '#d63031' }}>{ppPreview.counts.unpaid}</b> not paid yet · <b style={{ color: '#d35400' }}>{ppPreview.counts.problems}</b> to check · {ppPreview.counts.students - ppPreview.counts.linked} not linked to PayPal
+            </p>
+            {ppPreview.invoiceProblem && <p style={{ color: '#d35400' }}>⚠️ {ppPreview.invoiceProblem}</p>}
+            <div style={{ maxHeight: '420px', overflow: 'auto', border: '1px solid #f1f2f6', borderRadius: '8px' }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px' }}>
+                <thead>
+                  <tr style={{ backgroundColor: '#f8f9fa', textAlign: 'left' }}>
+                    <th style={{ padding: '8px' }}>Student</th>
+                    <th style={{ padding: '8px' }}>Every</th>
+                    <th style={{ padding: '8px' }}>PayPal cycle</th>
+                    <th style={{ padding: '8px' }}>Paid?</th>
+                    <th style={{ padding: '8px' }}>LMS now</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {ppPreview.rows.map(r => (
+                    <tr key={r.id} style={{ borderTop: '1px solid #f1f2f6', backgroundColor: r.problem ? '#fff4e5' : (r.linked ? 'white' : '#fafafa') }}>
+                      <td style={{ padding: '6px 8px' }}>{r.name}<div style={{ fontSize: '11px', color: '#777' }}>{r.type === 'subscription' ? 'Subscription' : r.type === 'recurring_invoice' ? 'Invoice series' : 'No PayPal'}</div></td>
+                      <td style={{ padding: '6px 8px' }}>{r.every || '-'}</td>
+                      <td style={{ padding: '6px 8px' }}>{r.start ? `${r.start} → ${r.end}` : '-'}{r.problem && <div style={{ color: '#d35400' }}>⚠️ {r.problem}</div>}{r.note && <div style={{ color: '#777' }}>{r.note}</div>}</td>
+                      <td style={{ padding: '6px 8px' }}>{r.paid === true ? '✅ Paid' : r.paid === false ? <span style={{ color: '#d63031', fontWeight: 'bold' }}>❌ Not paid{r.payLink ? ' (link)' : ''}</span> : (r.linked ? '❔' : '-')}{r.failedPayments > 0 && <div style={{ color: '#d63031' }}>{r.failedPayments} failed</div>}</td>
+                      <td style={{ padding: '6px 8px', color: r.changes ? '#0984e3' : '#777' }}>{r.lms.start ? `${r.lms.start} → ${r.lms.end || '?'}` : 'Not set'}<div style={{ fontSize: '11px' }}>{r.lms.cycle || 'no cycle'}{r.changes ? ' → will change' : ''}</div></td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </>
+        )}
+      </div>
 
       {/* 📣 STEP 9: SEND UPDATES */}
       <div style={{ backgroundColor: '#fff', padding: '25px', borderRadius: '15px', boxShadow: '0 10px 25px rgba(0,0,0,0.04)', marginTop: '40px', marginBottom: '40px', borderTop: '5px solid #6c5ce7' }}>
