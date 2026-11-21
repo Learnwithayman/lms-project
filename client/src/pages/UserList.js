@@ -896,7 +896,7 @@ function UserList() {
               {cycleInfo && cycleInfo.mode === 'calculated' && (
                 <>
                   <p style={{ margin: '0 0 4px 0' }}><b>{cycleInfo.done} done / {cycleInfo.total}</b> · {cycleInfo.remaining} left · cycle {new Date(cycleInfo.cycleStart).toLocaleDateString()} → {new Date(cycleInfo.cycleEnd).toLocaleDateString()}</p>
-                  <p style={{ margin: '0 0 4px 0', color: '#555' }}>Weekly pattern (New York time): {(cycleInfo.pattern || []).join(', ')} · {cycleInfo.patternCount} classes this cycle</p>
+                  <p style={{ margin: '0 0 4px 0', color: '#555' }}>Weekly pattern (class time zone; New York unless shown): {(cycleInfo.pattern || []).join(', ')} · {cycleInfo.patternCount} classes this cycle</p>
                   {cycleInfo.billing === 'class_package' && (
                     <p style={{ margin: '0 0 4px 0', color: '#555' }}>📦 Packages paid: {cycleInfo.packagesPaid} · classes since the start: {cycleInfo.classesSinceStart}{cycleInfo.owed ? ` · ${cycleInfo.owed} taken after the paid packages` : ''}</p>
                   )}

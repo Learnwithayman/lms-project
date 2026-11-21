@@ -79,11 +79,20 @@ const belongsTo = (ev, student, students) => {
   return nameIn(`${parsed.name || ''} ${ev.summary || ''}`, student.name);
 };
 
-const slotOf = (date) => {
-  const day = A.dayIn(date, TZ);
-  const hm = new Date(date).toLocaleTimeString('en-GB', { timeZone: TZ, hour: '2-digit', minute: '2-digit', hourCycle: 'h23' });
+// Day + time of a class in ITS OWN time zone (the one on the calendar event, e.g. Europe/Istanbul).
+// Reading everything in New York time broke on clock changes: 14:00 Istanbul is 07:00 New York before
+// the US clock change and 06:00 after, which looked like two different weekly classes (Hamza, 21 Nov).
+const zoneOf = (ev) => {
+  const tz = ev && ev.start && ev.start.timeZone;
+  try { if (tz) { new Intl.DateTimeFormat('en-US', { timeZone: tz }); return tz; } } catch (e) { /* unknown zone → New York */ }
+  return TZ;
+};
+const slotOf = (date, tz = TZ) => {
+  const day = A.dayIn(date, tz);
+  const hm = new Date(date).toLocaleTimeString('en-GB', { timeZone: tz, hour: '2-digit', minute: '2-digit', hourCycle: 'h23' });
   return { weekday: A.weekdayOf(day), hm };
 };
+const zoneLabel = (tz) => (tz === TZ ? '' : ` (${String(tz).split('/').pop().replace(/_/g, ' ')})`);
 
 // Weekly pattern from the 5 classes before now and the 5 after
 const findPattern = (events, now) => {
@@ -92,42 +101,46 @@ const findPattern = (events, now) => {
   const future = sorted.filter((e) => A.eventStart(e) >= now).slice(0, SAMPLE);
   const counts = new Map();
   [...past, ...future].forEach((ev) => {
-    const { weekday, hm } = slotOf(A.eventStart(ev));
-    const key = `${weekday}|${hm}`;
+    const tz = zoneOf(ev);
+    const { weekday, hm } = slotOf(A.eventStart(ev), tz);
+    const key = `${weekday}|${hm}|${tz}`;
     counts.set(key, (counts.get(key) || 0) + 1);
   });
   const slots = [...counts]
     .filter(([, n]) => n >= MIN_REPEAT)
-    .map(([key]) => { const [w, hm] = key.split('|'); return { weekday: Number(w), hm }; })
+    .map(([key]) => { const [w, hm, tz] = key.split('|'); return { weekday: Number(w), hm, tz }; })
     .sort((a, b) => a.weekday - b.weekday || a.hm.localeCompare(b.hm));
   return { slots, sampleSize: past.length + future.length };
 };
 
-// Pattern laid over the cycle → expected class times
+// Pattern laid over the cycle → expected class times (each slot in its own time zone)
 const expectedTimes = (slots, cycle) => {
   const out = [];
-  let day = A.dayIn(cycle.start, TZ);
-  const lastDay = A.dayIn(new Date(cycle.end.getTime() - 1), TZ);
-  while (day <= lastDay) {
-    const wd = A.weekdayOf(day);
-    slots.filter((s) => s.weekday === wd).forEach((s) => {
-      const at = A.zonedToUtc(day, s.hm, TZ);
-      if (at >= cycle.start && at < cycle.end) out.push(at);
-    });
-    day = A.addDays(day, 1);
-  }
+  slots.forEach((s) => {
+    const tz = s.tz || TZ;
+    let day = A.dayIn(cycle.start, tz);
+    const lastDay = A.dayIn(new Date(cycle.end.getTime() - 1), tz);
+    while (day <= lastDay) {
+      if (A.weekdayOf(day) === s.weekday) {
+        const at = A.zonedToUtc(day, s.hm, tz);
+        if (at >= cycle.start && at < cycle.end) out.push(at);
+      }
+      day = A.addDays(day, 1);
+    }
+  });
   return out.sort((a, b) => a - b);
 };
 
 // Postpones / cancels / moves logged by the app change the expected list
+const MATCH_HOURS = 12; // a change belongs to the expected class within 12 hours of its original time
 const applyChanges = (times, changes) => {
   const list = times.map((at) => ({ at, original: at, note: '' }));
-  const sameDay = (a, b) => A.dayIn(a, TZ) === A.dayIn(b, TZ);
+  const near = (a, b) => Math.abs(new Date(a) - new Date(b)) <= MATCH_HOURS * 60 * 60 * 1000;
   const sorted = [...changes].sort((a, b) => new Date(a.oldStart) - new Date(b.oldStart));
   for (const ch of sorted) {
     if (!ch.oldStart) continue;
     const old = new Date(ch.oldStart);
-    const item = list.find((c) => !c.removed && sameDay(c.original, old));
+    const item = list.filter((c) => !c.removed && near(c.original, old)).sort((a, b) => Math.abs(a.original - old) - Math.abs(b.original - old))[0];
     if (!item) continue;
     if (ch.action === 'postpone' || (ch.action === 'cancel' && ch.credit)) {
       item.removed = true;
@@ -215,7 +228,7 @@ const packageResult = async (s, { base, flags, slots, now, opts }) => {
     classesSinceStart: used,
     owed,
     patternCount: size,
-    pattern: slots.map((p) => `${WEEKDAYS[p.weekday]} ${p.hm}`),
+    pattern: slots.map((p) => `${WEEKDAYS[p.weekday]} ${p.hm}${zoneLabel(p.tz)}`),
     paymentDue: used >= paidUpTo,
     payLink: null,
     lastClassAt: used ? counted[used - 1].at : null,
@@ -297,7 +310,7 @@ const buildCycle = async (student, opts = {}) => {
     done: Math.min(done, total),
     remaining: Math.max(total - done, 0),
     patternCount,
-    pattern: pattern.slots.map((p) => `${WEEKDAYS[p.weekday]} ${p.hm}`),
+    pattern: pattern.slots.map((p) => `${WEEKDAYS[p.weekday]} ${p.hm}${zoneLabel(p.tz)}`),
     paymentDue: pay.due,
     payLink: pay.link || null,
     classes: list.map((c) => ({ at: c.at, done: !c.removed && c.at < now, counted: !c.removed, note: c.note })),
