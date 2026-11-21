@@ -1,7 +1,8 @@
 const asyncHandler = require('express-async-handler');
 const User = require('../models/User');
 const MakeupRequest = require('../models/MakeupRequest');
-const whatsappClient = require('../utils/whatsappBot'); 
+const whatsappClient = require('../utils/whatsappBot');
+const { buildCycle, shownSubscription } = require('../utils/cycleCalc'); // 🔄 Step 17: calculated classes done / remaining
 
 const getSubscriptionSummary = asyncHandler(async (req, res) => {
   const user = await User.findById(req.user._id);
@@ -17,8 +18,17 @@ const getSubscriptionSummary = asyncHandler(async (req, res) => {
     (makeup) => !makeup.isUsed && new Date(makeup.expirationDate) > now
   ) : [];
 
+  // 🔄 Step 17: cycle from the PayPal date + weekly calendar pattern (falls back to the saved values)
+  let cycle = null;
+  try {
+    cycle = await buildCycle(user);
+  } catch (error) {
+    console.error('Cycle calculation failed:', error.message);
+  }
+
   res.status(200).json({
-    subscription: user.subscription || { status: 'none', totalClassesBought: 0, classesUsed: 0 },
+    subscription: cycle ? shownSubscription(user, cycle) : (user.subscription || { status: 'none', totalClassesBought: 0, classesUsed: 0 }),
+    cycle: cycle ? { mode: cycle.mode, remaining: cycle.remaining, cycleEnd: cycle.cycleEnd, paymentDue: !!cycle.paymentDue, payLink: cycle.payLink || null, billingType: (user.paypal && user.paypal.billingType) || 'none' } : null,
     makeupCount: activeMakeups.length,
     activeMakeups: activeMakeups,
     monthlyReports: user.monthlyReports || [] 

@@ -758,9 +758,18 @@ function Dashboard() {
             <button onClick={handleLogout} style={{ border: 'none', backgroundColor: '#ff7675', color: 'white', padding: '10px 20px', borderRadius: '8px', cursor: 'pointer', fontWeight: 'bold', transition: 'all 0.2s' }}>Logout</button>
           </div>
 
-          {subSummary?.subscription?.status === 'expired' && (
+          {/* 🔄 Step 17: shown only when PayPal shows this cycle is not paid yet (the cycle itself always renews) */}
+          {subSummary?.cycle?.paymentDue && (
             <div style={{ backgroundColor: '#ff7675', color: 'white', padding: '20px', borderRadius: '10px', marginBottom: '30px', fontWeight: 'bold', textAlign: 'center', boxShadow: '0 4px 15px rgba(255, 118, 117, 0.3)', fontSize: '16px' }}>
-              ⚠️ Payment Due: Your subscription cycle has finished. Please renew your plan to continue booking classes.
+              ⚠️ Payment Due: The payment for your current cycle has not been received yet.
+              {subSummary.cycle.billingType === 'subscription' && (
+                <div style={{ fontWeight: 'normal', fontSize: '14px', marginTop: '6px' }}>PayPal will try your subscription payment again. Please make sure your PayPal account can be charged.</div>
+              )}
+              {subSummary.cycle.payLink && (
+                <div style={{ marginTop: '12px' }}>
+                  <a href={subSummary.cycle.payLink} target="_blank" rel="noopener noreferrer" style={{ display: 'inline-block', backgroundColor: 'white', color: '#d63031', padding: '10px 22px', borderRadius: '8px', textDecoration: 'none', fontWeight: 'bold' }}>💳 Pay here</a>
+                </div>
+              )}
             </div>
           )}
         </>
@@ -933,6 +942,13 @@ function Dashboard() {
                 <div style={{ width: '100%', height: '12px', backgroundColor: '#dfe6e9', borderRadius: '10px', overflow: 'hidden', marginBottom: '20px' }}>
                   <div style={{ width: `${calculateProgress()}%`, height: '100%', backgroundColor: '#0984e3', transition: 'width 0.5s ease-in-out' }}></div>
                 </div>
+
+                {/* 🔄 Step 17: classes left in this cycle */}
+                {subSummary.cycle?.mode === 'calculated' && (
+                  <p style={{ margin: '-10px 0 15px 0', fontSize: '13px', color: '#636e72' }}>
+                    {subSummary.cycle.remaining} {subSummary.cycle.remaining === 1 ? 'class' : 'classes'} left · cycle ends {new Date(subSummary.cycle.cycleEnd).toLocaleDateString(undefined, { month: 'long', day: 'numeric', year: 'numeric' })}
+                  </p>
+                )}
 
                 <div style={{ backgroundColor: '#f5f6fa', padding: '15px', borderRadius: '8px', display: 'flex', alignItems: 'center', gap: '10px' }}>
                   <span style={{ fontSize: '20px' }}>🔄</span>

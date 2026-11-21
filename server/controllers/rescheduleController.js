@@ -439,9 +439,7 @@ const adminCancel = handle(async (req, res) => {
     } else if (student.subscription && student.subscription.status === 'active') {
       // No credit → counted from the package, like Absent
       student.subscription.classesUsed = (student.subscription.classesUsed || 0) + 1;
-      if (student.subscription.classesUsed >= student.subscription.totalClassesBought && student.subscription.totalClassesBought > 0) {
-        student.subscription.status = 'expired';
-      }
+      // 🔄 Step 17: no more "expired" here; the cycle always renews on its PayPal date (classes are calculated)
       countedUsed = true;
     }
     await student.save();

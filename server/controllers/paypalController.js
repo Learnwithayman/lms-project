@@ -90,6 +90,7 @@ const startNewCycle = (user, startDate) => {
   user.subscription.startDate = start;
   user.subscription.endDate = end;
   user.subscription.classesUsed = 0;
+  user.subscription.status = 'active'; // 🔄 Step 17: a new cycle is always active (payment due is shown separately)
 
   if (!user.paypal) user.paypal = {};
   user.paypal.cycleStartDate = start;
@@ -203,6 +204,7 @@ const handleInvoiceSent = async (event, details) => {
     const { start, end } = startNewCycle(user, sentAt);
     user.paypal.lastInvoiceId = details.invoiceId;
     user.paypal.lastInvoiceSentAt = sentAt;
+    user.paypal.lastInvoiceUrl = details.paymentLink || ''; // 🔄 Step 17: "Pay here" button
     rememberEvent(user, event.id);
     await user.save();
     renewed.push({ user, start, end });

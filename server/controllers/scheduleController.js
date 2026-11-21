@@ -216,9 +216,7 @@ const endClass = async (req, res) => {
       const studentDoc = await User.findById(session.student._id || session.student);
       if (studentDoc && studentDoc.subscription && studentDoc.subscription.status === 'active') {
         studentDoc.subscription.classesUsed = (studentDoc.subscription.classesUsed || 0) + 1;
-        if (studentDoc.subscription.classesUsed >= studentDoc.subscription.totalClassesBought && studentDoc.subscription.totalClassesBought > 0) {
-          studentDoc.subscription.status = 'expired';
-        }
+        // 🔄 Step 17: no more "expired" here; the cycle always renews on its PayPal date (classes are calculated)
         await studentDoc.save();
       }
     }
@@ -268,9 +266,7 @@ const markAttendance = async (req, res) => {
       const studentDoc = await User.findById(session.student._id);
       if (studentDoc && studentDoc.subscription && studentDoc.subscription.status === 'active') {
         studentDoc.subscription.classesUsed = (studentDoc.subscription.classesUsed || 0) + 1;
-        if (studentDoc.subscription.classesUsed >= studentDoc.subscription.totalClassesBought && studentDoc.subscription.totalClassesBought > 0) {
-          studentDoc.subscription.status = 'expired';
-        }
+        // 🔄 Step 17: no more "expired" here; the cycle always renews on its PayPal date (classes are calculated)
         await studentDoc.save();
       }
     }

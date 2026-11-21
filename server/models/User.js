@@ -72,6 +72,7 @@ const userSchema = mongoose.Schema(
       lastInvoiceId: { type: String },        // Last invoice that started a cycle (stops double renewals)
       lastInvoiceSentAt: { type: Date },      // When PayPal sent that invoice
       lastPaidAt: { type: Date },             // Last time a payment was received
+      lastInvoiceUrl: { type: String },       // 🔄 Step 17: pay link of the last invoice ("Pay here" on the student dashboard)
       processedEventIds: [{ type: String }]   // Recent PayPal event IDs already handled (duplicate protection)
     },
 

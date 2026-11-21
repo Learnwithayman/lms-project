@@ -67,6 +67,8 @@ function UserList() {
 
   // 📜 Step 7: class changes history (student profile)
   const [classChanges, setClassChanges] = useState(null);
+  // 🔄 Step 17: calculated cycle (student profile)
+  const [cycleInfo, setCycleInfo] = useState(null);
 
   const [isAssignModalOpen, setIsAssignModalOpen] = useState(false);
   const [assignStudent, setAssignStudent] = useState(null);
@@ -490,6 +492,20 @@ function UserList() {
     
     setIsWalletOpen(true);
     loadClassChanges(student._id);
+    loadCycle(student._id);
+  };
+
+  // 🔄 Step 17: classes done / remaining from the PayPal date + calendar pattern
+  const loadCycle = async (studentId) => {
+    setCycleInfo(null);
+    try {
+      const token = localStorage.getItem('token');
+      const res = await axios.get(`${API_URL}/api/users/${studentId}/cycle`, { headers: { Authorization: `Bearer ${token}` } });
+      setCycleInfo(res.data);
+    } catch (error) {
+      console.error('Failed to load cycle:', error);
+      setCycleInfo({ mode: 'error', flags: ['Could not load the calculated cycle.'] });
+    }
   };
 
   // 📜 Step 7: every postpone / move / cancel / makeup booking of this student
@@ -863,6 +879,28 @@ function UserList() {
                 </div>
                 <p style={{ margin: '5px 0 0 0', fontSize: '14px', color: '#777' }}>Available (90-Day)</p>
               </div>
+            </div>
+
+            {/* 🔄 STEP 17: CALCULATED CYCLE (what the student sees) */}
+            <div style={{ backgroundColor: '#eaf2fb', padding: '15px 20px', borderRadius: '8px', marginBottom: '20px', borderLeft: '4px solid #0984e3', fontSize: '14px' }}>
+              <h4 style={{ margin: '0 0 8px 0' }}>🔄 Calculated cycle (what the student sees)</h4>
+              {!cycleInfo && <p style={{ margin: 0, color: '#777' }}>Loading…</p>}
+              {cycleInfo && cycleInfo.mode === 'calculated' && (
+                <>
+                  <p style={{ margin: '0 0 4px 0' }}><b>{cycleInfo.done} done / {cycleInfo.total}</b> · {cycleInfo.remaining} left · cycle {new Date(cycleInfo.cycleStart).toLocaleDateString()} → {new Date(cycleInfo.cycleEnd).toLocaleDateString()}</p>
+                  <p style={{ margin: '0 0 4px 0', color: '#555' }}>Weekly pattern (New York time): {(cycleInfo.pattern || []).join(', ')} · {cycleInfo.patternCount} classes this cycle</p>
+                </>
+              )}
+              {cycleInfo && cycleInfo.mode === 'paused' && <p style={{ margin: 0 }}>⏸️ Fully paused: nothing is counted.</p>}
+              {cycleInfo && cycleInfo.paymentDue && (
+                <p style={{ margin: '4px 0', color: '#d63031', fontWeight: 'bold' }}>💳 Payment due for this cycle{cycleInfo.payLink ? ' (student sees a "Pay here" button)' : ''}</p>
+              )}
+              {cycleInfo && (cycleInfo.flags || []).map((f, i) => (
+                <p key={i} style={{ margin: '4px 0', color: '#d35400' }}>⚠️ {f}</p>
+              ))}
+              {cycleInfo && (
+                <p style={{ margin: '6px 0 0 0', fontSize: '12px', color: '#777' }}>Saved counter (old way): {cycleInfo.savedUsed} / {cycleInfo.savedTotal}, status {String(cycleInfo.savedStatus || 'none').toUpperCase()}</p>
+              )}
             </div>
 
             {/* ⏸️ STUDENT PAUSE (Step 3) */}
