@@ -60,15 +60,16 @@ const isFresh = (teacher, now = new Date()) => {
 
 // ---------- hours validation ----------
 const HM = /^([01]\d|2[0-3]):[0-5]\d$/;
+const HM_END = /^(([01]\d|2[0-3]):[0-5]\d|24:00)$/; // 🗓️ Step 19: "24:00" = until midnight (overnight hours are saved as day 21:00–24:00 + next day 00:00–05:00)
 const DATE = /^\d{4}-\d{2}-\d{2}$/;
 const cleanAvailability = (input = {}) => {
   const weekly = (Array.isArray(input.weekly) ? input.weekly : [])
     .map((w) => ({ day: Number(w.day), start: String(w.start || ''), end: String(w.end || '') }))
-    .filter((w) => w.day >= 0 && w.day <= 6 && HM.test(w.start) && HM.test(w.end) && w.start < w.end);
+    .filter((w) => w.day >= 0 && w.day <= 6 && HM.test(w.start) && HM_END.test(w.end) && w.start < w.end);
   const blocked = [...new Set((Array.isArray(input.blocked) ? input.blocked : []).map(String).filter((d) => DATE.test(d)))].sort();
   const extra = (Array.isArray(input.extra) ? input.extra : [])
     .map((e) => ({ date: String(e.date || ''), start: String(e.start || ''), end: String(e.end || '') }))
-    .filter((e) => DATE.test(e.date) && HM.test(e.start) && HM.test(e.end) && e.start < e.end);
+    .filter((e) => DATE.test(e.date) && HM.test(e.start) && HM_END.test(e.end) && e.start < e.end);
   return { weekly, blocked, extra };
 };
 
@@ -130,17 +131,25 @@ const freeSlots = ({ teacher, student, durationMin = 60, from, to, events }) => 
   const dur = durationMin * MIN;
   const slots = new Set();
 
-  for (let day = dayIn(from, CAIRO_TZ); day <= dayIn(to, CAIRO_TZ); day = addDays(day, 1)) {
+  // All hour windows as real times; windows that touch (e.g. Mon 21:00–24:00 + Tue 00:00–05:00) become one window
+  const windows = [];
+  for (let day = addDays(dayIn(from, CAIRO_TZ), -1); day <= dayIn(to, CAIRO_TZ); day = addDays(day, 1)) {
     if (blocked.has(day)) continue;
     const ranges = [...weekly.filter((w) => w.day === weekdayOf(day)), ...extra.filter((e) => e.date === day)];
-    for (const r of ranges) {
-      const rStart = zonedToUtc(day, r.start, CAIRO_TZ).getTime();
-      const rEnd = zonedToUtc(day, r.end, CAIRO_TZ).getTime();
-      for (let t = rStart; t + dur <= rEnd; t += SLOT_STEP_MIN * MIN) {
-        if (t < new Date(from).getTime() || t > new Date(to).getTime()) continue;
-        if (busy.some(([bs, be]) => t < be && t + dur > bs)) continue;
-        slots.add(t);
-      }
+    for (const r of ranges) windows.push([zonedToUtc(day, r.start, CAIRO_TZ).getTime(), zonedToUtc(day, r.end, CAIRO_TZ).getTime()]);
+  }
+  windows.sort((a, b) => a[0] - b[0]);
+  const merged = [];
+  for (const w of windows) {
+    const last = merged[merged.length - 1];
+    if (last && w[0] <= last[1]) last[1] = Math.max(last[1], w[1]);
+    else merged.push([...w]);
+  }
+  for (const [rStart, rEnd] of merged) {
+    for (let t = rStart; t + dur <= rEnd; t += SLOT_STEP_MIN * MIN) {
+      if (t < new Date(from).getTime() || t > new Date(to).getTime()) continue;
+      if (busy.some(([bs, be]) => t < be && t + dur > bs)) continue;
+      slots.add(t);
     }
   }
   return [...slots].sort((a, b) => a - b).map((t) => new Date(t));

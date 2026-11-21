@@ -3,6 +3,7 @@ import axios from 'axios';
 import { useNavigate } from 'react-router-dom';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import '../App.css';
+import ScheduleEditor from '../components/ScheduleEditor'; // 🗓️ Step 19: easier My Schedule editor
 
 const API_URL = process.env.REACT_APP_API_URL || 'https://lms-backend-02zs.onrender.com';
 
@@ -80,9 +81,6 @@ function Dashboard() {
   const [mySchedule, setMySchedule] = useState(null);
   const [isScheduleOpen, setIsScheduleOpen] = useState(false);
   const [scheduleDraft, setScheduleDraft] = useState({ weekly: [], blocked: [], extra: [] });
-  const [newWeekly, setNewWeekly] = useState({ day: '0', start: '16:00', end: '21:00' });
-  const [newBlocked, setNewBlocked] = useState('');
-  const [newExtra, setNewExtra] = useState({ date: '', start: '16:00', end: '21:00' });
   const [isSavingSchedule, setIsSavingSchedule] = useState(false);
 
   const [isPlanModalOpen, setIsPlanModalOpen] = useState(false);
@@ -597,7 +595,6 @@ function Dashboard() {
   // ==========================================
   // 🗓️ STEP 7: MY SCHEDULE (teachers)
   // ==========================================
-  const WEEKDAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 
   const fetchMySchedule = async (token) => {
     try {
@@ -1584,48 +1581,8 @@ function Dashboard() {
             </div>
             <p style={{ margin: '0 0 15px 0', fontSize: '13px', color: '#636e72' }}>Your working hours with Learn With Ayman, in <strong>Cairo time</strong>. Classes already on your calendar are blocked automatically. Please keep this updated every week.</p>
 
-            <h3 style={{ fontSize: '16px', margin: '0 0 8px 0' }}>Weekly hours</h3>
-            {scheduleDraft.weekly.length === 0 && <p style={{ fontSize: '13px', color: '#b2bec3', margin: '0 0 8px 0' }}>No weekly hours yet.</p>}
-            {[...scheduleDraft.weekly].map((w, i) => ({ ...w, i })).sort((a, b) => a.day - b.day || a.start.localeCompare(b.start)).map(w => (
-              <div key={w.i} style={{ display: 'flex', justifyContent: 'space-between', padding: '6px 10px', backgroundColor: '#f8f9fa', borderRadius: '6px', marginBottom: '5px', fontSize: '14px' }}>
-                <span><strong>{WEEKDAYS[w.day]}</strong> {w.start} – {w.end}</span>
-                <button onClick={() => setScheduleDraft({ ...scheduleDraft, weekly: scheduleDraft.weekly.filter((_, j) => j !== w.i) })} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#d63031' }}>✖</button>
-              </div>
-            ))}
-            <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', margin: '8px 0 18px 0' }}>
-              <select value={newWeekly.day} onChange={(e) => setNewWeekly({ ...newWeekly, day: e.target.value })} style={{ padding: '6px', borderRadius: '6px', border: '1px solid #dfe6e9' }}>
-                {WEEKDAYS.map((d, i) => <option key={d} value={i}>{d}</option>)}
-              </select>
-              <input type="time" value={newWeekly.start} onChange={(e) => setNewWeekly({ ...newWeekly, start: e.target.value })} style={{ padding: '6px', borderRadius: '6px', border: '1px solid #dfe6e9' }} />
-              <input type="time" value={newWeekly.end} onChange={(e) => setNewWeekly({ ...newWeekly, end: e.target.value })} style={{ padding: '6px', borderRadius: '6px', border: '1px solid #dfe6e9' }} />
-              <button onClick={() => { if (!newWeekly.start || !newWeekly.end || newWeekly.start >= newWeekly.end) return alert('The end time must be after the start time.'); setScheduleDraft({ ...scheduleDraft, weekly: [...scheduleDraft.weekly, { day: Number(newWeekly.day), start: newWeekly.start, end: newWeekly.end }] }); }} style={{ padding: '6px 12px', backgroundColor: '#0984e3', color: 'white', border: 'none', borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold' }}>➕ Add</button>
-            </div>
-
-            <h3 style={{ fontSize: '16px', margin: '0 0 8px 0' }}>Days off</h3>
-            {scheduleDraft.blocked.map(d => (
-              <div key={d} style={{ display: 'flex', justifyContent: 'space-between', padding: '6px 10px', backgroundColor: '#fdecea', borderRadius: '6px', marginBottom: '5px', fontSize: '14px' }}>
-                <span>🚫 {new Date(`${d}T12:00:00Z`).toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric', timeZone: 'UTC' })}</span>
-                <button onClick={() => setScheduleDraft({ ...scheduleDraft, blocked: scheduleDraft.blocked.filter(x => x !== d) })} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#d63031' }}>✖</button>
-              </div>
-            ))}
-            <div style={{ display: 'flex', gap: '6px', margin: '8px 0 18px 0' }}>
-              <input type="date" value={newBlocked} onChange={(e) => setNewBlocked(e.target.value)} style={{ padding: '6px', borderRadius: '6px', border: '1px solid #dfe6e9' }} />
-              <button onClick={() => { if (!newBlocked) return; setScheduleDraft({ ...scheduleDraft, blocked: [...new Set([...scheduleDraft.blocked, newBlocked])].sort() }); setNewBlocked(''); }} style={{ padding: '6px 12px', backgroundColor: '#d63031', color: 'white', border: 'none', borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold' }}>➕ Add day off</button>
-            </div>
-
-            <h3 style={{ fontSize: '16px', margin: '0 0 8px 0' }}>Extra hours on a date</h3>
-            {scheduleDraft.extra.map((x, i) => (
-              <div key={i} style={{ display: 'flex', justifyContent: 'space-between', padding: '6px 10px', backgroundColor: '#eafaf1', borderRadius: '6px', marginBottom: '5px', fontSize: '14px' }}>
-                <span>➕ {new Date(`${x.date}T12:00:00Z`).toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric', timeZone: 'UTC' })} {x.start} – {x.end}</span>
-                <button onClick={() => setScheduleDraft({ ...scheduleDraft, extra: scheduleDraft.extra.filter((_, j) => j !== i) })} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#d63031' }}>✖</button>
-              </div>
-            ))}
-            <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', margin: '8px 0 20px 0' }}>
-              <input type="date" value={newExtra.date} onChange={(e) => setNewExtra({ ...newExtra, date: e.target.value })} style={{ padding: '6px', borderRadius: '6px', border: '1px solid #dfe6e9' }} />
-              <input type="time" value={newExtra.start} onChange={(e) => setNewExtra({ ...newExtra, start: e.target.value })} style={{ padding: '6px', borderRadius: '6px', border: '1px solid #dfe6e9' }} />
-              <input type="time" value={newExtra.end} onChange={(e) => setNewExtra({ ...newExtra, end: e.target.value })} style={{ padding: '6px', borderRadius: '6px', border: '1px solid #dfe6e9' }} />
-              <button onClick={() => { if (!newExtra.date || newExtra.start >= newExtra.end) return alert('Choose a date and an end time after the start time.'); setScheduleDraft({ ...scheduleDraft, extra: [...scheduleDraft.extra, { ...newExtra }] }); setNewExtra({ ...newExtra, date: '' }); }} style={{ padding: '6px 12px', backgroundColor: '#00b894', color: 'white', border: 'none', borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold' }}>➕ Add</button>
-            </div>
+            {/* 🗓️ Step 19: easier editor (day cards, edit in place, copy a day, overnight as one row) */}
+            <ScheduleEditor value={scheduleDraft} onChange={setScheduleDraft} />
 
             <button onClick={handleSaveSchedule} disabled={isSavingSchedule} style={{ width: '100%', padding: '12px', backgroundColor: isSavingSchedule ? '#b2bec3' : '#0984e3', color: 'white', border: 'none', borderRadius: '8px', cursor: isSavingSchedule ? 'not-allowed' : 'pointer', fontWeight: 'bold' }}>
               {isSavingSchedule ? 'Saving...' : '💾 Save my schedule'}
