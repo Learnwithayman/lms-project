@@ -6,6 +6,7 @@ const MakeupRequest = require('../models/MakeupRequest');
 const whatsappClient = require('../utils/whatsappBot');
 const { google } = require('googleapis');
 const { userGroupCodes, codesMatch, eventTeacherCodes, eventStudentCodes, cleanCode } = require('../utils/classMatch'); // 🔗 old group IDs + invite links
+const { findClassStudent } = require('../utils/classStudent'); // 👪 22 Nov: named child when siblings share a link
 const mongoose = require('mongoose');
 const path = require('path');
 const fs = require('fs');
@@ -191,14 +192,8 @@ const endClass = async (req, res) => {
       }
       await session.save();
     } else {
-      const studentUser = await User.findOne({ 
-         $or: [
-             { studentGroupId: studentGroupId || whatsappGroupId },
-             { whatsappGroupId: studentGroupId || whatsappGroupId },
-             { legacyGroupIds: studentGroupId || whatsappGroupId }, // 🔗 old group ID kept after the link fix
-             { name: finalStudentGroup }
-         ]
-      });
+      // 👪 22 Nov: the named child when brothers / sisters share the link (was: the first student found)
+      const studentUser = await findClassStudent({ studentGroupId: studentGroupId || whatsappGroupId, studentGroupName: finalStudentGroup, title: subjectToSearch });
       session = await ClassSession.create({
         teacher: req.user._id,
         student: studentUser ? studentUser._id : null, 
@@ -237,7 +232,7 @@ const markAttendance = async (req, res) => {
       session = await ClassSession.findById(classId).populate('student').populate('teacher', 'name');
       if (!session) return res.status(404).json({ message: 'Class not found' });
     } else {
-      const studentUser = await User.findOne({ $or: [{ studentGroupId }, { whatsappGroupId: studentGroupId }, { legacyGroupIds: studentGroupId }] }); // 🔗 + old group ID
+      const studentUser = await findClassStudent({ studentGroupId, studentGroupName, title }); // 👪 22 Nov: the named child when siblings share the link
       const teacherUser = await User.findById(req.user._id);
       session = {
         student: studentUser || { name: title || 'Student' },
