@@ -74,6 +74,7 @@ function Dashboard() {
   // 🔁 STEP 7: makeup self-booking (students) + 🗓️ My Schedule (teachers)
   const [makeupInfo, setMakeupInfo] = useState(null);
   const [bookTeacherId, setBookTeacherId] = useState('');
+  const [bookStudentId, setBookStudentId] = useState(''); // 👪 which child the makeup is for (brothers / sisters on one link)
   const [freeSlots, setFreeSlots] = useState(null);
   const [selectedSlot, setSelectedSlot] = useState('');
   const [isBooking, setIsBooking] = useState(false);
@@ -525,20 +526,20 @@ function Dashboard() {
   // ==========================================
   const authConfig = () => ({ headers: { Authorization: `Bearer ${localStorage.getItem('token')}` } });
 
-  const loadFreeSlots = async (teacherId) => {
+  const loadFreeSlots = async (teacherId, studentId = bookStudentId) => {
     setBookTeacherId(teacherId);
     setFreeSlots(null);
     setSelectedSlot('');
     if (!teacherId) return;
     try {
-      const res = await axios.get(`${API_URL}/api/schedule/free-slots?teacherId=${teacherId}`, authConfig());
+      const res = await axios.get(`${API_URL}/api/schedule/free-slots?teacherId=${teacherId}${studentId ? `&studentId=${studentId}` : ''}`, authConfig());
       setFreeSlots(res.data);
     } catch (error) {
       setFreeSlots({ error: error.response?.data?.message || 'Could not load free times.' });
     }
   };
 
-  const openBooking = async (preferredTeacherId = null) => {
+  const openBooking = async (preferredTeacherId = null, preferredStudentId = null) => {
     setIsMakeupModalOpen(true);
     setMakeupInfo(null);
     setFreeSlots(null);
@@ -546,9 +547,13 @@ function Dashboard() {
     try {
       const res = await axios.get(`${API_URL}/api/schedule/makeup-info`, authConfig());
       setMakeupInfo(res.data);
+      // 👪 the child: the one just postponed, else me if I have credits, else the first child with credits
+      const children = res.data.children || [];
+      const child = preferredStudentId || (children.some(c => c.id === res.data.meId) ? res.data.meId : (children[0]?.id || res.data.meId || ''));
+      setBookStudentId(child);
       const teachers = res.data.teachers || [];
       const pick = preferredTeacherId || (teachers.length === 1 ? teachers[0].id : '');
-      if (pick) loadFreeSlots(pick);
+      if (pick) loadFreeSlots(pick, child);
     } catch (error) {
       setMakeupInfo({ error: error.response?.data?.message || 'Could not load your makeup credits.' });
     }
@@ -558,12 +563,23 @@ function Dashboard() {
     if (!window.confirm(`Postpone "${cls.title}"?\n\nYou will get a makeup credit and choose a new time with your teacher.`)) return;
     setPostponingId(cls.id);
     try {
-      const res = await axios.post(`${API_URL}/api/schedule/postpone`, { eventId: cls.id }, authConfig());
+      let res;
+      try {
+        res = await axios.post(`${API_URL}/api/schedule/postpone`, { eventId: cls.id }, authConfig());
+      } catch (error) {
+        // 👪 A class of several children (brothers / sisters): ask which child, then postpone for that child
+        const choices = error.response?.status === 409 ? (error.response.data?.choices || []) : [];
+        if (!choices.length) throw error;
+        const answer = window.prompt(`Which child is this class for?\n\n${choices.map((c, i) => `${i + 1}) ${c.name}`).join('\n')}\n\nType the number:`);
+        const chosen = choices[Number(answer) - 1];
+        if (!chosen) return;
+        res = await axios.post(`${API_URL}/api/schedule/postpone`, { eventId: cls.id, studentId: chosen.id }, authConfig());
+      }
       const token = localStorage.getItem('token');
       fetchClasses(token);
       fetchSubSummary(token);
       if (res.data.fresh) {
-        openBooking(res.data.teacherId);
+        openBooking(res.data.teacherId, res.data.studentId);
       } else {
         alert("✅ Class postponed.\n\nYour teacher is updating their schedule. You will get a WhatsApp message when you can choose your new time.");
       }
@@ -578,8 +594,8 @@ function Dashboard() {
     if (!selectedSlot || !bookTeacherId) return;
     setIsBooking(true);
     try {
-      await axios.post(`${API_URL}/api/schedule/book-makeup`, { teacherId: bookTeacherId, start: selectedSlot }, authConfig());
-      alert(`✅ Your makeup class is booked for ${new Date(selectedSlot).toLocaleString(undefined, { weekday: 'long', month: 'long', day: 'numeric', hour: 'numeric', minute: '2-digit' })}!`);
+      const booked = await axios.post(`${API_URL}/api/schedule/book-makeup`, { teacherId: bookTeacherId, start: selectedSlot, studentId: bookStudentId || undefined }, authConfig());
+      alert(`✅ ${(makeupInfo?.children || []).length > 1 && booked.data.studentName ? `${booked.data.studentName}'s` : 'Your'} makeup class is booked for ${new Date(selectedSlot).toLocaleString(undefined, { weekday: 'long', month: 'long', day: 'numeric', hour: 'numeric', minute: '2-digit' })}!`);
       setIsMakeupModalOpen(false);
       const token = localStorage.getItem('token');
       fetchClasses(token);
@@ -1512,10 +1528,26 @@ function Dashboard() {
 
             {!makeupInfo ? <p>Loading...</p> : makeupInfo.error ? <p style={{ color: '#d63031' }}>{makeupInfo.error}</p> : (
               <>
-                <p style={{ margin: '0 0 15px 0', color: '#636e72' }}>
-                  🎒 You have <strong>{makeupInfo.credits.length}</strong> makeup credit{makeupInfo.credits.length === 1 ? '' : 's'}.
-                  {makeupInfo.credits[0] && ` The first expires on ${new Date(makeupInfo.credits[0].expirationDate).toLocaleDateString(undefined, { month: 'long', day: 'numeric' })}.`}
-                </p>
+                {/* 👪 Brothers / sisters on one group link: choose the child, each child's own credits */}
+                {(makeupInfo.children || []).length > 1 && (
+                  <div style={{ marginBottom: '12px' }}>
+                    <label style={{ fontWeight: 'bold', fontSize: '14px' }}>👪 Makeup for:</label>
+                    <select value={bookStudentId} onChange={(e) => { setBookStudentId(e.target.value); if (bookTeacherId) loadFreeSlots(bookTeacherId, e.target.value); }} style={{ width: '100%', padding: '10px', borderRadius: '6px', border: '1px solid #dfe6e9', marginTop: '5px' }}>
+                      {makeupInfo.children.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                    </select>
+                  </div>
+                )}
+                {(() => {
+                  const family = (makeupInfo.children || []).length > 1;
+                  const mine = family ? makeupInfo.credits.filter(c => c.studentId === bookStudentId) : makeupInfo.credits;
+                  const childName = family ? (makeupInfo.children.find(c => c.id === bookStudentId)?.name || '') : '';
+                  return (
+                    <p style={{ margin: '0 0 15px 0', color: '#636e72' }}>
+                      🎒 {family ? <><strong>{childName}</strong> has</> : 'You have'} <strong>{mine.length}</strong> makeup credit{mine.length === 1 ? '' : 's'}.
+                      {mine[0] && ` The first expires on ${new Date(mine[0].expirationDate).toLocaleDateString(undefined, { month: 'long', day: 'numeric' })}.`}
+                    </p>
+                  );
+                })()}
 
                 {makeupInfo.credits.length > 0 && makeupInfo.teachers.length > 1 && (
                   <div style={{ marginBottom: '15px' }}>

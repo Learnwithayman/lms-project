@@ -578,7 +578,8 @@ function AdminDashboard() {
     setActionSlots(null);
     if (!teacherId || !classAction?.info) return;
     try {
-      const res = await axios.get(`${API_URL}/api/schedule/admin/free-slots?teacherId=${teacherId}&durationMinutes=${classAction.info.durationMinutes || 60}&eventId=${encodeURIComponent(classAction.cls.id)}`, adminConfig());
+      const childId = classAction.studentId || classAction.info.student?.id || '';
+      const res = await axios.get(`${API_URL}/api/schedule/admin/free-slots?teacherId=${teacherId}&durationMinutes=${classAction.info.durationMinutes || 60}&eventId=${encodeURIComponent(classAction.cls.id)}${childId ? `&studentId=${childId}` : ''}`, adminConfig());
       setActionSlots(res.data);
     } catch (error) {
       setActionSlots({ error: error.response?.data?.message || 'Could not load free times.' });
@@ -595,12 +596,12 @@ function AdminDashboard() {
       if (a.type === 'cancel') {
         if (!a.cancelledBy) return alert('Please choose who cancelled.');
         if (a.giveCredit === null) return alert('Please choose whether to give a makeup credit.');
-        res = await axios.post(`${API_URL}/api/schedule/admin-cancel`, { eventId: a.cls.id, cancelledBy: a.cancelledBy, giveCredit: a.giveCredit, payTeacher: a.payTeacher, reason: a.reason }, adminConfig());
+        res = await axios.post(`${API_URL}/api/schedule/admin-cancel`, { eventId: a.cls.id, cancelledBy: a.cancelledBy, giveCredit: a.giveCredit, payTeacher: a.payTeacher, reason: a.reason, studentId: a.studentId || a.info?.student?.id || undefined }, adminConfig());
       } else {
         const newStart = a.manualTime ? new Date(a.manualTime).toISOString() : a.newStart;
         if (a.mode === 'time' && !newStart) return alert('Please choose the new time.');
         if (a.mode === 'teacher' && !a.newTeacherId) return alert('Please choose the new teacher.');
-        res = await axios.post(`${API_URL}/api/schedule/admin-postpone`, { eventId: a.cls.id, mode: a.mode, newStart: newStart || undefined, newTeacherId: a.newTeacherId || undefined, reason: a.reason }, adminConfig());
+        res = await axios.post(`${API_URL}/api/schedule/admin-postpone`, { eventId: a.cls.id, mode: a.mode, newStart: newStart || undefined, newTeacherId: a.newTeacherId || undefined, reason: a.reason, studentId: a.studentId || a.info?.student?.id || undefined }, adminConfig());
       }
       alert(`✅ ${res.data.message}`);
       setClassAction(null);
@@ -1454,8 +1455,18 @@ function AdminDashboard() {
               <p style={{ margin: '8px 0 15px 0', color: '#636e72' }}>
                 <strong>{a.cls.title}</strong><br />
                 🕒 {new Date(a.cls.startTime).toLocaleString(undefined, { weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}
-                {info && !info.error && <><br />👨‍🏫 {info.teacher?.name || 'Teacher not found'} · 👤 {info.student?.name || 'Student not found'}</>}
+                {info && !info.error && <><br />👨‍🏫 {info.teacher?.name || 'Teacher not found'} · 👤 {info.student?.name || ((info.studentChoices || []).length > 1 ? 'Choose the child below' : 'Student not found')}</>}
               </p>
+              {/* 👪 Brothers / sisters on one group link: the credit goes to the chosen child */}
+              {info && !info.error && (info.studentChoices || []).length > 1 && (
+                <div style={{ marginBottom: '12px' }}>
+                  <label style={{ fontWeight: 'bold', fontSize: '14px' }}>👪 Which child is this class for?</label>
+                  <select value={a.studentId || info.student?.id || ''} onChange={(e) => setClassAction({ ...a, studentId: e.target.value })} style={{ width: '100%', padding: '8px', borderRadius: '6px', border: '1px solid #dfe6e9', marginTop: '4px' }}>
+                    <option value="">-- Choose --</option>
+                    {info.studentChoices.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+                  </select>
+                </div>
+              )}
 
               {!info ? <p>Loading...</p> : info.error ? <p style={{ color: '#d63031' }}>{info.error}</p> : a.type === 'cancel' ? (
                 <>

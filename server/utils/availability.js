@@ -4,7 +4,7 @@
 
 const User = require('../models/User');
 const { calendar } = require('../controllers/scheduleController');
-const { parseEventStudent, classBelongsToStudent, eventTeacherCodes, classBelongsToTeacher, cleanCode, isOldGroupId } = require('./classMatch');
+const { parseEventStudent, classBelongsToStudent, eventTeacherCodes, classBelongsToTeacher, cleanCode, isOldGroupId, classIsStudents, userGroupCodes, codesMatch } = require('./classMatch');
 
 const CALENDAR_ID = 'admin@learnwithayman.com';
 const CAIRO_TZ = 'Africa/Cairo';
@@ -96,10 +96,30 @@ const eventMinutes = (ev) => Math.max(15, Math.round((eventEnd(ev) - eventStart(
 
 // Who teaches / who studies in this class
 const teacherOfEvent = (ev, teachers) => teachers.find((t) => classBelongsToTeacher(eventTeacherCodes(ev), t)) || null;
-const studentOfEvent = (ev, students) => {
+// 👪 22 Nov: brothers / sisters on one group link → the class belongs to the child it NAMES (never a guess between siblings)
+const studentsOfEvent = (ev, students) => students.filter((s) => classIsStudents(ev, s, students));
+const studentOfEvent = (ev, students) => studentsOfEvent(ev, students)[0] || null;
+
+// Family = students sharing a group link with this student (the student included)
+const familyOf = (student, students) => {
+  const mine = userGroupCodes(student, 'studentGroupId');
+  return students.filter((s) => String(s._id) === String(student._id) || (mine.length > 0 && codesMatch(userGroupCodes(s, 'studentGroupId'), mine)));
+};
+
+// Which child is this class for? → { student } or { student: null, choices: [...] } when the person must choose
+// (a class naming several children, or a shared link with no name). chosenId picks one of the possible children.
+const resolveStudentOfEvent = (ev, students, chosenId) => {
   const parsed = parseEventStudent(ev);
-  return students.find((s) => classBelongsToStudent({ codes: parsed.codes, name: null }, s)) ||
-    students.find((s) => classBelongsToStudent({ codes: [], name: parsed.name }, s)) || null;
+  const candidates = students.filter((s) => classBelongsToStudent(parsed, s));
+  if (chosenId) {
+    const chosen = candidates.find((s) => String(s._id) === String(chosenId));
+    if (chosen) return { student: chosen, choices: candidates };
+  }
+  const named = candidates.filter((s) => classIsStudents(ev, s, students));
+  if (named.length === 1) return { student: named[0], choices: candidates };
+  if (named.length > 1) return { student: null, choices: named };
+  if (candidates.length === 1) return { student: candidates[0], choices: candidates };
+  return { student: null, choices: candidates };
 };
 
 // Copy of a class, used later to book the makeup in the same format
@@ -114,7 +134,13 @@ const templateOf = (ev) => ({
 // A recent / upcoming class of this student with this teacher (for credits that have no copy)
 const findTemplateEvent = async (student, teacher, now = new Date()) => {
   const events = await listEvents(now.getTime() - 45 * DAY, now.getTime() + 30 * DAY);
-  const mine = events.filter((ev) => classBelongsToStudent(parseEventStudent(ev), student) && (!teacher || classBelongsToTeacher(eventTeacherCodes(ev), teacher)));
+  const students = await User.find({ role: 'student' }); // 👪 a sibling's class is never used as this child's copy
+  const teacherOk = (ev) => !teacher || classBelongsToTeacher(eventTeacherCodes(ev), teacher);
+  let mine = events.filter((ev) => classIsStudents(ev, student, students) && teacherOk(ev));
+  if (!mine.length) { // shared link with no names: any family class that does not name another child
+    mine = events.filter((ev) => classBelongsToStudent(parseEventStudent(ev), student) && teacherOk(ev) &&
+      !students.some((o) => String(o._id) !== String(student._id) && classIsStudents(ev, o, students)));
+  }
   return mine.length ? mine[mine.length - 1] : null;
 };
 
@@ -186,6 +212,6 @@ module.exports = {
   CAIRO_TZ, STUDENT_TZ, NOTICE_HOURS, BOOK_WINDOW_DAYS, MIN, HOUR, DAY,
   tzOffsetMin, zonedToUtc, dayIn, addDays, weekdayOf, fmtTime, lastMondayStart, isFresh,
   cleanAvailability, listEvents, getEvent, deleteEvent, patchEvent, insertEvent,
-  eventStart, eventEnd, eventMinutes, teacherOfEvent, studentOfEvent, templateOf, findTemplateEvent,
+  eventStart, eventEnd, eventMinutes, teacherOfEvent, studentOfEvent, studentsOfEvent, familyOf, resolveStudentOfEvent, templateOf, findTemplateEvent,
   freeSlots, bookableSlots, swapTeacherLink, loadPeople
 };

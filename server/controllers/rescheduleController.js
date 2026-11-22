@@ -161,9 +161,13 @@ const confirmMyAvailability = handle(async (req, res) => {
 
 // @route GET /api/schedule/makeup-info (Student)
 const getMakeupInfo = handle(async (req, res) => {
-  const student = await User.findById(req.user._id);
-  const { teachers } = await A.loadPeople();
-  const credits = activeCredits(student).sort((a, b) => new Date(a.expirationDate) - new Date(b.expirationDate));
+  const { teachers, students } = await A.loadPeople();
+  const student = students.find((s) => String(s._id) === String(req.user._id)) || await User.findById(req.user._id);
+  // 👪 The whole family's credits (brothers / sisters on the same group link), each labelled with the child
+  const family = A.familyOf(student, students);
+  const all = family.flatMap((s) => activeCredits(s).map((c) => ({ c, s })))
+    .sort((a, b) => new Date(a.c.expirationDate) - new Date(b.c.expirationDate));
+  const credits = all.map((x) => x.c);
 
   // Teachers the student can book with: teachers of their credits, else the teachers of their classes
   const ids = new Set(credits.filter((c) => c.teacher).map((c) => String(c.teacher)));
@@ -176,21 +180,36 @@ const getMakeupInfo = handle(async (req, res) => {
     });
   }
   const myTeachers = teachers.filter((t) => ids.has(String(t._id))).map((t) => ({ id: String(t._id), name: t.name, fresh: A.isFresh(t) }));
+  const children = family.filter((s) => all.some((x) => x.s === s)).map((s) => ({ id: String(s._id), name: s.name }));
 
   res.status(200).json({
-    credits: credits.map((c) => ({
+    credits: all.map(({ c, s }) => ({
       id: String(c._id),
       expirationDate: c.expirationDate,
       originalClassDate: c.originalClassDate,
       teacherId: c.teacher ? String(c.teacher) : null,
       teacherName: c.teacherName || '',
-      waiting: !!c.waitingTeacherUpdate
+      waiting: !!c.waitingTeacherUpdate,
+      studentId: String(s._id),
+      studentName: s.name
     })),
+    children,                 // family members who have credits (choose "For:" when more than one)
+    meId: String(student._id),
     teachers: myTeachers,
     noticeHours: A.NOTICE_HOURS,
     windowDays: A.BOOK_WINDOW_DAYS
   });
 });
+
+// 👪 The child a makeup is for: the logged-in student, or a brother / sister on the same group link
+const familyChild = async (req, studentId) => {
+  if (!studentId || String(studentId) === String(req.user._id)) return User.findById(req.user._id);
+  const { students } = await A.loadPeople();
+  const me = students.find((s) => String(s._id) === String(req.user._id));
+  const child = me ? A.familyOf(me, students).find((s) => String(s._id) === String(studentId)) : null;
+  if (!child) throw new HttpError(403, 'This student is not part of your family.');
+  return User.findById(child._id);
+};
 
 // Credit used for a booking with this teacher: same teacher first, then credits with no teacher, then the oldest
 const pickCredit = (student, teacherId) => {
@@ -200,7 +219,7 @@ const pickCredit = (student, teacherId) => {
 
 // @route GET /api/schedule/free-slots?teacherId= (Student)
 const getStudentFreeSlots = handle(async (req, res) => {
-  const student = await User.findById(req.user._id);
+  const student = await familyChild(req, req.query.studentId);
   const teacher = await User.findById(req.query.teacherId);
   if (!teacher || teacher.role !== 'teacher') {
     throw new HttpError(404, 'Teacher not found.');
@@ -221,6 +240,7 @@ const getStudentFreeSlots = handle(async (req, res) => {
 // @route POST /api/schedule/postpone { eventId } (Student) — 5+ hours before the class
 const studentPostpone = handle(async (req, res) => {
   const ev = await loadEvent(req.body.eventId, res);
+  // 👪 Any child of the family (same group link) may postpone; the class is for the child it names
   if (!classBelongsToStudent(parseEventStudent(ev), req.user)) {
     throw new HttpError(403, 'This class is not yours.');
   }
@@ -229,16 +249,22 @@ const studentPostpone = handle(async (req, res) => {
     throw new HttpError(400, `It is too late to postpone this class online (less than ${A.NOTICE_HOURS} hours before). The class follows our attendance policy. For an emergency, please contact the admin.`);
   }
 
-  const { teachers } = await A.loadPeople();
+  const { teachers, students } = await A.loadPeople();
+  const me = students.find((s) => String(s._id) === String(req.user._id)) || req.user;
+  const family = A.familyOf(me, students);
+  const who = A.resolveStudentOfEvent(ev, family, req.body.studentId);
+  if (!who.student && who.choices.length > 1) {
+    return res.status(409).json({ message: 'Which child is this class for?', choices: who.choices.map((s) => ({ id: String(s._id), name: s.name })) });
+  }
   const teacher = A.teacherOfEvent(ev, teachers);
   const fresh = !!teacher && A.isFresh(teacher);
 
   await A.deleteEvent(ev.id);
-  const student = await User.findById(req.user._id);
+  const student = await User.findById((who.student || me)._id); // credit, history and message → the child of the class
   addCredit(student, { source: 'postpone', teacher, ev, reason: 'Postponed by student', waiting: !!teacher && !fresh });
   await student.save();
 
-  logChange({ action: 'postpone', by: 'student', byUser: student._id, student: student._id, studentName: student.name, teacher: teacher && teacher._id, teacherName: teacher && teacher.name, eventId: ev.id, title: ev.summary, oldStart: start, reason: 'Postponed by student', credit: true });
+  logChange({ action: 'postpone', by: 'student', byUser: req.user._id, student: student._id, studentName: student.name, teacher: teacher && teacher._id, teacherName: teacher && teacher.name, eventId: ev.id, title: ev.summary, oldStart: start, reason: String(student._id) === String(req.user._id) ? 'Postponed by student' : `Postponed by student (from ${req.user.name}'s login)`, credit: true });
 
   await toStudent(student, M.studentPostponed(student, A.fmtTime(start, studentTz(ev))), ev);
   if (teacher) {
@@ -248,12 +274,12 @@ const studentPostpone = handle(async (req, res) => {
     await send(ADMIN_GROUP_TARGET, M.adminNoFreeTimes(student.name, 'their teacher (no teacher found for this class)'));
   }
 
-  res.status(200).json({ message: 'Class postponed.', fresh, teacherId: teacher ? String(teacher._id) : null });
+  res.status(200).json({ message: 'Class postponed.', fresh, teacherId: teacher ? String(teacher._id) : null, studentId: String(student._id), studentName: student.name });
 });
 
 // @route POST /api/schedule/book-makeup { teacherId, start } (Student)
 const bookMakeup = handle(async (req, res) => {
-  const student = await User.findById(req.user._id);
+  const student = await familyChild(req, req.body.studentId); // 👪 may be a brother / sister
   const teacher = await User.findById(req.body.teacherId);
   if (!teacher || teacher.role !== 'teacher') {
     throw new HttpError(404, 'Teacher not found.');
@@ -303,12 +329,12 @@ const bookMakeup = handle(async (req, res) => {
   credit.waitingTeacherUpdate = false;
   await student.save();
 
-  logChange({ action: 'book', by: 'student', byUser: student._id, student: student._id, studentName: student.name, teacher: teacher._id, teacherName: teacher.name, eventId: created.id, title: summary, oldStart: credit.originalClassDate, newStart: start, reason: 'Makeup booked by student', credit: true });
+  logChange({ action: 'book', by: 'student', byUser: req.user._id, student: student._id, studentName: student.name, teacher: teacher._id, teacherName: teacher.name, eventId: created.id, title: summary, oldStart: credit.originalClassDate, newStart: start, reason: 'Makeup booked by student', credit: true });
 
   await toStudent(student, M.studentMakeupBooked(student, A.fmtTime(start, timeZone), teacher.name), created);
   await toTeacher(teacher, M.teacherBooked(teacher, student.name, cairo(start), { makeup: true, oldTime: credit.source === 'postpone' || credit.source === 'admin-postpone' ? cairo(credit.originalClassDate) : null }), created);
 
-  res.status(200).json({ message: 'Makeup class booked!', start, eventId: created.id });
+  res.status(200).json({ message: 'Makeup class booked!', start, eventId: created.id, studentName: student.name });
 });
 
 // ------------------------------------------------------------
@@ -326,7 +352,7 @@ const getAdminFreeSlots = handle(async (req, res) => {
     try {
       const ev = await A.getEvent(req.query.eventId);
       const { students } = await A.loadPeople();
-      student = A.studentOfEvent(ev, students);
+      student = A.resolveStudentOfEvent(ev, students, req.query.studentId).student;
     } catch (e) { /* the class may be gone; free times still work */ }
   }
   const durationMin = Math.max(15, Number(req.query.durationMinutes) || 60);
@@ -339,7 +365,8 @@ const getAdminClassInfo = handle(async (req, res) => {
   const ev = await loadEvent(req.params.eventId, res);
   const { teachers, students } = await A.loadPeople();
   const teacher = A.teacherOfEvent(ev, teachers);
-  const student = A.studentOfEvent(ev, students);
+  const who = A.resolveStudentOfEvent(ev, students); // 👪 named child; choices when brothers / sisters share the link
+  const student = who.student;
   res.status(200).json({
     eventId: ev.id,
     title: ev.summary,
@@ -347,6 +374,7 @@ const getAdminClassInfo = handle(async (req, res) => {
     durationMinutes: A.eventMinutes(ev),
     teacher: teacher ? { id: String(teacher._id), name: teacher.name, fresh: A.isFresh(teacher) } : null,
     student: student ? { id: String(student._id), name: student.name } : null,
+    studentChoices: who.choices.length > 1 ? who.choices.map((s) => ({ id: String(s._id), name: s.name })) : [],
     teachers: teachers.filter((t) => (t.teacherGroupId || '').trim()).map((t) => ({ id: String(t._id), name: t.name }))
   });
 });
@@ -360,7 +388,11 @@ const adminPostpone = handle(async (req, res) => {
   const ev = await loadEvent(req.body.eventId, res);
   const { teachers, students } = await A.loadPeople();
   const teacher = A.teacherOfEvent(ev, teachers);
-  const studentLite = A.studentOfEvent(ev, students);
+  const who = A.resolveStudentOfEvent(ev, students, req.body.studentId);
+  if (!who.student && who.choices.length > 1) {
+    throw new HttpError(400, `This class can belong to ${who.choices.map((s) => s.name).join(' or ')}. Please choose the child first.`);
+  }
+  const studentLite = who.student;
   if (!studentLite) {
     throw new HttpError(400, 'Could not find the student of this class in the LMS.');
   }
@@ -425,7 +457,11 @@ const adminCancel = handle(async (req, res) => {
   const ev = await loadEvent(req.body.eventId, res);
   const { teachers, students } = await A.loadPeople();
   const teacher = A.teacherOfEvent(ev, teachers);
-  const studentLite = A.studentOfEvent(ev, students);
+  const who = A.resolveStudentOfEvent(ev, students, req.body.studentId); // 👪 the credit goes to the named / chosen child
+  if (!who.student && who.choices.length > 1) {
+    throw new HttpError(400, `This class can belong to ${who.choices.map((s) => s.name).join(' or ')}. Please choose the child first.`);
+  }
+  const studentLite = who.student;
   const student = studentLite ? await User.findById(studentLite._id) : null;
   const start = A.eventStart(ev);
   const durationMin = A.eventMinutes(ev);
