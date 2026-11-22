@@ -678,6 +678,7 @@ function UserList() {
                       <>
                         <button onClick={() => openAssignModal(user)} style={{ fontSize: '12px', padding: '5px 10px', backgroundColor: '#9b59b6', color: 'white', border: 'none', borderRadius: '5px', cursor: 'pointer' }}>🧑‍🏫 Assign</button>
                         <button onClick={() => openWallet(user)} style={{ fontSize: '12px', padding: '5px 10px', backgroundColor: '#f39c12', color: 'white', border: 'none', borderRadius: '5px', cursor: 'pointer' }}>💳 Wallet & Sync</button>
+                        <button onClick={() => setManageStudentId(user._id)} title="Postpone, cancel, add credits, book makeups / extra classes" style={{ fontSize: '12px', padding: '5px 10px', backgroundColor: '#0984e3', color: 'white', border: 'none', borderRadius: '5px', cursor: 'pointer' }}>🛠️ Manage</button>
                       </>
                     )}
                     <button onClick={() => handleDelete(user._id)} className="role-admin" style={{ fontSize: '12px', padding: '5px 10px', border: 'none', cursor: 'pointer', color: 'white', borderRadius: '5px' }}>Delete</button>
@@ -842,6 +843,14 @@ function UserList() {
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '2px solid #eee', paddingBottom: '10px', marginBottom: '20px' }}>
               <h2 style={{ margin: 0 }}>💳 {selectedStudent.name}'s Profile</h2>
               <button onClick={() => setIsWalletOpen(false)} style={{ background: 'none', border: 'none', fontSize: '20px', cursor: 'pointer' }}>✖</button>
+            </div>
+
+            {/* 🛠️ STEP 11: classes, credits and booking for this student (replaces the silent "Grant Makeup Credit" form); 11b: moved to the top */}
+            <div style={{ backgroundColor: '#eaf2fb', padding: '14px 16px', borderRadius: '8px', border: '1px solid #cfe2f6', marginBottom: '20px', display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
+              <p style={{ margin: 0, flex: '1 1 260px', fontSize: '13px', color: '#636e72' }}><b style={{ color: '#0984e3' }}>🛠️ Classes, credits & booking:</b> postpone or cancel a class, add a makeup credit, or book a makeup / extra class. Every change goes to Google Calendar and to the student's and teacher's WhatsApp groups.</p>
+              <button type="button" onClick={() => setManageStudentId(selectedStudent._id)} style={{ padding: '10px 16px', backgroundColor: '#0984e3', color: 'white', border: 'none', borderRadius: '5px', cursor: 'pointer', fontWeight: 'bold' }}>
+                🛠️ Open Manage window
+              </button>
             </div>
 
             {/* Quick Stats */}
@@ -1191,15 +1200,6 @@ function UserList() {
               </button>
 
             </form>
-            
-            {/* 🛠️ STEP 11: classes, credits and booking for this student (replaces the silent "Grant Makeup Credit" form) */}
-            <div style={{ backgroundColor: '#eaf2fb', padding: '20px', borderRadius: '8px', border: '1px solid #cfe2f6', marginTop: '25px' }}>
-              <h3 style={{ margin: '0 0 8px 0', color: '#0984e3' }}>🛠️ Classes, credits & booking</h3>
-              <p style={{ margin: '0 0 12px 0', fontSize: '13px', color: '#636e72' }}>Postpone or cancel a class, add a makeup credit, or book a makeup / extra class. Every change goes to Google Calendar and to the student's and teacher's WhatsApp groups.</p>
-              <button type="button" onClick={() => setManageStudentId(selectedStudent._id)} style={{ width: '100%', padding: '12px', backgroundColor: '#0984e3', color: 'white', border: 'none', borderRadius: '5px', cursor: 'pointer', fontWeight: 'bold' }}>
-                🛠️ Open Manage window
-              </button>
-            </div>
 
           </div>
         </div>
@@ -1211,7 +1211,7 @@ function UserList() {
           apiUrl={API_URL}
           studentId={manageStudentId}
           onClose={() => setManageStudentId(null)}
-          onChanged={() => { fetchUsers(); loadClassChanges(manageStudentId); loadCycle(manageStudentId); }}
+          onChanged={() => { fetchUsers(); if (isWalletOpen && selectedStudent && selectedStudent._id === manageStudentId) { loadClassChanges(manageStudentId); loadCycle(manageStudentId); } }}
         />
       )}
 

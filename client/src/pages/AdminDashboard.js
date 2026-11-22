@@ -59,7 +59,9 @@ function AdminDashboard() {
   const [loadingPreview, setLoadingPreview] = useState(false);
 
   // 🛠️ Step 11: the class opened in the Manage window (postpone / cancel / credits / book)
-  const [manageTarget, setManageTarget] = useState(null); // { cls }
+  const [manageTarget, setManageTarget] = useState(null); // { cls } or { studentId }
+  const [managePickerOpen, setManagePickerOpen] = useState(false); // 🛠️ Step 11b: "Manage a student" search
+  const [manageSearch, setManageSearch] = useState('');
 
   // 🔄 Step 8: Switch to new IDs (preview → choices → apply) + old-ID warning
   const [idPlan, setIdPlan] = useState(null);
@@ -698,6 +700,10 @@ function AdminDashboard() {
         </button>
         <button onClick={() => navigate('/admin-payroll')} className="action-btn btn-grey" style={{width: 'auto', padding: '10px 20px', backgroundColor: '#ffc107', color: '#333', fontWeight: 'bold', border: 'none'}}>
           💰 Manage Payroll
+        </button>
+        {/* 🛠️ STEP 11b: open the Manage window for ANY student (not only those with a class today) */}
+        <button onClick={() => { setManageSearch(''); setManagePickerOpen(true); }} className="action-btn btn-grey" style={{width: 'auto', padding: '10px 20px', backgroundColor: '#0984e3', color: 'white', fontWeight: 'bold', border: 'none'}}>
+          🛠️ Manage a student
         </button>
         {/* ✨ NEW: WhatsApp Bot Test */}
         <button onClick={handleTestBot} disabled={isTestingBot} className="action-btn btn-grey" style={{width: 'auto', padding: '10px 20px', backgroundColor: isTestingBot ? '#95a5a6' : '#25D366', color: 'white', fontWeight: 'bold', border: 'none', cursor: isTestingBot ? 'not-allowed' : 'pointer'}}>
@@ -1341,9 +1347,48 @@ function AdminDashboard() {
       </div>
 
       {/* 🛠️ STEP 11: MANAGE WINDOW (replaces the old 🔁 Postpone / 🚫 Cancel boxes) */}
+      {/* 🛠️ STEP 11b: pick a student by name, then open the Manage window */}
+      {managePickerOpen && (() => {
+        const q = manageSearch.trim().toLowerCase();
+        const matches = studentsList
+          .filter(s => !q || (s.name || '').toLowerCase().includes(q) || (s.email || '').toLowerCase().includes(q))
+          .sort((a, b) => (a.name || '').localeCompare(b.name || ''));
+        return (
+          <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.6)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, padding: '16px' }}>
+            <div style={{ backgroundColor: 'white', color: 'black', borderRadius: '8px', padding: '20px', width: '420px', maxWidth: '100%', maxHeight: '85vh', display: 'flex', flexDirection: 'column' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
+                <h3 style={{ margin: 0, color: '#0984e3' }}>🛠️ Manage a student</h3>
+                <button onClick={() => setManagePickerOpen(false)} style={{ background: 'none', border: 'none', fontSize: '20px', cursor: 'pointer' }}>✖</button>
+              </div>
+              <input
+                autoFocus
+                type="text"
+                value={manageSearch}
+                onChange={(e) => setManageSearch(e.target.value)}
+                placeholder="Type a student's name..."
+                style={{ padding: '10px', border: '1px solid #ccc', borderRadius: '5px', fontSize: '15px', marginBottom: '10px', boxSizing: 'border-box', width: '100%' }}
+              />
+              <div style={{ overflowY: 'auto', flex: 1 }}>
+                {matches.length === 0 && <p style={{ color: '#636e72', fontSize: '14px' }}>No student found.</p>}
+                {matches.map(s => (
+                  <button
+                    key={s._id}
+                    onClick={() => { setManagePickerOpen(false); setManageTarget({ studentId: s._id }); }}
+                    style={{ display: 'block', width: '100%', textAlign: 'left', padding: '10px 12px', marginBottom: '6px', backgroundColor: '#f5f9fd', border: '1px solid #cfe2f6', borderRadius: '5px', cursor: 'pointer', fontSize: '14px' }}
+                  >
+                    <b>{s.name}</b>{s.email && <span style={{ color: '#636e72', fontSize: '12px' }}> · {s.email}</span>}
+                  </button>
+                ))}
+              </div>
+            </div>
+          </div>
+        );
+      })()}
+
       {manageTarget && (
         <AdminManageWindow
           apiUrl={API_URL}
+          studentId={manageTarget.studentId}
           focusEvent={manageTarget.cls}
           onClose={() => setManageTarget(null)}
           onChanged={() => { const token = localStorage.getItem('token'); fetchLiveClasses(token); fetchMessageLogs(token); }}
