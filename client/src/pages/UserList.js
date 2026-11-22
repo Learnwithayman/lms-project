@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import axios from 'axios';
 import { useNavigate } from 'react-router-dom';
 import '../App.css';
+import AdminManageWindow from '../components/AdminManageWindow'; // 🛠️ Step 11
 
 const API_URL = process.env.REACT_APP_API_URL || 'https://lms-backend-02zs.onrender.com';
 
@@ -29,9 +30,7 @@ function UserList() {
   // Existing Modal States
   const [isWalletOpen, setIsWalletOpen] = useState(false);
   const [selectedStudent, setSelectedStudent] = useState(null);
-  const [makeupDate, setMakeupDate] = useState('');
-  const [makeupReason, setMakeupReason] = useState('');
-  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [manageStudentId, setManageStudentId] = useState(null); // 🛠️ Step 11: Manage window for this student
 
   const [subStatus, setSubStatus] = useState('none');
   const [subTotal, setSubTotal] = useState(0);
@@ -164,30 +163,6 @@ function UserList() {
   const copyToClipboard = (id) => {
     navigator.clipboard.writeText(id);
     alert('ID Copied!');
-  };
-
-  const handleGrantMakeup = async (e) => {
-    e.preventDefault();
-    setIsSubmitting(true);
-    try {
-      const token = localStorage.getItem('token');
-      const config = { headers: { Authorization: `Bearer ${token}` } };
-      await axios.post(`${API_URL}/api/schedule/makeup`, {
-        studentId: selectedStudent._id,
-        originalDate: makeupDate,
-        reason: makeupReason
-      }, config);
-      alert('✅ Makeup credit granted successfully! Valid for 90 days.');
-      setIsWalletOpen(false);
-      setMakeupDate('');
-      setMakeupReason('');
-      fetchUsers(); 
-    } catch (error) {
-      console.error(error);
-      alert('❌ Failed to grant makeup credit.');
-    } finally {
-      setIsSubmitting(false);
-    }
   };
 
   const handleUpdateSubscription = async (e) => {
@@ -1217,22 +1192,27 @@ function UserList() {
 
             </form>
             
-            {/* MAKEUP BANK FORM */}
-            <div style={{ backgroundColor: '#fff4e6', padding: '20px', borderRadius: '8px', border: '1px solid #fce8cc', marginTop: '25px' }}>
-              <h3 style={{ margin: '0 0 15px 0', color: '#d35400', borderBottom: '1px solid #fce8cc', paddingBottom: '10px' }}>➕ Grant Makeup Credit</h3>
-              <form onSubmit={handleGrantMakeup}>
-                <label style={{ display: 'block', marginBottom: '5px', fontWeight: 'bold', fontSize: '14px' }}>Original Missed Date:</label>
-                <input type="date" required value={makeupDate} onChange={(e) => setMakeupDate(e.target.value)} style={{ width: '100%', padding: '10px', marginBottom: '15px', borderRadius: '5px', border: '1px solid #ccc', boxSizing: 'border-box' }} />
-                <label style={{ display: 'block', marginBottom: '5px', fontWeight: 'bold', fontSize: '14px' }}>Reason (Optional):</label>
-                <input type="text" placeholder="e.g., Teacher canceled, Medical emergency" value={makeupReason} onChange={(e) => setMakeupReason(e.target.value)} style={{ width: '100%', padding: '10px', marginBottom: '20px', borderRadius: '5px', border: '1px solid #ccc', boxSizing: 'border-box' }} />
-                <button type="submit" disabled={isSubmitting} style={{ width: '100%', padding: '12px', backgroundColor: isSubmitting ? '#95a5a6' : '#f39c12', color: 'white', border: 'none', borderRadius: '5px', cursor: isSubmitting ? 'not-allowed' : 'pointer', fontWeight: 'bold' }}>
-                  {isSubmitting ? 'Granting...' : 'Grant 90-Day Credit'}
-                </button>
-              </form>
+            {/* 🛠️ STEP 11: classes, credits and booking for this student (replaces the silent "Grant Makeup Credit" form) */}
+            <div style={{ backgroundColor: '#eaf2fb', padding: '20px', borderRadius: '8px', border: '1px solid #cfe2f6', marginTop: '25px' }}>
+              <h3 style={{ margin: '0 0 8px 0', color: '#0984e3' }}>🛠️ Classes, credits & booking</h3>
+              <p style={{ margin: '0 0 12px 0', fontSize: '13px', color: '#636e72' }}>Postpone or cancel a class, add a makeup credit, or book a makeup / extra class. Every change goes to Google Calendar and to the student's and teacher's WhatsApp groups.</p>
+              <button type="button" onClick={() => setManageStudentId(selectedStudent._id)} style={{ width: '100%', padding: '12px', backgroundColor: '#0984e3', color: 'white', border: 'none', borderRadius: '5px', cursor: 'pointer', fontWeight: 'bold' }}>
+                🛠️ Open Manage window
+              </button>
             </div>
 
           </div>
         </div>
+      )}
+
+      {/* 🛠️ STEP 11: MANAGE WINDOW (on top of the student profile) */}
+      {manageStudentId && (
+        <AdminManageWindow
+          apiUrl={API_URL}
+          studentId={manageStudentId}
+          onClose={() => setManageStudentId(null)}
+          onChanged={() => { fetchUsers(); loadClassChanges(manageStudentId); loadCycle(manageStudentId); }}
+        />
       )}
 
     </div>

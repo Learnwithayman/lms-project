@@ -84,6 +84,10 @@ router.post('/admin-cancel', protect, adminOnly, R.adminCancel); // 🚫 Step 7:
 router.post('/admin-postpone', protect, adminOnly, R.adminPostpone); // 🔁 Step 7: student chooses / admin picks / another teacher
 router.get('/admin/free-slots', protect, adminOnly, R.getAdminFreeSlots);
 router.get('/admin/class-info/:eventId', protect, adminOnly, R.getAdminClassInfo);
+// 🛠️ Step 11: admin "Manage" window (student overview, grant a credit, book a makeup / extra class)
+router.get('/admin/student/:id/manage', protect, adminOnly, R.getAdminStudentManage);
+router.post('/admin/grant-credit', protect, adminOnly, R.adminGrantCredit);
+router.post('/admin/book-class', protect, adminOnly, R.adminBookClass);
 router.get('/message-logs', protect, adminOnly, getMessageLogs); 
 
 // ✨ NEW: Route for Timezone Sync

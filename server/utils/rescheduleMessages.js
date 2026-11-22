@@ -50,7 +50,21 @@ const teacherMondayCheck = (teacher) =>
 const adminNoFreeTimes = (studentName, teacherName) =>
   `السلام عليكم\n\n⚠️ *No free times for a makeup*\n👤 *${studentName}* needs a new time with *${teacherName}*, but there are no free times in the next 14 days.`;
 
+// ---------- 🛠️ Step 11 (23 Nov): admin "Manage" window ----------
+// 12. Student: the admin added a makeup credit
+const studentCreditGranted = (student, expiresOn, reason) =>
+  `${hi(student)}\n\n🎒 A makeup credit has been added to your account${reason ? ` (${reason})` : ''}.\n📅 You can book your makeup class from your dashboard before *${expiresOn}*.\n\n${loginBlock(student)}\n${SIGN}`;
+
+// 13. Teacher: their student got a makeup credit from the admin
+const teacherCreditGranted = (teacher, studentName) =>
+  `السلام عليكم ${teacher.name},\n\n🎒 *${studentName}* has a new makeup credit from the admin. They can book a makeup class from your free hours in *🗓️ My Schedule*.`;
+
+// 14. Student: the admin booked an extra class (no credit used)
+const studentClassBooked = (student, newTime, teacherName) =>
+  `${hi(student)}\n\n✅ A new class has been booked for you!\n🗓️ *${newTime}* with *${teacherName}*\n\nSee you then, Insha'Allah! 📚\n\n${loginBlock(student)}\n${SIGN}`;
+
 module.exports = {
   studentPostponed, studentScheduleUpdated, studentMakeupBooked, studentMoved, studentCancelled, studentCreditExpiring,
-  teacherUpdateNow, teacherBooked, teacherChanged, teacherMondayCheck, adminNoFreeTimes
+  teacherUpdateNow, teacherBooked, teacherChanged, teacherMondayCheck, adminNoFreeTimes,
+  studentCreditGranted, teacherCreditGranted, studentClassBooked
 };

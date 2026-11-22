@@ -3,7 +3,7 @@ const mongoose = require('mongoose');
 // 📜 Step 7: history of every postpone / move / cancel / makeup booking
 const classChangeSchema = mongoose.Schema(
   {
-    action: { type: String, enum: ['postpone', 'move', 'teacher-change', 'cancel', 'book'], required: true },
+    action: { type: String, enum: ['postpone', 'move', 'teacher-change', 'cancel', 'book', 'credit'], required: true }, // 'credit' = admin granted a makeup credit (Step 11)
     by: { type: String, enum: ['student', 'admin'], required: true },
     byUser: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
     cancelledBy: { type: String },                 // cancel only: 'student' | 'teacher' | 'admin'

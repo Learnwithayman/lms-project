@@ -4,7 +4,7 @@ const ClassChange = require('../models/ClassChange');
 const { sendMessage } = require('../utils/whatsappBot');
 const A = require('../utils/availability');
 const M = require('../utils/rescheduleMessages');
-const { parseEventStudent, eventTeacherCodes, eventGroupLinks, classBelongsToStudent, classBelongsToTeacher } = require('../utils/classMatch');
+const { parseEventStudent, eventTeacherCodes, eventGroupLinks, classBelongsToStudent, classBelongsToTeacher, classIsStudents } = require('../utils/classMatch');
 
 // ==========================================
 // 🔁 STEP 7: POSTPONE, MAKEUP BOOKING, ADMIN POSTPONE / CANCEL, TEACHER "MY SCHEDULE"
@@ -354,6 +354,8 @@ const getAdminFreeSlots = handle(async (req, res) => {
       const { students } = await A.loadPeople();
       student = A.resolveStudentOfEvent(ev, students, req.query.studentId).student;
     } catch (e) { /* the class may be gone; free times still work */ }
+  } else if (req.query.studentId) {
+    student = await User.findById(req.query.studentId); // 🛠️ Step 11: booking for a student (their own classes count as busy too)
   }
   const durationMin = Math.max(15, Number(req.query.durationMinutes) || 60);
   const slots = await A.bookableSlots({ teacher, student, durationMin, minNoticeHours: 0 });
@@ -500,6 +502,146 @@ const adminCancel = handle(async (req, res) => {
   res.status(200).json({ message: 'Class cancelled and removed from Google Calendar.', credit: giveCredit && !!student, countedUsed, teacherPaid: payTeacher && !!teacher });
 });
 
+// ------------------------------------------------------------
+// 🛠️ STEP 11 (23 Nov): ADMIN "MANAGE" WINDOW
+// One place for the admin to do what a student or teacher can do on scheduling:
+// see a student's upcoming classes + credits, grant a credit, book a makeup / extra class.
+// (Postpone / cancel use adminPostpone / adminCancel above.) Every change goes to Google Calendar
+// and messages BOTH the student's group and the teacher's group.
+// ------------------------------------------------------------
+
+const MANAGE_DAYS_AHEAD = 30;
+const fmtDayOnly = (date) => new Date(date).toLocaleDateString('en-US', { timeZone: A.CAIRO_TZ, dateStyle: 'medium' });
+
+// The student's main teacher: the teacher of their next class, else of their latest credit
+const mainTeacherOf = (classes, credits, teachers) => {
+  const id = (classes.find((c) => c.teacherId) || {}).teacherId || ((credits.find((c) => c.teacher) || {}).teacher);
+  return id ? teachers.find((t) => String(t._id) === String(id)) || null : null;
+};
+
+// @route GET /api/schedule/admin/student/:id/manage (Admin)
+const getAdminStudentManage = handle(async (req, res) => {
+  const { teachers, students } = await A.loadPeople();
+  const student = students.find((s) => String(s._id) === String(req.params.id));
+  if (!student) throw new HttpError(404, 'Student not found.');
+  const now = Date.now();
+  const events = await A.listEvents(now, now + MANAGE_DAYS_AHEAD * A.DAY);
+  const classes = events
+    .filter((ev) => classIsStudents(ev, student, students))
+    .map((ev) => {
+      const t = A.teacherOfEvent(ev, teachers);
+      return { id: ev.id, title: ev.summary || '', startTime: A.eventStart(ev), durationMinutes: A.eventMinutes(ev), teacherId: t ? String(t._id) : null, teacherName: t ? t.name : '' };
+    });
+  const credits = activeCredits(student).sort((a, b) => new Date(a.expirationDate) - new Date(b.expirationDate));
+  const main = mainTeacherOf(classes, credits, teachers);
+  const history = await ClassChange.find({ student: student._id }).sort({ createdAt: -1 }).limit(10);
+  res.status(200).json({
+    student: { id: String(student._id), name: student.name, hasGroup: !!(student.studentGroupId || '').trim(), paused: !!(student.pause && student.pause.kind === 'full') },
+    classes,
+    credits: credits.map((c) => ({ id: String(c._id), expirationDate: c.expirationDate, originalClassDate: c.originalClassDate, teacherId: c.teacher ? String(c.teacher) : null, teacherName: c.teacherName || '', reason: c.reason || '', durationMinutes: c.durationMinutes || 60, waiting: !!c.waitingTeacherUpdate })),
+    teachers: teachers.filter((t) => (t.teacherGroupId || '').trim()).map((t) => ({ id: String(t._id), name: t.name, fresh: A.isFresh(t) })),
+    mainTeacherId: main ? String(main._id) : null,
+    history: history.map((h) => ({ action: h.action, by: h.by, when: h.createdAt, oldStart: h.oldStart, newStart: h.newStart, teacherName: h.teacherName, reason: h.reason, credit: h.credit }))
+  });
+});
+
+// @route POST /api/schedule/admin/grant-credit { studentId, teacherId?, reason?, originalDate?, durationMinutes? } (Admin)
+const adminGrantCredit = handle(async (req, res) => {
+  const student = await User.findById(req.body.studentId);
+  if (!student || student.role !== 'student') throw new HttpError(404, 'Student not found.');
+  const { teachers } = await A.loadPeople();
+  let teacher = req.body.teacherId ? teachers.find((t) => String(t._id) === String(req.body.teacherId)) : null;
+  if (!teacher) { // the teacher of their latest class, so the credit can be booked with them
+    const ev = await A.findTemplateEvent(student, null).catch(() => null);
+    teacher = ev ? A.teacherOfEvent(ev, teachers) : null;
+  }
+  const reason = (req.body.reason || '').trim() || 'Added by the admin';
+  const credit = addCredit(student, { source: 'admin', teacher, ev: null, reason });
+  if (req.body.originalDate && !Number.isNaN(new Date(req.body.originalDate).getTime())) credit.originalClassDate = new Date(req.body.originalDate);
+  const minutes = Number(req.body.durationMinutes);
+  if (minutes >= 15 && minutes <= 240) credit.durationMinutes = minutes;
+  if (teacher) { // keep a copy of a real class so booking it later keeps the same links / Zoom
+    const ev = await A.findTemplateEvent(student, teacher).catch(() => null);
+    if (ev) credit.template = A.templateOf(ev);
+  }
+  await student.save();
+
+  logChange({ action: 'credit', by: 'admin', byUser: req.user._id, student: student._id, studentName: student.name, teacher: teacher && teacher._id, teacherName: teacher && teacher.name, oldStart: credit.originalClassDate, reason, credit: true });
+  const sentStudent = await toStudent(student, M.studentCreditGranted(student, fmtDayOnly(credit.expirationDate), req.body.reason ? reason : ''), credit.template);
+  const sentTeacher = teacher ? await toTeacher(teacher, M.teacherCreditGranted(teacher, student.name), credit.template) : false;
+  res.status(200).json({ message: `Makeup credit added (valid until ${fmtDayOnly(credit.expirationDate)}).${sentStudent ? ' Student notified.' : ' Student NOT notified (no group link).'}${teacher ? (sentTeacher ? ' Teacher notified.' : ' Teacher NOT notified (no group link).') : ' No teacher found to notify.'}` });
+});
+
+// @route POST /api/schedule/admin/book-class { studentId, teacherId, start, useCredit, creditId?, durationMinutes? } (Admin)
+// useCredit true → a makeup that uses one of the student's credits; false → an extra class (no credit used).
+const adminBookClass = handle(async (req, res) => {
+  const student = await User.findById(req.body.studentId);
+  if (!student || student.role !== 'student') throw new HttpError(404, 'Student not found.');
+  const teacher = await User.findById(req.body.teacherId);
+  if (!teacher || teacher.role !== 'teacher' || !(teacher.teacherGroupId || '').trim()) throw new HttpError(400, 'Choose a teacher who has a group link saved.');
+  const start = new Date(req.body.start);
+  if (Number.isNaN(start.getTime()) || start.getTime() < Date.now()) throw new HttpError(400, 'Please choose a time in the future.');
+
+  const useCredit = req.body.useCredit !== false;
+  let credit = null;
+  if (useCredit) {
+    credit = req.body.creditId
+      ? activeCredits(student).find((c) => String(c._id) === String(req.body.creditId)) || null
+      : pickCredit(student, teacher._id);
+    if (!credit) throw new HttpError(400, `${student.name} has no makeup credit to use. Choose "Extra class" or add a credit first.`);
+  }
+  const durationMin = Math.max(15, Math.min(240, Number(req.body.durationMinutes) || (credit && credit.durationMinutes) || 60));
+  const end = new Date(start.getTime() + durationMin * A.MIN);
+
+  // No double booking: the teacher or the student already has a class at that time
+  const { students } = await A.loadPeople();
+  const around = await A.listEvents(start.getTime() - A.DAY, end.getTime() + A.DAY);
+  const clash = around.find((ev) => A.eventStart(ev) < end && A.eventEnd(ev) > start &&
+    (classBelongsToTeacher(eventTeacherCodes(ev), teacher) || classIsStudents(ev, student, students)));
+  if (clash) throw new HttpError(409, `That time overlaps "${clash.summary || 'another class'}" (${cairo(A.eventStart(clash))} Cairo). Please choose another time.`);
+
+  // Build the class from a real one (same links, Zoom and format)
+  let template = credit && credit.template && credit.template.description ? credit.template : null;
+  if (!template) {
+    const ev = (await A.findTemplateEvent(student, teacher)) || (await A.findTemplateEvent(student, null));
+    if (ev) template = A.templateOf(ev);
+  }
+  let description;
+  if (template) {
+    description = template.description || '';
+    const oldCodes = eventTeacherCodes({ description });
+    if (!classBelongsToTeacher(oldCodes, teacher)) description = A.swapTeacherLink(description, oldCodes, teacher);
+  } else { // no class to copy: the saved links (no Zoom link)
+    description = `TeacherGroupLink: ${teacher.teacherGroupId}\nStudentGroupLink: ${student.studentGroupId || ''}\nStudentGroupName: ${student.name}`;
+  }
+  const baseTitle = (template && template.summary ? template.summary : student.name).replace(/^🎒 Makeup:\s*/, '');
+  const summary = credit ? `🎒 Makeup: ${baseTitle}` : baseTitle;
+  const timeZone = (template && template.timeZone) || A.STUDENT_TZ;
+
+  const created = await A.insertEvent({
+    summary,
+    description,
+    start: { dateTime: start.toISOString(), timeZone },
+    end: { dateTime: end.toISOString(), timeZone },
+    ...(template && template.location ? { location: template.location } : {}),
+    ...(template && template.colorId ? { colorId: template.colorId } : {})
+  });
+
+  if (credit) {
+    credit.isUsed = true;
+    credit.usedAt = new Date();
+    credit.usedForEventId = created.id;
+    credit.waitingTeacherUpdate = false;
+    await student.save();
+  }
+  logChange({ action: 'book', by: 'admin', byUser: req.user._id, student: student._id, studentName: student.name, teacher: teacher._id, teacherName: teacher.name, eventId: created.id, title: summary, oldStart: credit ? credit.originalClassDate : undefined, newStart: start, reason: credit ? 'Makeup booked by the admin' : 'Extra class booked by the admin', credit: !!credit });
+
+  const studentText = credit ? M.studentMakeupBooked(student, A.fmtTime(start, timeZone), teacher.name) : M.studentClassBooked(student, A.fmtTime(start, timeZone), teacher.name);
+  await toStudent(student, studentText, created);
+  await toTeacher(teacher, M.teacherBooked(teacher, student.name, cairo(start), { makeup: !!credit, byAdmin: true, oldTime: credit && (credit.source === 'postpone' || credit.source === 'admin-postpone') ? cairo(credit.originalClassDate) : null }), created);
+  res.status(200).json({ message: `${credit ? 'Makeup' : 'Extra class'} booked for ${cairo(start)} Cairo with ${teacher.name}. Student and teacher notified.${template ? '' : ' (No earlier class to copy: please add the Zoom link in Google Calendar.)'}`, eventId: created.id });
+});
+
 // @route GET /api/users/:id/class-changes (Admin) — 📜 Class changes in the student profile
 const getClassChanges = handle(async (req, res) => {
   const changes = await ClassChange.find({ student: req.params.id }).sort({ createdAt: -1 }).limit(100);
@@ -510,5 +652,6 @@ module.exports = {
   getMyAvailability, saveMyAvailability, confirmMyAvailability,
   getMakeupInfo, getStudentFreeSlots, studentPostpone, bookMakeup,
   getAdminFreeSlots, getAdminClassInfo, adminPostpone, adminCancel, getClassChanges,
+  getAdminStudentManage, adminGrantCredit, adminBookClass, // 🛠️ Step 11
   notifyWaitingStudents
 };
