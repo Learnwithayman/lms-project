@@ -88,6 +88,25 @@ const classBelongsToStudent = ({ code, codes, name }, user) => {
   return !!(clsName && dbName && (clsName === dbName || clsName.includes(dbName) || dbName.includes(clsName)));
 };
 
+// 👪 Brothers / sisters sharing ONE group link (e.g. Jouri + Oday Elsadek, 22 Nov):
+// the link alone matches both, so the class must also NAME the student (StudentGroupName or the title).
+// Students with their own link are not affected. Group classes that name both belong to both.
+const nameInText = (text, name) => {
+  const full = (name || '').toLowerCase().trim();
+  const first = full.split(/\s+/)[0] || '';
+  const hay = (text || '').toLowerCase();
+  if (!full) return false;
+  if (hay.includes(full)) return true;
+  return first.length >= 3 && new RegExp(`(^|[^a-z0-9])${first.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}([^a-z0-9]|$)`).test(hay);
+};
+const classIsStudents = (event, student, students = []) => {
+  const parsed = parseEventStudent(event);
+  if (!classBelongsToStudent(parsed, student)) return false;
+  const others = students.filter((o) => String(o._id) !== String(student._id) && classBelongsToStudent(parsed, o));
+  if (!others.length) return true;
+  return nameInText(`${parsed.name || ''} ${event.summary || event.title || ''}`, student.name);
+};
+
 // 📋 Step 5: the main teacher code of a class (same order as getTeacherSchedule)
 const parseEventTeacher = (event) => eventTeacherCodes(event)[0] || null;
 
@@ -101,5 +120,6 @@ const classBelongsToTeacher = (codeOrCodes, teacher) => {
 module.exports = {
   groupCode, cleanCode, isOldGroupId, userGroupCodes, codesMatch, setOldIdsEnabled,
   eventStudentCodes, eventTeacherCodes, eventGroupLinks,
-  parseEventStudent, classBelongsToStudent, parseEventTeacher, classBelongsToTeacher
+  parseEventStudent, classBelongsToStudent, parseEventTeacher, classBelongsToTeacher,
+  classIsStudents, nameInText
 };

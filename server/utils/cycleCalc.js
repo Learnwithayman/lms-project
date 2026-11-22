@@ -15,7 +15,7 @@
 
 const ClassChange = require('../models/ClassChange');
 const A = require('./availability');
-const { parseEventStudent, classBelongsToStudent } = require('./classMatch');
+const { classIsStudents } = require('./classMatch');
 
 const CYCLE_DAYS = { monthly: 28, quarterly: 84, semiannual: 168, yearly: 336 };
 const TZ = A.STUDENT_TZ;          // student classes are anchored to New York time
@@ -62,22 +62,8 @@ const currentCycle = (s, now) => {
   return { start, end, rolled };
 };
 
-const lower = (t) => (t || '').toLowerCase().trim();
-const nameIn = (text, name) => {
-  const full = lower(name);
-  const first = full.split(/\s+/)[0] || '';
-  const hay = lower(text);
-  return !!full && (hay.includes(full) || (first.length >= 3 && new RegExp(`\\b${first.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`).test(hay)));
-};
-
-// Is this class this student's? Siblings sharing one group link: the class must name the student.
-const belongsTo = (ev, student, students) => {
-  const parsed = parseEventStudent(ev);
-  if (!classBelongsToStudent(parsed, student)) return false;
-  const others = students.filter((o) => String(o._id) !== String(student._id) && classBelongsToStudent(parsed, o));
-  if (!others.length) return true;
-  return nameIn(`${parsed.name || ''} ${ev.summary || ''}`, student.name);
-};
+// Is this class this student's? Siblings sharing one group link: the class must name the student (shared rule in classMatch)
+const belongsTo = (ev, student, students) => classIsStudents(ev, student, students);
 
 // Day + time of a class in ITS OWN time zone (the one on the calendar event, e.g. Europe/Istanbul).
 // Reading everything in New York time broke on clock changes: 14:00 Istanbul is 07:00 New York before

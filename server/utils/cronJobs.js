@@ -1,7 +1,7 @@
 const cron = require('node-cron');
 const { getUpcomingClasses } = require('./calendarBot');
 const { sendMessage } = require('./whatsappBot');
-const { parseEventStudent, classBelongsToStudent } = require('./classMatch'); // ⏸️ Step 3: match classes to paused students
+const { classIsStudents } = require('./classMatch'); // ⏸️ Step 3: match classes to paused students (👪 sibling-safe, 22 Nov)
 const ClassSession = require('../models/ClassSession'); 
 const User = require('../models/User'); 
  
@@ -23,6 +23,8 @@ cron.schedule('* * * * *', async () => {
 
     // ⏸️ Step 3: students who are paused or away → no reminders at all for their classes
     const pausedStudents = await User.find({ 'pause.kind': { $in: ['full', 'away'] } }, 'name studentGroupId legacyGroupIds pause');
+    // 👪 all students, so a paused sister does not mute her brother's classes when they share one group link
+    const allStudents = pausedStudents.length ? await User.find({ role: 'student' }, 'name studentGroupId legacyGroupIds whatsappGroupId') : [];
 
     for (const cls of classes) {
       if (cls.description && cls.description.toLowerCase().includes('do not send')) {
@@ -31,8 +33,7 @@ cron.schedule('* * * * *', async () => {
       }
 
       if (pausedStudents.length) {
-        const owner = parseEventStudent(cls);
-        const pausedOwner = pausedStudents.find((u) => classBelongsToStudent(owner, u));
+        const pausedOwner = pausedStudents.find((u) => classIsStudents(cls, u, allStudents));
         if (pausedOwner) {
           continue; // ⏸️ Student paused / away: student AND teacher reminders are muted
         }

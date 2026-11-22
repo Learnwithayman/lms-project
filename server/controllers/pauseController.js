@@ -1,6 +1,6 @@
 const User = require('../models/User');
 const { calendar } = require('./scheduleController');
-const { groupCode, userGroupCodes, parseEventStudent, classBelongsToStudent } = require('../utils/classMatch');
+const { groupCode, userGroupCodes, classIsStudents } = require('../utils/classMatch'); // 👪 22 Nov: sibling-safe match
 
 // ==========================================
 // ⏸️ STUDENT PAUSE (Step 3)
@@ -78,8 +78,9 @@ const findFutureClasses = async (user) => {
     orderBy: 'startTime',
     maxResults: 250
   });
+  const students = await User.find({ role: 'student' }, 'name studentGroupId legacyGroupIds whatsappGroupId'); // 👪 siblings sharing one link
   return (response.data.items || [])
-    .filter((event) => classBelongsToStudent(parseEventStudent(event), user))
+    .filter((event) => classIsStudents(event, user, students))
     .map((event) => ({ id: event.id, title: event.summary, startTime: event.start.dateTime || event.start.date }));
 };
 
