@@ -336,15 +336,28 @@ const getTeacherEarnings = async (req, res) => {
     });
 
     const totalMinutes = completedClasses.reduce((sum, cls) => sum + (cls.durationMinutes || 0), 0);
-    const hourlyRate = req.user.hourlyRate || 4.0; 
+    const hourlyRate = req.user.hourlyRate || 4.0;
     const totalHours = totalMinutes / 60;
-    const currentEarnings = totalHours * hourlyRate;
+    const baseEarnings = totalHours * hourlyRate;
+
+    // 🐛 FIX 22 Nov: bonuses / deductions the admin adds were saved but never shown to the teacher —
+    // this endpoint didn't look at teacher.adjustments at all. Now it does, for the current month.
+    const teacher = await User.findById(req.user._id);
+    const thisMonthAdjustments = ((teacher && teacher.adjustments) || [])
+      .filter((adj) => new Date(adj.date) >= startOfMonth)
+      .sort((a, b) => new Date(b.date) - new Date(a.date));
+    const adjustmentsTotal = thisMonthAdjustments.reduce((sum, adj) => sum + adj.amount, 0);
+    const finalEarnings = baseEarnings + adjustmentsTotal;
 
     res.status(200).json({
       totalMinutes,
       totalHours: totalHours.toFixed(2),
       hourlyRate,
-      currentEarnings: currentEarnings.toFixed(2) 
+      currentEarnings: baseEarnings.toFixed(2), // base pay from hours only (kept for anything already reading this field)
+      baseEarnings: baseEarnings.toFixed(2),
+      adjustmentsTotal: adjustmentsTotal.toFixed(2),
+      finalEarnings: finalEarnings.toFixed(2),
+      adjustments: thisMonthAdjustments.map((adj) => ({ amount: adj.amount, reason: adj.reason || '', date: adj.date }))
     });
   } catch (error) {
     res.status(500).json({ message: 'Server error calculating payroll.' });
@@ -407,9 +420,28 @@ const addTeacherAdjustment = async (req, res) => {
     const teacher = await User.findById(teacherId);
     if (!teacher) return res.status(404).json({ message: 'Teacher not found' });
 
-    teacher.adjustments.push({ amount: Number(amount), reason: reason });
+    const value = Number(amount);
+    teacher.adjustments.push({ amount: value, reason: reason });
     await teacher.save();
-    res.status(200).json({ message: 'Adjustment added successfully!', teacher });
+
+    // 🐛✨ FIX 22 Nov: the teacher was never told a bonus/deduction was added — now a WhatsApp message goes out,
+    // and the amount now shows in their own dashboard too (see getTeacherEarnings above).
+    const targetGroup = (teacher.teacherGroupId || teacher.whatsappGroupId || '').trim();
+    let notified = false;
+    if (targetGroup) {
+      const isBonus = value >= 0;
+      const message = isBonus
+        ? `السلام عليكم / Assalamu Alaikum *${teacher.name}*! ✨\n\n🎁 *A bonus has been added to your account:*\n💵 *Amount:* $${value.toFixed(2)}\n📝 *Reason:* ${reason || 'No reason given'}\n\nIt will show in your dashboard and count toward this month's payroll. Thank you for your hard work! 🌿\n\n*Learn With Ayman Admin Team*`
+        : `السلام عليكم / Assalamu Alaikum *${teacher.name}*,\n\n📋 *A payroll adjustment has been made to your account:*\n💵 *Amount:* -$${Math.abs(value).toFixed(2)}\n📝 *Reason:* ${reason || 'No reason given'}\n\nIt will show in your dashboard. Please contact the admin if you have any questions.\n\n*Learn With Ayman Admin Team*`;
+      try {
+        await whatsappClient.sendMessage(targetGroup, message);
+        notified = true;
+      } catch (sendError) {
+        console.error('Could not notify the teacher of their adjustment:', sendError.message);
+      }
+    }
+
+    res.status(200).json({ message: `Adjustment added successfully!${notified ? ' The teacher was notified on WhatsApp.' : targetGroup ? ' (Could not reach WhatsApp — please tell them by hand.)' : ' (No group link saved — please tell them by hand.)'}`, teacher, notified });
   } catch (error) {
     res.status(500).json({ message: 'Server error adding adjustment.' });
   }

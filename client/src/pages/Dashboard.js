@@ -846,13 +846,33 @@ function Dashboard() {
         </div>
       )}
 
+      {/* 💰 Current Month Earnings + 🎁 bonuses/deductions (fixed 22 Nov: these used to be invisible here) */}
       {user?.role?.toLowerCase() === 'teacher' && earnings && (
-        <div style={{ backgroundColor: '#d4edda', color: '#155724', padding: '20px', borderRadius: '8px', marginBottom: '20px', border: '1px solid #c3e6cb', display: 'flex', justifyContent: 'space-between', alignItems: 'center', boxShadow: '0 2px 5px rgba(0,0,0,0.1)' }}>
-          <div>
-            <h2 style={{ margin: '0 0 5px 0' }}>💰 Current Month Earnings</h2>
-            <p style={{ margin: 0 }}>You have taught <strong>{earnings.totalHours} hours</strong> this month at <strong>${earnings.hourlyRate}/hr</strong>.</p>
+        <div style={{ backgroundColor: '#d4edda', color: '#155724', padding: '20px', borderRadius: '8px', marginBottom: '20px', border: '1px solid #c3e6cb', boxShadow: '0 2px 5px rgba(0,0,0,0.1)' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '10px' }}>
+            <div>
+              <h2 style={{ margin: '0 0 5px 0' }}>💰 Current Month Earnings</h2>
+              <p style={{ margin: 0 }}>You have taught <strong>{earnings.totalHours} hours</strong> this month at <strong>${earnings.hourlyRate}/hr</strong> = <strong>${earnings.baseEarnings || earnings.currentEarnings}</strong> base pay.</p>
+            </div>
+            <div style={{ fontSize: '36px', fontWeight: 'bold' }}>${earnings.finalEarnings || earnings.currentEarnings}</div>
           </div>
-          <div style={{ fontSize: '36px', fontWeight: 'bold' }}>${earnings.currentEarnings}</div>
+
+          {(earnings.adjustments || []).length > 0 && (
+            <div style={{ marginTop: '15px', paddingTop: '15px', borderTop: '1px dashed #a3d9b1' }}>
+              <p style={{ margin: '0 0 8px 0', fontWeight: 'bold' }}>✨ Bonuses & adjustments this month:</p>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                {earnings.adjustments.map((adj, i) => (
+                  <div key={i} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', backgroundColor: adj.amount >= 0 ? '#eafaf1' : '#fdecea', padding: '8px 12px', borderRadius: '6px', fontSize: '14px' }}>
+                    <span>{adj.amount >= 0 ? '🎁' : '📋'} {adj.reason || (adj.amount >= 0 ? 'Bonus' : 'Deduction')}
+                      <span style={{ color: '#636e72', fontSize: '12px', marginLeft: '8px' }}>{new Date(adj.date).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}</span>
+                    </span>
+                    <strong style={{ color: adj.amount >= 0 ? '#00b894' : '#d63031' }}>{adj.amount >= 0 ? '+' : '-'}${Math.abs(adj.amount).toFixed(2)}</strong>
+                  </div>
+                ))}
+              </div>
+              <p style={{ margin: '10px 0 0 0', fontSize: '13px', color: '#155724' }}>Bonuses/adjustments total: <strong>{earnings.adjustmentsTotal >= 0 ? '+' : '-'}${Math.abs(earnings.adjustmentsTotal)}</strong></p>
+            </div>
+          )}
         </div>
       )}
 

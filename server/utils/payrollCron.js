@@ -16,18 +16,22 @@ const runMonthlyPayroll = async () => {
         const monthNames = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
         const monthLabel = `${monthNames[startOfLastMonth.getMonth()]} ${startOfLastMonth.getFullYear()}`;
 
-        // 2. Prevent duplicate runs
-        const existingRun = await PayrollHistory.findOne({ month: monthLabel });
-        if (existingRun) {
-            console.log(`⚠️ Payroll for ${monthLabel} was already generated! Skipping.`);
-            return { message: `Payroll for ${monthLabel} already generated.` };
+        // 2. Prevent duplicate runs — but only skip a teacher ALREADY in the history for this month
+        // (🐛 FIX 22 Nov: used to skip the whole month if even one teacher had a row, so the old crash
+        // above left a part-finished run permanently stuck as "already generated")
+        const alreadyDoneIds = new Set((await PayrollHistory.find({ month: monthLabel }, 'teacherId')).map((r) => String(r.teacherId)));
+        if (alreadyDoneIds.size) {
+            console.log(`⚠️ Payroll for ${monthLabel}: ${alreadyDoneIds.size} teacher(s) already have a record; only the rest will be processed now.`);
         }
 
-        const teachers = await User.find({ role: { $regex: /teacher/i } });
+        const teachers = (await User.find({ role: { $regex: /teacher/i } })).filter((t) => !alreadyDoneIds.has(String(t._id)));
         let processedCount = 0;
 
         // 3. Do the math, save the record, and text the teacher
+        // 🐛 FIX 22 Nov: each teacher is now handled in its own try/catch — one teacher's problem
+        // (bad group link, a WhatsApp error) no longer stops the rest of the run, as it did before.
         for (const teacher of teachers) {
+          try {
             const completedClasses = await ClassSession.find({
                 teacher: teacher._id,
                 status: 'completed',
@@ -71,13 +75,16 @@ const runMonthlyPayroll = async () => {
                 if (targetGroup) {
                     const message = `السلام عليكم / Assalamu Alaikum *${teacher.name}*! 🎓\n\nHere is your official Payroll Summary for *${monthLabel}*:\n\n⏱️ *Hours Taught:* ${totalHours.toFixed(2)} hrs\n💵 *Hourly Rate:* $${hourlyRate.toFixed(2)}\n💰 *Base Pay:* $${baseEarnings.toFixed(2)}\n✨ *Bonuses/Adjustments:* $${adjustmentsTotal.toFixed(2)}\n\n🏆 *Total Earnings:* *$${finalEarnings.toFixed(2)}*\n\nThank you for your hard work and dedication this month!\n\nWarm regards,\n*Learn With Ayman Admin Team*`;
                     
-                    await whatsappClient.sendLmsNotification(targetGroup, message);
+                    await whatsappClient.sendMessage(targetGroup, message); // 🐛 FIX 22 Nov: sendLmsNotification does not exist on whatsappClient — it crashed here every run, aborted the whole loop after the first teacher, and left a part-finished PayrollHistory row that then blocked every later run for the same month ("already generated")
                 }
                 processedCount++;
             }
+          } catch (teacherError) {
+            console.error(`🚨 Payroll: could not process ${teacher.name}:`, teacherError.message);
+          }
         }
         console.log(`✅ Monthly payroll for ${monthLabel} saved and sent to ${processedCount} teachers!`);
-        return { message: `Success! Processed ${processedCount} teachers for ${monthLabel}.` };
+        return { message: processedCount === 0 && alreadyDoneIds.size > 0 ? `Payroll for ${monthLabel}: nothing new to process (${alreadyDoneIds.size} teacher(s) already done).` : `Success! Processed ${processedCount} teacher(s) for ${monthLabel}.` };
     } catch (error) {
         console.error('🚨 Error running monthly payroll cron:', error);
         throw error;
