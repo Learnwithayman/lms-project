@@ -744,7 +744,10 @@ function Dashboard() {
 
   const reportsData = subSummary?.monthlyReports || [];
   const finalizedReports = reportsData.filter(r => r.isFinalized);
-  const activePlan = reportsData.find(r => !r.isFinalized);
+  // 🐛 FIX 22 Nov: this used to pick the FIRST unfinalized plan in the array (often an old month that
+  // was never finalized/approved), instead of the most recent one — confirmed live for 5 students
+  // (e.g. Yahya Zegar showed October while November was ready). Search from the newest entry instead.
+  const activePlan = [...reportsData].reverse().find(r => !r.isFinalized);
   const chartData = finalizedReports.map(r => ({
     name: r.monthYear.substring(0, 3) || '',
     score: r.totalScore
