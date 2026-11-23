@@ -180,7 +180,19 @@ const endClass = async (req, res) => {
       whatsappClient.sendMessage(targetPhone, messageText);
     }
 
-    const finalDuration = durationMinutes ? Number(durationMinutes) : 60; 
+    // 🕒 Step 22 (23 Nov): the length comes from the Google Calendar event (end minus start), not from the browser
+    let calendarMinutes = null;
+    if (classId && !mongoose.Types.ObjectId.isValid(classId)) {
+      try {
+        const ev = await calendar.events.get({ calendarId: 'admin@learnwithayman.com', eventId: classId });
+        const evStart = new Date(ev.data.start.dateTime || ev.data.start.date).getTime();
+        const evEnd = new Date(ev.data.end.dateTime || ev.data.end.date).getTime();
+        if (evEnd > evStart) calendarMinutes = Math.round((evEnd - evStart) / 60000);
+      } catch (err) {
+        console.error('End class: could not read the calendar event, using the browser length:', err.message);
+      }
+    }
+    const finalDuration = calendarMinutes || (durationMinutes ? Number(durationMinutes) : 60);
     const finalStudentGroup = studentGroupName || studentName || title || 'Student';
 
     if (session) {
