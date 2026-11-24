@@ -32,7 +32,7 @@ const resolveClassTarget = async (req) => {
       meetingLink = session.meetingLink || meetingLink;
       subject = session.subject || subject;
     }
-  } else if (studentGroupId) {
+  } else if (studentGroupId && !/^👥/.test(String(studentGroupName || '')) && !/^👥/.test(String(title || ''))) { // 👥 Step 13: a group class names the whole group
     studentDoc = await findClassStudent({ studentGroupId, studentGroupName, title }); // 👪 the named child when siblings share the link
   }
   if (studentDoc && studentDoc.name) studentName = studentDoc.name;

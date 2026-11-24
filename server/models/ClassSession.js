@@ -50,6 +50,11 @@ const classSessionSchema = mongoose.Schema({
     type: String, 
     default: '' 
   },
+  // 👥 Step 13: group classes
+  group: { type: mongoose.Schema.Types.ObjectId, ref: 'Group', default: null },
+  attendance: [{ student: { type: mongoose.Schema.Types.ObjectId, ref: 'User' }, name: String, status: { type: String, enum: ['present', 'absent'] } }],
+  recordingLink: { type: String, default: '' },
+  seatBonus: { type: Number, default: 0 }, // $ added to the teacher's pay for paying seats (also saved as a teacher adjustment)
 }, {
   timestamps: true,
 });

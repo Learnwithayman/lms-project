@@ -9,6 +9,7 @@ import UserList from './pages/UserList';
 import AdminSchedule from './pages/AdminSchedule'; 
 import ProgressHistory from './pages/ProgressHistory'; // ✨ Updated to match the component we built
 import AdminPayroll from './pages/AdminPayroll'; 
+import AdminGroups from './pages/AdminGroups'; // 👥 Step 13: group courses
 
 function App() {
   return (
@@ -22,6 +23,7 @@ function App() {
         <Route path="/users" element={<UserList />} />
         <Route path="/all-classes" element={<AdminSchedule />} /> 
         <Route path="/admin-payroll" element={<AdminPayroll />} /> 
+        <Route path="/admin-groups" element={<AdminGroups />} /> {/* 👥 Step 13 */}
         <Route path="/progress" element={<ProgressHistory />} /> {/* ✨ New Parent Hub Route */}
       </Routes>
     </Router>

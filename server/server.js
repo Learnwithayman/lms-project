@@ -65,6 +65,7 @@ app.use('/api/subscriptions', require('./routes/subscriptionRoutes')); // Subscr
 app.use('/api/paypal', require('./routes/paypalRoutes')); // 💳 PayPal webhook & manual renew
 app.use('/api/progress', require('./routes/progressRoutes')); // Progress Hub Sprint Routes
 app.use('/api/student', require('./routes/studentRoutes')); 
+app.use('/api/groups', require('./routes/groupRoutes')); // 👥 Step 13: group courses
 
 // 🚀 FIXED: Added '0.0.0.0' to explicitly open the port for Render!
 app.listen(port, '0.0.0.0', () => console.log(`Server started on port ${port}`));

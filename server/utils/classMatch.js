@@ -73,6 +73,8 @@ const eventGroupLinks = (event) => {
 // Reads the student group code(s) and student name out of a calendar event description
 const parseEventStudent = (event) => {
   const description = event.description || '';
+  // 👥 Step 13: a group-course class never belongs to one student (never counted, paused or credited as a personal class)
+  if (/LMSGroupID/i.test(description)) return { code: null, codes: [], name: null, group: true };
   const codes = eventStudentCodes(event);
   const nameMatch = description.match(/StudentGroupName[\s*:-]*([^\n<]+)/i);
   const name = nameMatch ? nameMatch[1].trim() : null;

@@ -701,6 +701,10 @@ function AdminDashboard() {
         <button onClick={() => navigate('/admin-payroll')} className="action-btn btn-grey" style={{width: 'auto', padding: '10px 20px', backgroundColor: '#ffc107', color: '#333', fontWeight: 'bold', border: 'none'}}>
           💰 Manage Payroll
         </button>
+        {/* 👥 STEP 13: group courses */}
+        <button onClick={() => navigate('/admin-groups')} className="action-btn btn-grey" style={{width: 'auto', padding: '10px 20px', backgroundColor: '#00b894', color: 'white', fontWeight: 'bold', border: 'none'}}>
+          👥 Group Courses
+        </button>
         {/* 🛠️ STEP 11b: open the Manage window for ANY student (not only those with a class today) */}
         <button onClick={() => { setManageSearch(''); setManagePickerOpen(true); }} className="action-btn btn-grey" style={{width: 'auto', padding: '10px 20px', backgroundColor: '#0984e3', color: 'white', fontWeight: 'bold', border: 'none'}}>
           🛠️ Manage a student

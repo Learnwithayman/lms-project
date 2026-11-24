@@ -7,6 +7,7 @@ const whatsappClient = require('../utils/whatsappBot');
 const { google } = require('googleapis');
 const { userGroupCodes, codesMatch, eventTeacherCodes, eventStudentCodes, cleanCode } = require('../utils/classMatch'); // 🔗 old group IDs + invite links
 const { findClassStudent } = require('../utils/classStudent'); // 👪 22 Nov: named child when siblings share a link
+const groupCtl = () => require('./groupController'); // 👥 Step 13: group courses (loaded when used: availability.js loads this file)
 const mongoose = require('mongoose');
 const path = require('path');
 const fs = require('fs');
@@ -182,18 +183,23 @@ const endClass = async (req, res) => {
 
     // 🕒 Step 22 (23 Nov): the length comes from the Google Calendar event (end minus start), not from the browser
     let calendarMinutes = null;
+    let calendarDescription = '';
     if (classId && !mongoose.Types.ObjectId.isValid(classId)) {
       try {
         const ev = await calendar.events.get({ calendarId: 'admin@learnwithayman.com', eventId: classId });
         const evStart = new Date(ev.data.start.dateTime || ev.data.start.date).getTime();
         const evEnd = new Date(ev.data.end.dateTime || ev.data.end.date).getTime();
         if (evEnd > evStart) calendarMinutes = Math.round((evEnd - evStart) / 60000);
+        calendarDescription = ev.data.description || '';
       } catch (err) {
         console.error('End class: could not read the calendar event, using the browser length:', err.message);
       }
     }
     const finalDuration = calendarMinutes || (durationMinutes ? Number(durationMinutes) : 60);
     const finalStudentGroup = studentGroupName || studentName || title || 'Student';
+    // 👥 Step 13: a group class is never a personal class (no student, attendance per member)
+    const groupIdMatch = calendarDescription.match(/LMSGroupID[\s*:-]*([a-f0-9]{24})/i);
+    const groupId = groupIdMatch ? groupIdMatch[1] : null;
 
     if (session) {
       session.status = 'completed';
@@ -205,7 +211,7 @@ const endClass = async (req, res) => {
       await session.save();
     } else {
       // 👪 22 Nov: the named child when brothers / sisters share the link (was: the first student found)
-      const studentUser = await findClassStudent({ studentGroupId: studentGroupId || whatsappGroupId, studentGroupName: finalStudentGroup, title: subjectToSearch });
+      const studentUser = groupId ? null : await findClassStudent({ studentGroupId: studentGroupId || whatsappGroupId, studentGroupName: finalStudentGroup, title: subjectToSearch });
       session = await ClassSession.create({
         teacher: req.user._id,
         student: studentUser ? studentUser._id : null, 
@@ -217,6 +223,10 @@ const endClass = async (req, res) => {
         teacherGroupName: teacherGroupName || '', 
         studentGroupName: finalStudentGroup  
       });
+    }
+
+    if (groupId && session) {
+      await groupCtl().finishGroupClass({ session, groupId, teacher, attendance: req.body.groupAttendance, recordingLink: req.body.recordingLink, minutes: finalDuration });
     }
 
     if (session && session.student) {
@@ -244,7 +254,10 @@ const markAttendance = async (req, res) => {
       session = await ClassSession.findById(classId).populate('student').populate('teacher', 'name');
       if (!session) return res.status(404).json({ message: 'Class not found' });
     } else {
-      const studentUser = await findClassStudent({ studentGroupId, studentGroupName, title }); // 👪 22 Nov: the named child when siblings share the link
+      // 👥 Step 13: in a group class each member is marked in the End class box, never the whole class
+      const isGroupClass = /^👥\s*Group:/i.test(String(studentGroupName || '')) || /^👥/.test(String(title || ''));
+      if (isGroupClass && attendanceStatus === 'Absent') return res.status(400).json({ message: 'This is a group class: mark absent students in the End class box.' });
+      const studentUser = isGroupClass ? null : await findClassStudent({ studentGroupId, studentGroupName, title }); // 👪 22 Nov: the named child when siblings share the link
       const teacherUser = await User.findById(req.user._id);
       session = {
         student: studentUser || { name: title || 'Student' },
@@ -547,12 +560,25 @@ const getTeacherSchedule = async (req, res) => {
         studentGroupId: studentGroupId,
         studentGroupName: studentGroupName, 
         zoomLink: zoomLink,
-        classroomLink: classroomLink 
+        classroomLink: classroomLink,
+        groupId: ((description.match(/LMSGroupID[\s*:-]*([a-f0-9]{24})/i) || [])[1]) || null // 👥 Step 13
       };
     });
 
     // 🔗 Group fix: match on ANY saved code of the user (invite link or old ID) against ANY code in the class
     const myCodes = [...userGroupCodes(databaseUser, isTeacher ? 'teacherGroupId' : 'studentGroupId'), ...[databaseUser.groupId, databaseUser.whatsappGroup].map(cleanCode)].filter((c) => c && c.length > 5);
+
+    // 👥 Step 13: the groups this student belongs to (active members only)
+    let myGroupIds = [];
+    if (!isTeacher) {
+      try {
+        const Group = require('../models/Group');
+        const groups = await Group.find({ active: true, 'members.student': databaseUser._id }, 'members');
+        myGroupIds = groups.filter((g) => g.members.some((m) => String(m.student) === String(databaseUser._id) && !m.leftAt)).map((g) => String(g._id));
+      } catch (groupError) {
+        console.error('👥 Could not load the groups of this student:', groupError.message); // never break the class list
+      }
+    }
 
     const userSpecificClasses = processedClasses.filter((cls) => {
       const isValidId = myCodes.length > 0;
@@ -566,6 +592,7 @@ const getTeacherSchedule = async (req, res) => {
         const clsName = cls.studentGroupName ? cls.studentGroupName.toLowerCase().trim() : '';
         const nMatch = clsName && dbName && (clsName === dbName || clsName.includes(dbName) || dbName.includes(clsName));
         
+        if (cls.groupId) return myGroupIds.includes(cls.groupId); // 👥 Step 13: group classes only for their members
         return sMatch || nMatch;
       }
     });
@@ -602,6 +629,16 @@ const getTeacherSchedule = async (req, res) => {
       if (alreadyDone) return false; 
       return true; 
     });
+
+    // 👥 Step 13: the teacher gets the member list of each group class (for the End class box)
+    if (isTeacher) {
+      const groupCache = {};
+      for (const cls of finalSchedule) {
+        if (!cls.groupId) continue;
+        if (!(cls.groupId in groupCache)) groupCache[cls.groupId] = await groupCtl().membersForClass(cls.groupId);
+        cls.group = groupCache[cls.groupId];
+      }
+    }
 
     res.status(200).json(finalSchedule);
   } catch (error) {

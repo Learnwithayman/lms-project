@@ -68,6 +68,9 @@ function Dashboard() {
   const [currentClassId, setCurrentClassId] = useState(null);
   const [notes, setNotes] = useState('');
   const [classroomChecked, setClassroomChecked] = useState(false);
+  const [groupPresence, setGroupPresence] = useState({}); // 👥 Step 13: group class → studentId: true/false (present)
+  const [recordingLink, setRecordingLink] = useState(''); // 👥 Step 13: recording link pasted when ending a group class
+  const [myGroups, setMyGroups] = useState([]); // 👥 Step 13: the student's group courses
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   const [isMakeupModalOpen, setIsMakeupModalOpen] = useState(false);
@@ -220,6 +223,7 @@ function Dashboard() {
       fetchMySchedule(token);
     } else {
       fetchSubSummary(token);
+      fetchMyGroups(token); // 👥 Step 13
     }
   }, [navigate]);
 
@@ -300,6 +304,16 @@ function Dashboard() {
       setEarnings(res.data);
     } catch (error) {
       console.error("Failed to fetch earnings:", error);
+    }
+  };
+
+  // 👥 Step 13: my group courses (Classroom, homework, recordings)
+  const fetchMyGroups = async (token) => {
+    try {
+      const res = await axios.get(`${API_URL}/api/groups/mine`, { headers: { Authorization: `Bearer ${token}` } });
+      setMyGroups(Array.isArray(res.data) ? res.data : []);
+    } catch (error) {
+      setMyGroups([]);
     }
   };
 
@@ -470,12 +484,17 @@ function Dashboard() {
         whatsappGroupId: targetClass?.teacherGroupId, 
         studentName: targetClass?.title,
         startTime: targetClass?.startTime,
-        durationMinutes: dynamicDuration 
+        durationMinutes: dynamicDuration,
+        // 👥 Step 13: group class → who attended + the recording link
+        groupAttendance: targetClass?.group ? (targetClass.group.members || []).map((m) => ({ studentId: m.studentId, present: groupPresence[m.studentId] !== false })) : undefined,
+        recordingLink: targetClass?.group ? recordingLink.trim() : undefined
       }, config);
 
       setIsModalOpen(false);
       setNotes('');
       setClassroomChecked(false);
+      setGroupPresence({});
+      setRecordingLink('');
       
       fetchClasses(token);
       fetchEarnings(token);
@@ -947,6 +966,44 @@ function Dashboard() {
         </div>
       )}
 
+      {/* 👥 STEP 13: MY GROUP CLASSES (Classroom, homework, recordings) */}
+      {user?.role?.toLowerCase() === 'student' && myGroups.length > 0 && (
+        <div style={{ marginBottom: '30px' }}>
+          {myGroups.map((g) => {
+            const classworkLink = /\/c\/[^/?#]+/.test(g.classroomLink || '') ? g.classroomLink.replace(/\/c\/([^/?#]+).*$/, '/w/$1/t/all') : g.classroomLink;
+            return (
+              <div key={g.id} style={{ backgroundColor: 'white', borderRadius: '15px', padding: '20px', marginBottom: '15px', boxShadow: '0 4px 12px rgba(0,0,0,0.05)', borderLeft: '6px solid #00b894', color: '#2d3436' }}>
+                <h3 style={{ margin: '0 0 6px 0' }}>👥 {g.name}</h3>
+                <p style={{ margin: '0 0 12px 0', color: '#636e72', fontSize: '14px' }}>
+                  {g.course && <>📚 {g.course} · </>}🧑‍🏫 {g.teacherName} · 📅 {g.when}
+                  {g.next && <><br />⏭️ Next class: {new Date(g.next).toLocaleString(undefined, { weekday: 'long', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}</>}
+                </p>
+                {g.classroomLink && (
+                  <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap', marginBottom: '12px' }}>
+                    <a href={g.classroomLink} target="_blank" rel="noopener noreferrer" style={{ backgroundColor: '#fdcb6e', color: '#2d3436', padding: '8px 14px', borderRadius: '6px', textDecoration: 'none', fontWeight: 'bold', fontSize: '14px' }}>📚 Go to my Classroom</a>
+                    <a href={classworkLink} target="_blank" rel="noopener noreferrer" style={{ backgroundColor: '#74b9ff', color: '#2d3436', padding: '8px 14px', borderRadius: '6px', textDecoration: 'none', fontWeight: 'bold', fontSize: '14px' }}>📝 Check homework</a>
+                  </div>
+                )}
+                {g.classes.length > 0 && (
+                  <div>
+                    <b style={{ fontSize: '14px' }}>📜 Recent classes</b>
+                    {g.classes.map((c) => (
+                      <div key={c.id} style={{ display: 'flex', gap: '10px', alignItems: 'center', flexWrap: 'wrap', padding: '8px', backgroundColor: '#f8f9fa', borderRadius: '6px', marginTop: '6px', fontSize: '14px' }}>
+                        <span style={{ flex: '1 1 180px' }}>{new Date(c.when).toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' })}{c.status === 'absent' ? <b style={{ color: '#d63031' }}> · ❌ Absent</b> : c.status === 'present' ? <span style={{ color: '#00b894' }}> · ✅ Present</span> : null}</span>
+                        {c.recordingLink
+                          ? <a href={c.recordingLink} target="_blank" rel="noopener noreferrer" style={{ backgroundColor: '#6c5ce7', color: 'white', padding: '6px 12px', borderRadius: '6px', textDecoration: 'none', fontWeight: 'bold' }}>🎥 Watch the recorded class</a>
+                          : <span style={{ color: '#b2bec3', fontSize: '13px' }}>🎥 Recording not added yet</span>}
+                        {c.notes && <div style={{ flexBasis: '100%', color: '#636e72', fontSize: '13px' }}>📝 {c.notes}</div>}
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      )}
+
       {user?.role?.toLowerCase() !== 'teacher' && subSummary && (
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: '25px', marginBottom: '40px' }}>
           
@@ -1253,8 +1310,10 @@ function Dashboard() {
                           <button onClick={() => handleLateReminder(cls, 1)} disabled={isLateBusy} style={{ backgroundColor: '#fdcb6e', color: 'black', padding: '10px 15px', border: 'none', borderRadius: '6px', cursor: isLateBusy ? 'not-allowed' : 'pointer', fontWeight: 'bold' }}>🏃‍♂️ Late</button>
                         )
                       )}
-                      <button onClick={() => handleAttendance(cls, 'Absent')} style={{ backgroundColor: '#636e72', color: 'white', padding: '10px 15px', border: 'none', borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold' }}>❌ Absent</button>
-                      <button onClick={() => { setCurrentClassId(classIdentifier); setIsModalOpen(true); }} style={{ backgroundColor: '#d63031', color: 'white', padding: '10px 15px', border: 'none', borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold' }}>🛑 End Class</button>
+                      {!cls.groupId && ( // 👥 Step 13: in a group class, absent students are ticked in End class
+                        <button onClick={() => handleAttendance(cls, 'Absent')} style={{ backgroundColor: '#636e72', color: 'white', padding: '10px 15px', border: 'none', borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold' }}>❌ Absent</button>
+                      )}
+                      <button onClick={() => { setCurrentClassId(classIdentifier); setGroupPresence({}); setRecordingLink(''); setIsModalOpen(true); }} style={{ backgroundColor: '#d63031', color: 'white', padding: '10px 15px', border: 'none', borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold' }}>🛑 End Class</button>
                     </>
                   )}
 
@@ -1519,10 +1578,26 @@ function Dashboard() {
             <label style={{ fontWeight: 'bold' }}>Class Notes:</label>
             <textarea value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Write a brief summary of today's class..." style={{ width: '100%', height: '80px', margin: '10px 0', padding: '10px', boxSizing: 'border-box', borderRadius: '8px', border: '1px solid #dfe6e9', resize: 'vertical', fontFamily: 'inherit' }} />
 
+            {/* 👥 STEP 13: group class → tick who attended + the recording link */}
+            {selectedClass?.group && (
+              <div style={{ marginTop: '10px', padding: '15px', background: '#eafaf1', borderRadius: '10px', border: '1px solid #b8e6cc' }}>
+                <span style={{ fontWeight: 'bold' }}>👥 {selectedClass.group.name}: who attended?</span>
+                {(selectedClass.group.members || []).length === 0 && <p style={{ fontSize: '13px', color: '#636e72', margin: '8px 0 0 0' }}>No members in this group yet.</p>}
+                {(selectedClass.group.members || []).map((m) => (
+                  <label key={m.studentId} style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '8px', cursor: 'pointer', fontSize: '14px' }}>
+                    <input type="checkbox" checked={groupPresence[m.studentId] !== false} onChange={(e) => setGroupPresence({ ...groupPresence, [m.studentId]: e.target.checked })} style={{ transform: 'scale(1.2)' }} />
+                    {m.name} {groupPresence[m.studentId] === false ? <span style={{ color: '#d63031', fontWeight: 'bold' }}>(absent)</span> : <span style={{ color: '#00b894' }}>(present)</span>}
+                  </label>
+                ))}
+                <label style={{ display: 'block', fontWeight: 'bold', marginTop: '12px', fontSize: '14px' }}>🎥 Recording link (optional, you can add it later)</label>
+                <input type="text" value={recordingLink} onChange={(e) => setRecordingLink(e.target.value)} placeholder="Google Classroom / Drive link to the recorded class" style={{ width: '100%', marginTop: '6px', padding: '8px', boxSizing: 'border-box', borderRadius: '6px', border: '1px solid #dfe6e9' }} />
+              </div>
+            )}
+
             <div style={{ marginTop: '20px', padding: '15px', background: '#f5f6fa', borderRadius: '10px', border: '1px solid #dfe6e9' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
                 <span style={{ fontWeight: 'bold', color: '#2d3436' }}>Step 2: Assign Homework</span>
-                <button type="button" onClick={() => window.open(selectedClass?.classroomLink || 'https://classroom.google.com', '_blank')} style={{ background: '#fdcb6e', color: '#2d3436', border: 'none', padding: '8px 15px', borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold' }}>📚 Open Classroom</button>
+                <button type="button" onClick={() => window.open(selectedClass?.group?.classroomLink || selectedClass?.classroomLink || 'https://classroom.google.com', '_blank')} style={{ background: '#fdcb6e', color: '#2d3436', border: 'none', padding: '8px 15px', borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold' }}>📚 Open Classroom</button>
               </div>
               <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginTop: '15px' }}>
                 <input type="checkbox" id="hwCheck" checked={classroomChecked} onChange={(e) => setClassroomChecked(e.target.checked)} style={{ transform: 'scale(1.2)', cursor: 'pointer' }} />
