@@ -1,6 +1,6 @@
 const User = require('../models/User');
 const { calendar } = require('./scheduleController');
-const { groupCode, userGroupCodes, classIsStudents } = require('../utils/classMatch'); // 👪 22 Nov: sibling-safe match
+const { groupCode, userGroupCodes, classIsStudents, codesMatch } = require('../utils/classMatch'); // 👪 22 Nov: sibling-safe match
 
 // ==========================================
 // ⏸️ STUDENT PAUSE (Step 3)
@@ -174,12 +174,19 @@ const reactivateStudent = async (req, res) => {
 const getAwayStudents = async (req, res) => {
   try {
     const users = await User.find({ 'pause.kind': { $in: ['full', 'away'] } }, 'name studentGroupId legacyGroupIds pause');
+    // 👪 25 Nov (Step 24): brothers / sisters on ONE link (Jouri + Oday): the dashboard banner must also find the name
+    const students = users.length ? await User.find({ role: 'student' }, 'name studentGroupId legacyGroupIds') : [];
+    const sharesLink = (u) => {
+      const mine = userGroupCodes(u, 'studentGroupId');
+      return mine.length > 0 && students.some((o) => String(o._id) !== String(u._id) && codesMatch(userGroupCodes(o, 'studentGroupId'), mine));
+    };
     res.status(200).json(users.map((u) => ({
       name: u.name,
       code: groupCode(u.studentGroupId),
       codes: userGroupCodes(u, 'studentGroupId'), // 🔗 invite link code + old IDs
       kind: u.pause.kind,
-      returnDate: u.pause.returnDate
+      returnDate: u.pause.returnDate,
+      shared: sharesLink(u) // true → the class must also name this student
     })));
   } catch (error) {
     console.error('Error loading away students:', error);

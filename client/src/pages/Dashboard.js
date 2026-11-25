@@ -266,10 +266,22 @@ function Dashboard() {
   const findAwayStudent = (cls) => {
     const code = (cls.studentGroupId || '').replace('https://chat.whatsapp.com/', '').trim();
     const clsName = (cls.studentGroupName || '').toLowerCase().trim();
+    // 👪 25 Nov (Step 24): the class names this student (full name, or first name as a whole word)
+    const classText = `${cls.studentGroupName || ''} ${cls.title || ''}`.toLowerCase();
+    const classWords = classText.split(/[^a-z0-9\u0600-\u06ff]+/).filter(Boolean);
+    const namesStudent = (name) => {
+      const full = (name || '').toLowerCase().trim();
+      const first = full.split(/\s+/)[0] || '';
+      if (!full) return false;
+      if (classText.includes(full)) return true;
+      return first.length >= 3 && classWords.includes(first);
+    };
     return awayStudents.find(s => {
-      if (code && s.code && s.code.length > 5 && (code.includes(s.code) || s.code.includes(code))) return true;
-      // 🔗 Group fix: any code in the class against any saved code (invite link or old ID)
-      if ((cls.studentCodes || []).some(c => (s.codes || []).some(m => m.length > 5 && (c.includes(m) || m.includes(c))))) return true;
+      const linkMatch = (code && s.code && s.code.length > 5 && (code.includes(s.code) || s.code.includes(code))) ||
+        // 🔗 Group fix: any code in the class against any saved code (invite link or old ID)
+        (cls.studentCodes || []).some(c => (s.codes || []).some(m => m.length > 5 && (c.includes(m) || m.includes(c))));
+      // 👪 a link shared by brothers / sisters: the class must also name the paused student
+      if (linkMatch) return s.shared ? namesStudent(s.name) : true;
       const n = (s.name || '').toLowerCase().trim();
       return clsName && n && (clsName === n || clsName.includes(n) || n.includes(clsName));
     });
