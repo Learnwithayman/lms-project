@@ -3,7 +3,8 @@ const { getUpcomingClasses } = require('./calendarBot');
 const { sendMessage } = require('./whatsappBot');
 const { classIsStudents } = require('./classMatch'); // ⏸️ Step 3: match classes to paused students (👪 sibling-safe, 22 Nov)
 const ClassSession = require('../models/ClassSession'); 
-const User = require('../models/User'); 
+const User = require('../models/User');
+const { joinLinkFor, zoomLines } = require('./zoomInfo'); // 🆔 Step 21: Meeting ID + passcode
  
 console.log('✅ Dual-Group Cron jobs initialized. Listening for upcoming classes...');
  
@@ -77,7 +78,9 @@ cron.schedule('* * * * *', async () => {
         }
  
         if (studentSearchTerm) {
-          const studentMessage = `🔔 *Class Reminder*\n\nالسلام عليكم / Assalamu Alaikum,\n\nGet ready! Your class *${cls.title}* is starting in exactly *1 Hour*.\n\n🔗 *Join Here:*\n${cls.zoomLink || 'No link provided'}\n\n*Learn With Ayman Admin Team*`;
+          const joinLink = await joinLinkFor(cls.zoomLink, teacherSearchTerm); // 🆔 Step 21: the teacher's saved room when the class has no link
+          const zoomExtra = await zoomLines(joinLink);
+          const studentMessage = `🔔 *Class Reminder*\n\nالسلام عليكم / Assalamu Alaikum,\n\nGet ready! Your class *${cls.title}* is starting in exactly *1 Hour*.\n\n🔗 *Join Here:*\n${joinLink || 'No link provided'}${zoomExtra}\n\n*Learn With Ayman Admin Team*`;
           await sendMessage(studentSearchTerm, studentMessage); 
           console.log(`✅ Sent 1-hour Student reminder to group code: ${studentSearchTerm}`);
         }

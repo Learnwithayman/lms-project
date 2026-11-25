@@ -519,6 +519,9 @@ function UserList() {
       studentGroupId: user.studentGroupId || '',
       teacherGroupId: user.teacherGroupId || '',
       hourlyRate: user.hourlyRate || 3.0,
+      zoomLink: user.zoomLink || '', // 🆔 Step 21: the teacher's Zoom room
+      zoomMeetingId: user.zoomMeetingId || '',
+      zoomPasscode: user.zoomPasscode || '',
       timezone: user.timezone || 'Africa/Cairo' // ✨ Added timezone to edit
     });
     setIsEditModalOpen(true);
@@ -794,6 +797,17 @@ function UserList() {
                 <>
                   <div><label style={{ fontWeight: 'bold', fontSize: '14px' }}>Teacher Group ID:</label><input type="text" placeholder="e.g. 120363305478886477@g.us" value={editForm.teacherGroupId} onChange={(e) => setEditForm({...editForm, teacherGroupId: e.target.value})} style={{ width: '100%', padding: '10px', borderRadius: '5px', border: '1px solid #ccc', boxSizing: 'border-box' }} /></div>
                   <div><label style={{ fontWeight: 'bold', fontSize: '14px' }}>Hourly Pay Rate ($):</label><input type="number" step="0.5" value={editForm.hourlyRate} onChange={(e) => setEditForm({...editForm, hourlyRate: e.target.value})} style={{ width: '100%', padding: '10px', borderRadius: '5px', border: '1px solid #ccc', boxSizing: 'border-box' }} /></div>
+                  {/* 🆔 STEP 21: the teacher's Zoom room → Meeting ID + passcode in the student reminders */}
+                  <div style={{ backgroundColor: '#eef6ff', border: '1px solid #cfe2f6', borderRadius: '6px', padding: '10px' }}>
+                    <div style={{ fontWeight: 'bold', fontSize: '14px', marginBottom: '6px' }}>🎥 Zoom room (shown in the student reminders)</div>
+                    <label style={{ fontSize: '13px' }}>Zoom link:</label>
+                    <input type="text" placeholder="https://us05web.zoom.us/j/..." value={editForm.zoomLink || ''} onChange={(e) => setEditForm({...editForm, zoomLink: e.target.value})} style={{ width: '100%', padding: '8px', borderRadius: '5px', border: '1px solid #ccc', boxSizing: 'border-box', marginBottom: '6px' }} />
+                    <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                      <div style={{ flex: '1 1 160px' }}><label style={{ fontSize: '13px' }}>Meeting ID:</label><input type="text" placeholder="726 384 0792" value={editForm.zoomMeetingId || ''} onChange={(e) => setEditForm({...editForm, zoomMeetingId: e.target.value})} style={{ width: '100%', padding: '8px', borderRadius: '5px', border: '1px solid #ccc', boxSizing: 'border-box' }} /></div>
+                      <div style={{ flex: '1 1 160px' }}><label style={{ fontSize: '13px' }}>Passcode:</label><input type="text" placeholder="The passcode students type" value={editForm.zoomPasscode || ''} onChange={(e) => setEditForm({...editForm, zoomPasscode: e.target.value})} style={{ width: '100%', padding: '8px', borderRadius: '5px', border: '1px solid #ccc', boxSizing: 'border-box' }} /></div>
+                    </div>
+                    <div style={{ fontSize: '12px', color: '#636e72', marginTop: '6px' }}>The Meeting ID is also read from each class's Zoom link. The passcode is added to the reminder of every class that uses this Meeting ID.</div>
+                  </div>
                 </>
               )}
               <button type="submit" disabled={isEditing} style={{ width: '100%', padding: '12px', backgroundColor: isEditing ? '#95a5a6' : '#3498db', color: 'white', border: 'none', borderRadius: '5px', cursor: isEditing ? 'not-allowed' : 'pointer', fontWeight: 'bold', marginTop: '10px' }}>

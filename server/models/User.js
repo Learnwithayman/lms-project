@@ -25,6 +25,10 @@ const userSchema = mongoose.Schema(
     
     // --- TEACHER PAYROLL ---
     hourlyRate: { type: Number, default: 3.0 },
+    // 🆔 Step 21: the teacher's Zoom room (shown in the student reminders)
+    zoomLink: { type: String, default: '' },
+    zoomMeetingId: { type: String, default: '' },
+    zoomPasscode: { type: String, default: '' },
     currency: { type: String, default: 'USD' }, 
     
     // The Adjustments Ledger for bonuses and deductions

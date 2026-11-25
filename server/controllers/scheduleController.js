@@ -275,6 +275,7 @@ const markAttendance = async (req, res) => {
     if (targetGroup) {
       let message = '';
       if (attendanceStatus === 'Late') {
+        if (session.meetingLink) session.meetingLink = session.meetingLink + await require('../utils/zoomInfo').zoomLines(session.meetingLink); // 🆔 Step 21 (text only, not saved)
         message = `السلام عليكم / Assalamu Alaikum *${session.student.name || 'Student'}*, ✨\n\nJust a gentle reminder that our class is scheduled to begin right now. Your teacher, *${session.teacher.name}*, has opened the room and is waiting for you!\n\n🔗 *Join the class here:*\n${session.meetingLink || 'No link provided'}\n\nWe hope you have a wonderful class! 📚\n\nWarm regards,\n*Learn With Ayman Support Team*`;
       } else if (attendanceStatus === 'Absent') {
         message = `السلام عليكم / Assalamu Alaikum *${session.student.name || 'Student'}*,\n\nWe hope everything is proceeding smoothly on your end and that you are safe and well. 🌿\n\nWe noticed that you haven't joined the meeting today. Since the 15-minute waiting period has passed, the teacher has now closed the meeting room. \n\n⚠️ *Please note: As per our attendance policy, this session is marked as absent and is not eligible for a makeup class.*\n\nWe look forward to seeing you at your next scheduled time, Insha'Allah! \n\nWarm regards,\n*Learn With Ayman Support Team*`;

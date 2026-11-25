@@ -97,7 +97,8 @@ const sendLateReminder = async (req, res) => {
     progress.reminders.push({ step, sentAt: new Date() });
     await progress.save();
 
-    whatsappClient.sendMessage(targetGroup, reminderMessage(step, studentName, teacherName, meetingLink));
+    const zoomExtra = meetingLink ? await require('../utils/zoomInfo').zoomLines(meetingLink) : ''; // 🆔 Step 21: Meeting ID + passcode
+    whatsappClient.sendMessage(targetGroup, reminderMessage(step, studentName, teacherName, meetingLink ? meetingLink + zoomExtra : meetingLink));
     res.status(200).json({ message: `Late reminder ${step} sent!`, progress });
   } catch (error) {
     console.error('Error sending late reminder:', error);
