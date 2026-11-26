@@ -5,7 +5,7 @@
 
 const User = require('../models/User');
 const { calendar } = require('../controllers/scheduleController');
-const { parseEventStudent, classBelongsToStudent, eventTeacherCodes, classBelongsToTeacher } = require('./classMatch');
+const { parseEventStudent, classBelongsToStudent, eventTeacherCodes, classBelongsToTeacher, nameInText } = require('./classMatch');
 
 const CALENDAR_ID = 'admin@learnwithayman.com';
 const STUDENT_TZ = 'America/New_York';
@@ -77,9 +77,25 @@ const listMonthEvents = async (key) => {
 };
 
 // Prefer a group-code match, then a name match
-const findStudentFor = ({ codes, name }, students) =>
-  students.find((s) => classBelongsToStudent({ codes, name: null }, s)) ||
-  students.find((s) => classBelongsToStudent({ codes: [], name }, s)) || null;
+// 👪 26 Nov (Step 25): brothers / sisters on one link or one old ID (Yasmin + Deemah Shadid): the code alone
+// matches all of them, so the class must NAME the child (StudentGroupName or title); never guess a sibling.
+// A class naming several children (e.g. "Celia Dahir  Saber Dahir") is a duty for EACH of them.
+// Returns a list (empty when nobody can be matched).
+const findStudentsFor = ({ codes, name }, students, title = '') => {
+  const byName = () => {
+    const s = students.find((x) => classBelongsToStudent({ codes: [], name }, x));
+    if (s) return [s];
+    const inTitle = students.filter((x) => (x.name || '').trim().length > 3 && String(title || '').toLowerCase().includes((x.name || '').trim().toLowerCase())); // full name in the title
+    return inTitle.length === 1 ? inTitle : [];
+  };
+  const byCode = students.filter((s) => classBelongsToStudent({ codes, name: null }, s));
+  if (byCode.length === 1) return byCode;
+  if (byCode.length > 1) {
+    const named = byCode.filter((s) => nameInText(`${name || ''} ${title || ''}`, s.name));
+    return named.length ? named : byName(); // none of the link's owners named → the student the class names
+  }
+  return byName();
+};
 
 // ------------------------------------------------------------
 // Duties of one month: one row per (student, teacher)
@@ -96,22 +112,24 @@ const buildMonthDuties = async (key, opts = {}) => {
   for (const ev of events) {
     const start = new Date(ev.start.dateTime);
     const teacher = teachers.find((t) => classBelongsToTeacher(eventTeacherCodes(ev), t));
-    const student = findStudentFor(parseEventStudent(ev), students);
-    if (!teacher || !student) {
+    const classStudents = findStudentsFor(parseEventStudent(ev), students, ev.summary);
+    if (!teacher || !classStudents.length) {
       unmatched.push({ title: ev.summary || '(no title)', start, missing: !teacher ? 'teacher' : 'student' });
       continue;
     }
-    if (student.pause && student.pause.kind === 'full') continue; // paused students are skipped
+    for (const student of classStudents) {
+      if (student.pause && student.pause.kind === 'full') continue; // paused students are skipped
 
-    const id = `${student._id}|${teacher._id}`;
-    let d = duties.get(id);
-    if (!d) {
-      d = { student, teacher, classCount: 0, firstClass: null, lastClass: null };
-      duties.set(id, d);
+      const id = `${student._id}|${teacher._id}`;
+      let d = duties.get(id);
+      if (!d) {
+        d = { student, teacher, classCount: 0, firstClass: null, lastClass: null };
+        duties.set(id, d);
+      }
+      d.classCount += 1;
+      if (!d.firstClass || start < d.firstClass.start) d.firstClass = { id: ev.id, start };
+      if (!d.lastClass || start > d.lastClass.start) d.lastClass = { id: ev.id, start };
     }
-    d.classCount += 1;
-    if (!d.firstClass || start < d.firstClass.start) d.firstClass = { id: ev.id, start };
-    if (!d.lastClass || start > d.lastClass.start) d.lastClass = { id: ev.id, start };
   }
 
   const list = [...duties.values()].map((d) => ({ ...d, ...partStatus(findRecord(d.student, key), d.teacher._id, d) }));
