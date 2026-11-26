@@ -65,7 +65,7 @@ const addOrUpdateReport = async (req, res) => {
       return res.status(400).json({ message: 'No student identifier was found from the calendar event.' });
     }
 
-    const searchName = studentIdentifier.split('-')[0].trim();
+    const searchName = studentIdentifier.replace(/^\s*🎒?\s*makeup\s*:\s*/i, '').split('-')[0].trim(); // 27 Nov: a makeup class title is '🎒 Makeup: Name'
     const safeSearchName = searchName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
     const student = await User.findOne({
@@ -232,7 +232,7 @@ const getExistingReport = asyncHandler(async (req, res) => {
     throw new Error('No student identifier provided.');
   }
 
-  const searchName = studentIdentifier.split('-')[0].trim();
+  const searchName = studentIdentifier.replace(/^\s*🎒?\s*makeup\s*:\s*/i, '').split('-')[0].trim(); // 27 Nov: a makeup class title is '🎒 Makeup: Name'
   const safeSearchName = searchName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
   const student = await User.findOne({

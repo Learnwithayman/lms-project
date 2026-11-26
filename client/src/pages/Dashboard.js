@@ -281,7 +281,7 @@ function Dashboard() {
   // Clicking a "Plan required" / "Report required" card opens the form on the right month and phase
   const openDutyCard = (cls, card) => {
     openAsReportRef.current = card.kind === 'report';
-    setPlanStudentIdentifier(cls.studentGroupName || cls.title || cls.studentGroupId);
+    setPlanStudentIdentifier(card.studentName || cls.studentGroupName || cls.title || cls.studentGroupId); // 27 Nov: the student the card names (a makeup class title is '🎒 Makeup: …')
     setPlanForm(prev => ({ ...prev, monthYear: monthTextOf(card.monthKey), isFinalized: card.kind === 'report' }));
     setIsPlanModalOpen(true);
   };
