@@ -169,7 +169,15 @@ function Dashboard() {
           }));
         }
       } catch (error) {
-        console.error("Silent auto-load failed:", error);
+        // 👪 27 Nov: a class that names two children → "Which child?" → load that child's own report
+        const choices = error?.response?.status === 409 ? error.response.data?.choices : null;
+        if (choices && choices.length) {
+          const pick = window.prompt(`${error.response.data.message}\n\n${choices.map((c, i) => `${i + 1}. ${c}`).join('\n')}\n\nType the number:`);
+          const chosen = choices[Number(pick) - 1];
+          if (chosen) setPlanStudentIdentifier(chosen); else setIsPlanModalOpen(false);
+        } else {
+          console.error("Silent auto-load failed:", error);
+        }
       } finally {
         setIsLoadingPlan(false);
       }

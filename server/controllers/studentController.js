@@ -1,4 +1,12 @@
 const { mergeSubjects, viewFor } = require('../utils/reportParts'); // 🧩 Step 28: one part per teacher
+
+// 👪 27 Nov: students whose FULL name appears in a class title (e.g. "Celia Dahir  Saber Dahir" → Celia + Saber)
+const studentsNamedIn = async (text) => {
+  const norm = (s) => String(s || '').toLowerCase().replace(/\s+/g, ' ').trim();
+  const hay = norm(text);
+  const all = await User.find({ role: 'student' }, 'name');
+  return all.filter((s) => { const n = norm(s.name); return n.length > 3 && hay.includes(n); });
+};
 const asyncHandler = require('express-async-handler');
 const User = require('../models/User');
 const MakeupRequest = require('../models/MakeupRequest');
@@ -68,15 +76,22 @@ const addOrUpdateReport = async (req, res) => {
     const searchName = studentIdentifier.replace(/^\s*🎒?\s*makeup\s*:\s*/i, '').split('-')[0].trim(); // 27 Nov: a makeup class title is '🎒 Makeup: Name'
     const safeSearchName = searchName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
-    const student = await User.findOne({
-      $or: [ 
-        { name: { $regex: new RegExp(safeSearchName, 'i') } }, 
+    let student = await User.findOne({
+      $or: [
+        { name: { $regex: new RegExp(safeSearchName, 'i') } },
         { studentGroupId: studentIdentifier.trim() },
         { whatsappGroupId: studentIdentifier.trim() },
         { legacyGroupIds: studentIdentifier.trim() } // 🔗 old group ID kept after the link fix
       ],
       role: 'student'
     });
+
+    if (!student) {
+      // 👪 27 Nov: one class for two children (e.g. "Celia Dahir  Saber Dahir"): each child has their own report
+      const named = await studentsNamedIn(searchName);
+      if (named.length > 1) return res.status(409).json({ message: 'This class has more than one student. Please choose which child this report is for.', choices: named.map((s) => s.name.trim()) });
+      if (named.length === 1) student = await User.findById(named[0]._id);
+    }
 
     if (!student) {
       return res.status(404).json({ message: `❌ Could not find a student named "${searchName}". Please check the Admin Users tab.` });
@@ -235,15 +250,22 @@ const getExistingReport = asyncHandler(async (req, res) => {
   const searchName = studentIdentifier.replace(/^\s*🎒?\s*makeup\s*:\s*/i, '').split('-')[0].trim(); // 27 Nov: a makeup class title is '🎒 Makeup: Name'
   const safeSearchName = searchName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
-  const student = await User.findOne({
-    $or: [ 
-      { name: { $regex: new RegExp(safeSearchName, 'i') } }, 
+  let student = await User.findOne({
+    $or: [
+      { name: { $regex: new RegExp(safeSearchName, 'i') } },
       { studentGroupId: studentIdentifier.trim() },
       { whatsappGroupId: studentIdentifier.trim() },
       { legacyGroupIds: studentIdentifier.trim() } // 🔗 old group ID kept after the link fix
     ],
     role: 'student'
   });
+
+  if (!student) {
+    // 👪 27 Nov: one class for two children: the form asks which child
+    const named = await studentsNamedIn(searchName);
+    if (named.length > 1) return res.status(409).json({ message: 'This class has more than one student. Please choose which child this report is for.', choices: named.map((s) => s.name.trim()) });
+    if (named.length === 1) student = await User.findById(named[0]._id);
+  }
 
   if (!student) {
     res.status(404);
