@@ -345,12 +345,12 @@ function UserList() {
       const token = localStorage.getItem('token');
       const config = { headers: { Authorization: `Bearer ${token}` } };
       await axios.put(`${API_URL}/api/users/${editForm._id}`, editForm, config);
-      alert(`✅ Profile updated successfully!`);
+      alert(editForm.useSharedPassword || (editForm.password || '').trim() ? '✅ Profile updated and password changed!' : '✅ Profile updated successfully!');
       setIsEditModalOpen(false);
       fetchUsers();
     } catch (error) {
       console.error(error);
-      alert('❌ Failed to update profile.');
+      alert(`❌ Failed to update profile. ${error?.response?.data?.message || ''}`.trim());
     } finally {
       setIsEditing(false);
     }
@@ -522,6 +522,8 @@ function UserList() {
       zoomLink: user.zoomLink || '', // 🆔 Step 21: the teacher's Zoom room
       zoomMeetingId: user.zoomMeetingId || '',
       zoomPasscode: user.zoomPasscode || '',
+      password: '', // 🔐 empty = keep the current password
+      useSharedPassword: false,
       timezone: user.timezone || 'Africa/Cairo' // ✨ Added timezone to edit
     });
     setIsEditModalOpen(true);
@@ -792,6 +794,17 @@ function UserList() {
                 </div>
               </div>
 
+              {/* 🔐 26 Nov: change the password (scrambled on the server); empty = keep the current one */}
+              <div style={{ backgroundColor: '#fff8e6', border: '1px solid #f6d58e', borderRadius: '6px', padding: '10px' }}>
+                <label style={{ fontWeight: 'bold', fontSize: '14px' }}>🔐 New password:</label>
+                <input type="password" autoComplete="new-password" placeholder="Leave empty to keep the current password" value={editForm.password || ''} disabled={!!editForm.useSharedPassword} onChange={(e) => setEditForm({...editForm, password: e.target.value})} style={{ width: '100%', padding: '10px', borderRadius: '5px', border: '1px solid #ccc', boxSizing: 'border-box', marginTop: '4px' }} />
+                {editForm.role === 'student' && (
+                  <label style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '8px', fontSize: '13px', cursor: 'pointer' }}>
+                    <input type="checkbox" checked={!!editForm.useSharedPassword} onChange={(e) => setEditForm({...editForm, useSharedPassword: e.target.checked, password: ''})} />
+                    Use the shared student password
+                  </label>
+                )}
+              </div>
               <div><label style={{ fontWeight: 'bold', fontSize: '14px' }}>WhatsApp / Student Group ID:</label><input type="text" placeholder="e.g. 120363305478886477@g.us" value={editForm.studentGroupId} onChange={(e) => setEditForm({...editForm, studentGroupId: e.target.value})} style={{ width: '100%', padding: '10px', borderRadius: '5px', border: '1px solid #ccc', boxSizing: 'border-box' }} /></div>
               {editForm.role === 'teacher' && (
                 <>

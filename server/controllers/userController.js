@@ -307,9 +307,26 @@ const updateUserProfile = asyncHandler(async (req, res) => {
     throw new Error('User not found');
   }
 
+  // 🔐 26 Nov: a password from the Edit box is scrambled before saving (it was saved as plain text, so that login failed).
+  // Empty password = keep the current one. useSharedPassword = the shared student password.
+  const changes = { ...req.body };
+  delete changes._id;
+  delete changes.useSharedPassword;
+  let newPassword = typeof req.body.password === 'string' ? req.body.password.trim() : '';
+  if (req.body.useSharedPassword) newPassword = require('../utils/studentLogin').STUDENT_PASSWORD;
+  if (newPassword) {
+    if (newPassword.length < 6) {
+      res.status(400);
+      throw new Error('The new password must be at least 6 characters.');
+    }
+    changes.password = await bcrypt.hash(newPassword, await bcrypt.genSalt(10));
+  } else {
+    delete changes.password;
+  }
+
   const updatedUser = await User.findByIdAndUpdate(
     req.params.id,
-    req.body,
+    changes,
     { new: true }
   ).select('-password');
 
