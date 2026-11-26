@@ -63,6 +63,7 @@ async function getUpcomingClasses() {
       const zoomLink = zoomMatch ? zoomMatch[1] : null;
 
       return {
+        id: event.id, // ⏰ Step 27: used to remember which reminders were already sent
         title: event.summary,
         startTime: new Date(start),
         description: description, // ✨ ADDED THIS LINE FOR THE FILTER ✨

@@ -16,9 +16,44 @@ const escapeRegex = (text) => {
   if (!text) return "";
   return text.replace(/[-[\]{}()*+?.,\\^$|#\s]/g, '\\$&');
 };
+
+// ==========================================
+// ⏰ STEP 27 (26 Nov): REMINDERS CATCH UP
+// Before, each reminder was tried ONLY in the exact minute it was due (60 min before, 3 min after the start,
+// 50 min after the end). If that one run failed (calendar / database not answering) or was skipped, the
+// reminder was lost for good. Now each reminder has a window and is sent by the first run that works inside it.
+// It is never sent twice: this server remembers what it sent, and the saved message queue (QueuedMessage) is
+// checked too, so a restart (or the switch to this version) does not repeat a reminder that already went out.
+// ==========================================
+const WINDOWS = { hour: [30, 60], late: [-10, -3], forgot: [50, 90] };
+const handled = new Map(); // key → time it was handled (memory of this server process)
+const QueuedMessage = require('../models/QueuedMessage');
+
+const reminderKey = (cls, kind, target) => `${cls.id || cls.title}|${new Date(cls.startTime).toISOString()}|${kind}|${target}`;
+// true = this reminder should be sent now (and it is marked as handled before sending)
+const firstTime = async (cls, kind, target, textPattern, sinceMs) => {
+  const key = reminderKey(cls, kind, target);
+  if (handled.has(key)) return false;
+  handled.set(key, Date.now()); // marked first, so two overlapping runs never both send it
+  let already;
+  try {
+    already = await QueuedMessage.findOne({
+      recipient: target,
+      createdAt: { $gte: new Date(sinceMs) },
+      $and: [{ messageBody: { $regex: escapeRegex(`*${cls.title}*`) } }, { messageBody: { $regex: textPattern } }]
+    }).select('_id').lean();
+  } catch (error) {
+    handled.delete(key); // database not answering: try again next minute
+    throw error;
+  }
+  return !already;
+};
+const markHandled = (cls, kind, target) => handled.set(reminderKey(cls, kind, target), Date.now());
+const forgetOld = () => { const cut = Date.now() - 12 * 60 * 60 * 1000; for (const [k, t] of handled) if (t < cut) handled.delete(k); };
  
 cron.schedule('* * * * *', async () => {
   try {
+    forgetOld(); // ⏰ Step 27
     const classes = await getUpcomingClasses();
     const now = new Date();
 
@@ -68,83 +103,83 @@ cron.schedule('* * * * *', async () => {
       const safeTitle = cls.title ? cls.title.trim() : "NO_TITLE";
  
       // ==========================================
-      // 1-HOUR REMINDERS
+      // 1-HOUR REMINDERS (⏰ Step 27: any run from 60 down to 30 minutes before the class; once per group)
       // ==========================================
-      if (minutesUntilStart === 60) {
-        if (teacherSearchTerm) {
-          const teacherMessage = `🔔 *Teacher Reminder*\n\nالسلام عليكم / Assalamu Alaikum,\n\nYour class *${cls.title}* is starting in exactly *1 Hour*.\n\n🕒 *Time:* ${timeString}\n\n🔗 *Teacher Dashboard:*\nhttps://lms.learnwithayman.com\n\n*Learn With Ayman Admin Team*`;
-          await sendMessage(teacherSearchTerm, teacherMessage); 
-          console.log(`✅ Sent 1-hour Teacher reminder to group code: ${teacherSearchTerm}`);
+      const startMs = new Date(cls.startTime).getTime();
+      if (minutesUntilStart <= WINDOWS.hour[1] && minutesUntilStart >= WINDOWS.hour[0]) {
+        const startsIn = minutesUntilStart >= 60 ? 'exactly *1 Hour*' : `*${minutesUntilStart} minutes*`;
+        if (teacherSearchTerm && await firstTime(cls, 'hour', teacherSearchTerm, 'Teacher Reminder', startMs - 2 * 60 * 60 * 1000)) {
+          const teacherMessage = `🔔 *Teacher Reminder*\n\nالسلام عليكم / Assalamu Alaikum,\n\nYour class *${cls.title}* is starting in ${startsIn}.\n\n🕒 *Time:* ${timeString}\n\n🔗 *Teacher Dashboard:*\nhttps://lms.learnwithayman.com\n\n*Learn With Ayman Admin Team*`;
+          await sendMessage(teacherSearchTerm, teacherMessage);
+          console.log(`✅ Sent 1-hour Teacher reminder to group code: ${teacherSearchTerm} (${minutesUntilStart} min before)`);
         }
- 
-        if (studentSearchTerm) {
+
+        if (studentSearchTerm && await firstTime(cls, 'hour', studentSearchTerm, 'Class Reminder', startMs - 2 * 60 * 60 * 1000)) {
           const joinLink = await joinLinkFor(cls.zoomLink, teacherSearchTerm); // 🆔 Step 21: the teacher's saved room when the class has no link
           const zoomExtra = await zoomLines(joinLink);
-          const studentMessage = `🔔 *Class Reminder*\n\nالسلام عليكم / Assalamu Alaikum,\n\nGet ready! Your class *${cls.title}* is starting in exactly *1 Hour*.\n\n🔗 *Join Here:*\n${joinLink || 'No link provided'}${zoomExtra}\n\n*Learn With Ayman Admin Team*`;
-          await sendMessage(studentSearchTerm, studentMessage); 
-          console.log(`✅ Sent 1-hour Student reminder to group code: ${studentSearchTerm}`);
+          const studentMessage = `🔔 *Class Reminder*\n\nالسلام عليكم / Assalamu Alaikum,\n\nGet ready! Your class *${cls.title}* is starting in ${startsIn}.\n\n🔗 *Join Here:*\n${joinLink || 'No link provided'}${zoomExtra}\n\n*Learn With Ayman Admin Team*`;
+          await sendMessage(studentSearchTerm, studentMessage);
+          console.log(`✅ Sent 1-hour Student reminder to group code: ${studentSearchTerm} (${minutesUntilStart} min before)`);
         }
       }
- 
+
       // ==========================================
-      // 3-MINUTE LATE ALERTS (TEACHER ONLY)
+      // LATE ALERTS (TEACHER ONLY) (⏰ Step 27: any run from 3 to 10 minutes after the start; once)
       // ==========================================
-      if (minutesUntilStart === -3) {
-        if (teacherSearchTerm) {
-          const threeHoursAgo = new Date(now.getTime() - (3 * 60 * 60 * 1000));
-          
-          // ✨ NEW: Using the Escape Shield on our search variables!
-          const safeStudentRegex = dbStudentName ? new RegExp(escapeRegex(dbStudentName), 'i') : /NO_STUDENT_NAME/;
-          const safeTitleRegex = new RegExp(escapeRegex(safeTitle), 'i');
- 
-          const alreadyJoined = await ClassSession.findOne({
-            $or: [
-              { subject: safeTitleRegex },
-              { studentGroupName: safeStudentRegex } 
-            ],
-            startTime: { $gte: threeHoursAgo }, 
-            status: { $in: ['in-progress', 'started', 'completed'] } 
-          });
- 
-          if (alreadyJoined) {
-            console.log(`✅ Teacher already joined "${cls.title}". Skipping the 3-minute late alert!`);
-          } else {
-            const lateMessage = `🚨 *Action Required: You are 3 minutes late!*\n\nالسلام عليكم / Assalamu Alaikum,\n\nYour class *${cls.title}* was scheduled to begin at *${timeString}*.\n\nYou are currently 3 minutes late. Please jump into the room immediately so the student is not left waiting. If you have an emergency, please notify the admin team!\n\n🔗 *Join Class Here:*\n${cls.zoomLink || 'No link provided'}\n\n*Learn With Ayman Admin Team*`;
-            await sendMessage(teacherSearchTerm, lateMessage); 
-            console.log(`🚨 Sent 3-minute late alert to group code: ${teacherSearchTerm}`);
-          }
+      if (minutesUntilStart <= WINDOWS.late[1] && minutesUntilStart >= WINDOWS.late[0] && teacherSearchTerm && !handled.has(reminderKey(cls, 'late', teacherSearchTerm))) {
+        const threeHoursAgo = new Date(now.getTime() - (3 * 60 * 60 * 1000));
+
+        // ✨ NEW: Using the Escape Shield on our search variables!
+        const safeStudentRegex = dbStudentName ? new RegExp(escapeRegex(dbStudentName), 'i') : /NO_STUDENT_NAME/;
+        const safeTitleRegex = new RegExp(escapeRegex(safeTitle), 'i');
+
+        const alreadyJoined = await ClassSession.findOne({
+          $or: [
+            { subject: safeTitleRegex },
+            { studentGroupName: safeStudentRegex }
+          ],
+          startTime: { $gte: threeHoursAgo },
+          status: { $in: ['in-progress', 'started', 'completed'] }
+        });
+
+        if (alreadyJoined) {
+          markHandled(cls, 'late', teacherSearchTerm);
+          console.log(`✅ Teacher already joined "${cls.title}". Skipping the late alert!`);
+        } else if (await firstTime(cls, 'late', teacherSearchTerm, 'minutes late', startMs - 10 * 60 * 1000)) {
+          const lateBy = -minutesUntilStart;
+          const lateMessage = `🚨 *Action Required: You are ${lateBy} minutes late!*\n\nالسلام عليكم / Assalamu Alaikum,\n\nYour class *${cls.title}* was scheduled to begin at *${timeString}*.\n\nYou are currently ${lateBy} minutes late. Please jump into the room immediately so the student is not left waiting. If you have an emergency, please notify the admin team!\n\n🔗 *Join Class Here:*\n${cls.zoomLink || 'No link provided'}\n\n*Learn With Ayman Admin Team*`;
+          await sendMessage(teacherSearchTerm, lateMessage);
+          console.log(`🚨 Sent ${lateBy}-minute late alert to group code: ${teacherSearchTerm}`);
         }
       }
- 
+
       // ==========================================
-      // ⏳ 50-MINUTE "FORGOT TO END CLASS" REMINDER
+      // ⏳ "FORGOT TO END CLASS" REMINDER (⏰ Step 27: any run from 50 to 90 minutes after the end; once)
       // ==========================================
-      // ✨ NEW: This now triggers 50 minutes AFTER the class was scheduled to end!
-      if (minutesSinceEnd === 50) {
-        if (teacherSearchTerm) {
-          const twelveHoursAgo = new Date(now.getTime() - (12 * 60 * 60 * 1000));
-          
-          // ✨ NEW: Using the Escape Shield here too!
-          const safeStudentRegex = dbStudentName ? new RegExp(escapeRegex(dbStudentName), 'i') : /NO_STUDENT_NAME/;
-          const safeTitleRegex = new RegExp(escapeRegex(safeTitle), 'i');
- 
-          // Check if the class is STILL marked as 'started' (meaning they didn't end it)
-          const stillRunning = await ClassSession.findOne({
-            $or: [
-              { subject: safeTitleRegex },
-              { studentGroupName: safeStudentRegex } 
-            ],
-            startTime: { $gte: twelveHoursAgo }, 
-            status: { $in: ['in-progress', 'started'] } 
-          });
- 
-          if (stillRunning) {
-            const forgotMsg = `🔔 *Action Required: End Class Reminder*\n\nالسلام عليكم / Assalamu Alaikum,\n\nYour class *${cls.title}* ended over 50 minutes ago.\n\nIf the class is finished, please remember to click the *🛑 End Class* button on your dashboard so your teaching hours are logged and homework is submitted!\n\n🔗 *Teacher Dashboard:*\nhttps://lms.learnwithayman.com\n\n*Learn With Ayman Admin Team*`;
-            await sendMessage(teacherSearchTerm, forgotMsg); 
-            console.log(`🚨 Sent post-class "End Class" reminder to group code: ${teacherSearchTerm}`);
-          } else {
-             console.log(`✅ Teacher already ended "${cls.title}". Skipping reminder.`);
-          }
+      if (minutesSinceEnd >= WINDOWS.forgot[0] && minutesSinceEnd <= WINDOWS.forgot[1] && teacherSearchTerm && !handled.has(reminderKey(cls, 'forgot', teacherSearchTerm))) {
+        const twelveHoursAgo = new Date(now.getTime() - (12 * 60 * 60 * 1000));
+
+        // ✨ NEW: Using the Escape Shield here too!
+        const safeStudentRegex = dbStudentName ? new RegExp(escapeRegex(dbStudentName), 'i') : /NO_STUDENT_NAME/;
+        const safeTitleRegex = new RegExp(escapeRegex(safeTitle), 'i');
+
+        // Check if the class is STILL marked as 'started' (meaning they didn't end it)
+        const stillRunning = await ClassSession.findOne({
+          $or: [
+            { subject: safeTitleRegex },
+            { studentGroupName: safeStudentRegex }
+          ],
+          startTime: { $gte: twelveHoursAgo },
+          status: { $in: ['in-progress', 'started'] }
+        });
+
+        if (!stillRunning) {
+          markHandled(cls, 'forgot', teacherSearchTerm);
+          console.log(`✅ Teacher already ended "${cls.title}". Skipping reminder.`);
+        } else if (await firstTime(cls, 'forgot', teacherSearchTerm, 'End Class Reminder', classEndTime.getTime())) {
+          const forgotMsg = `🔔 *Action Required: End Class Reminder*\n\nالسلام عليكم / Assalamu Alaikum,\n\nYour class *${cls.title}* ended over 50 minutes ago.\n\nIf the class is finished, please remember to click the *🛑 End Class* button on your dashboard so your teaching hours are logged and homework is submitted!\n\n🔗 *Teacher Dashboard:*\nhttps://lms.learnwithayman.com\n\n*Learn With Ayman Admin Team*`;
+          await sendMessage(teacherSearchTerm, forgotMsg);
+          console.log(`🚨 Sent post-class "End Class" reminder to group code: ${teacherSearchTerm}`);
         }
       }
       
