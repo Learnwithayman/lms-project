@@ -69,6 +69,7 @@ function Dashboard() {
   const [notes, setNotes] = useState('');
   const [classroomChecked, setClassroomChecked] = useState(false);
   const [planOthers, setPlanOthers] = useState({}); // 🧩 Step 28: other teachers' parts per subject (read-only)
+  const [alsoStudies, setAlsoStudies] = useState({}); // 🧩 Step 28b: subjects studied with ANOTHER teacher (count for the max score only)
   const [groupPresence, setGroupPresence] = useState({}); // 👥 Step 13: group class → studentId: true/false (present)
   const [recordingLink, setRecordingLink] = useState(''); // 👥 Step 13: recording link pasted when ending a group class
   const [myGroups, setMyGroups] = useState([]); // 👥 Step 13: the student's group courses
@@ -120,7 +121,18 @@ function Dashboard() {
       out[`${f}Part`] = mine?.part || '';
     });
     setPlanOthers(others);
+    setAlsoStudies(otherSubjectsOf(r, out, others));
     return out;
+  };
+  // 🧩 Step 28b: subjects with another teacher = other teachers' parts this month, or last report's subjects I don't teach
+  const otherSubjectsOf = (r, mineFields, others) => {
+    const prev = (r && r.previousSubjects) || [];
+    const res = {};
+    SUBJECT_FORM_KEYS.forEach(([key, f]) => {
+      const mine = mineFields ? !!mineFields[`${f}Enrolled`] : false;
+      res[key] = !mine && (((others || {})[key] || []).length > 0 || prev.includes(key));
+    });
+    return res;
   };
 
   // ✨ FRONTEND AUTO-LOAD
@@ -133,7 +145,7 @@ function Dashboard() {
         const res = await axios.get(`${API_URL}/api/student/reports/${planStudentIdentifier}/${planForm.monthYear}`, config);
         const forceReport = openAsReportRef.current; // 📋 Step 5: opened from a "Report required" card
         
-        if (res.data) {
+        if (res.data && !res.data.empty) {
           const r = res.data;
           setPlanForm(prev => ({
             ...prev,
@@ -143,6 +155,7 @@ function Dashboard() {
           }));
         } else {
           setPlanOthers({}); // 🧩 Step 28
+          setAlsoStudies(otherSubjectsOf(res.data, null, {})); // 🧩 Step 28b: last report's subjects
           setPlanForm(prev => ({
             ...prev,
             isFinalized: forceReport,
@@ -431,7 +444,7 @@ function Dashboard() {
       const config = { headers: { Authorization: `Bearer ${token}` } };
       const res = await axios.get(`${API_URL}/api/student/reports/${planStudentIdentifier}/${planForm.monthYear}`, config);
       
-      if (res.data) {
+      if (res.data && !res.data.empty) {
         const r = res.data;
         setPlanForm(prev => ({
           ...prev,
@@ -753,7 +766,7 @@ function Dashboard() {
 
   const getDynamicMaxScores = () => {
     // 🧩 Step 28: a subject counts when this teacher OR another teacher has a part in it
-    const has = { quran: planForm.quranEnrolled || (planOthers.quran || []).length > 0, arabic: planForm.arabicEnrolled || (planOthers.arabic || []).length > 0, islamic: planForm.islamicEnrolled || (planOthers.islamicStudies || []).length > 0 };
+    const has = { quran: planForm.quranEnrolled || !!alsoStudies.quran || (planOthers.quran || []).length > 0, arabic: planForm.arabicEnrolled || !!alsoStudies.arabic || (planOthers.arabic || []).length > 0, islamic: planForm.islamicEnrolled || !!alsoStudies.islamicStudies || (planOthers.islamicStudies || []).length > 0 };
     let count = [has.quran, has.arabic, has.islamic].filter(Boolean).length;
     if (count === 3) return { quran: 4, arabic: 3, islamic: 3 };
     if (count === 2) {
@@ -1503,6 +1516,13 @@ function Dashboard() {
                   <label><input type="checkbox" checked={planForm.quranEnrolled} onChange={(e) => setPlanForm({...planForm, quranEnrolled: e.target.checked})} /> Quran (Max: {maxScores.quran})</label>
                   <label><input type="checkbox" checked={planForm.arabicEnrolled} onChange={(e) => setPlanForm({...planForm, arabicEnrolled: e.target.checked})} /> Arabic (Max: {maxScores.arabic})</label>
                   <label><input type="checkbox" checked={planForm.islamicEnrolled} onChange={(e) => setPlanForm({...planForm, islamicEnrolled: e.target.checked})} /> Islamic Studies (Max: {maxScores.islamic})</label>
+                </div>
+                {/* 🧩 Step 28b: tick ONLY the subjects YOU teach; these count for the maximum score */}
+                <div style={{ display: 'flex', gap: '15px', flexWrap: 'wrap', marginTop: '8px', fontSize: '13px', color: '#636e72' }}>
+                  <span style={{ fontWeight: 'bold' }}>Also studies with another teacher:</span>
+                  {[['quran', 'quranEnrolled', 'Quran'], ['arabic', 'arabicEnrolled', 'Arabic'], ['islamicStudies', 'islamicEnrolled', 'Islamic Studies']].filter(([k, en]) => !planForm[en]).map(([k, en, name]) => (
+                    <label key={k} style={{ cursor: 'pointer' }}><input type="checkbox" checked={!!alsoStudies[k]} onChange={(e) => setAlsoStudies({ ...alsoStudies, [k]: e.target.checked })} /> {name}</label>
+                  ))}
                 </div>
                 {['quran', 'arabic', 'islamicStudies'].some(k => (planOthers[k] || []).length) && (
                   <p style={{ margin: '8px 0 0 0', fontSize: '12px', color: '#636e72' }}>

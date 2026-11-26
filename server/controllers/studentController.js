@@ -250,19 +250,21 @@ const getExistingReport = asyncHandler(async (req, res) => {
     throw new Error(`Could not find a student named "${searchName}".`);
   }
 
-  if (!student.monthlyReports) {
-    return res.status(200).json(null); 
-  }
-
-  const report = student.monthlyReports.find(r => r.monthYear === monthYear);
+  // 🧩 Step 28b (26 Nov): subjects the student studies with OTHER teachers, so a teacher who teaches only Quran does
+  // not have to tick every subject to get the right maximum score: the other teachers' parts this month, plus the
+  // subjects of the student's most recent other report.
+  const reports = student.monthlyReports || [];
+  const report = reports.find(r => r.monthYear === monthYear);
+  const previous = [...reports].reverse().find(r => r.monthYear !== monthYear) || null;
+  const previousSubjects = previous ? ['quran', 'arabic', 'islamicStudies'].filter((k) => previous[k] && previous[k].enrolled) : [];
 
   if (!report) {
-    return res.status(200).json(null);
+    return res.status(200).json({ empty: true, previousSubjects }); // no report yet for this month
   }
 
   // 🧩 Step 28: the teacher's own part of each subject + the other teachers' parts (read-only in the form)
   const plainReport = report.toObject ? report.toObject() : report;
-  res.status(200).json({ ...plainReport, view: viewFor(plainReport, req.user) });
+  res.status(200).json({ ...plainReport, view: viewFor(plainReport, req.user), previousSubjects });
 });
 
 // @desc    Get report statuses for all students (Teacher View)
