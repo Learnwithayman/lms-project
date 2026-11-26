@@ -182,19 +182,22 @@ function ProgressHistory() {
               {report.quran?.enrolled && (
                 <div style={{ backgroundColor: '#f8f9fa', padding: '15px', borderRadius: '8px' }}>
                   <h4 style={{ margin: '0 0 5px 0', color: '#6c5ce7' }}>Quran ({report.quran.score}/{report.quran.maxPossible})</h4>
-                  <p style={{ margin: 0, fontSize: '13px', color: '#2d3436' }}>{report.quran.plan}</p>
+                  <p style={{ margin: 0, fontSize: '13px', color: '#2d3436', whiteSpace: 'pre-line' }}>{report.quran.plan}</p>
+                  {report.quran.comment && <p style={{ margin: '6px 0 0 0', fontSize: '12px', color: '#636e72', whiteSpace: 'pre-line' }}>📝 {report.quran.comment}</p>}
                 </div>
               )}
               {report.arabic?.enrolled && (
                 <div style={{ backgroundColor: '#f8f9fa', padding: '15px', borderRadius: '8px' }}>
                   <h4 style={{ margin: '0 0 5px 0', color: '#00b894' }}>Arabic ({report.arabic.score}/{report.arabic.maxPossible})</h4>
-                  <p style={{ margin: 0, fontSize: '13px', color: '#2d3436' }}>{report.arabic.plan}</p>
+                  <p style={{ margin: 0, fontSize: '13px', color: '#2d3436', whiteSpace: 'pre-line' }}>{report.arabic.plan}</p>
+                  {report.arabic.comment && <p style={{ margin: '6px 0 0 0', fontSize: '12px', color: '#636e72', whiteSpace: 'pre-line' }}>📝 {report.arabic.comment}</p>}
                 </div>
               )}
               {report.islamicStudies?.enrolled && (
                 <div style={{ backgroundColor: '#f8f9fa', padding: '15px', borderRadius: '8px' }}>
                   <h4 style={{ margin: '0 0 5px 0', color: '#fdcb6e' }}>Islamic Studies ({report.islamicStudies.score}/{report.islamicStudies.maxPossible})</h4>
-                  <p style={{ margin: 0, fontSize: '13px', color: '#2d3436' }}>{report.islamicStudies.plan}</p>
+                  <p style={{ margin: 0, fontSize: '13px', color: '#2d3436', whiteSpace: 'pre-line' }}>{report.islamicStudies.plan}</p>
+                  {report.islamicStudies.comment && <p style={{ margin: '6px 0 0 0', fontSize: '12px', color: '#636e72', whiteSpace: 'pre-line' }}>📝 {report.islamicStudies.comment}</p>}
                 </div>
               )}
             </div>

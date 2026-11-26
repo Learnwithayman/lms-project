@@ -1,6 +1,20 @@
 const mongoose = require('mongoose');
 const bcrypt = require('bcryptjs');
 
+// 🧩 Step 28 (26 Nov): one teacher's part of a subject in a monthly report (e.g. "Fiqh" by one teacher, "Hadith" by another)
+const reportPartSchema = new mongoose.Schema({
+  teacher: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
+  teacherName: { type: String, default: '' },
+  part: { type: String, default: '' },
+  plan: { type: String, default: '' },
+  completed: { type: Boolean, default: false },
+  comment: { type: String, default: '' },
+  score: { type: Number, default: null },
+  final: { type: Boolean, default: false }, // saved in the report phase (counts for the average)
+  enrolled: { type: Boolean, default: true },
+  updatedAt: { type: Date }
+}, { _id: false });
+
 const userSchema = mongoose.Schema(
   {
     name: { type: String, required: true },
@@ -192,21 +206,30 @@ const userSchema = mongoose.Schema(
           enrolled: { type: Boolean, default: false },
           plan: { type: String, default: '' },
           score: { type: Number, default: null },
-          maxPossible: { type: Number, default: 4 }
+          maxPossible: { type: Number, default: 4 },
+          completed: { type: Boolean, default: false }, // 🧩 26 Nov: was sent by the form but never saved (not in the schema)
+          comment: { type: String, default: '' },
+          parts: [reportPartSchema] // 🧩 Step 28: one part per teacher (e.g. Fiqh / Hadith)
         },
         
         arabic: {
           enrolled: { type: Boolean, default: false },
           plan: { type: String, default: '' },
           score: { type: Number, default: null },
-          maxPossible: { type: Number, default: 3 }
+          maxPossible: { type: Number, default: 3 },
+          completed: { type: Boolean, default: false }, // 🧩 26 Nov: was sent by the form but never saved (not in the schema)
+          comment: { type: String, default: '' },
+          parts: [reportPartSchema] // 🧩 Step 28: one part per teacher (e.g. Fiqh / Hadith)
         },
         
         islamicStudies: {
           enrolled: { type: Boolean, default: false },
           plan: { type: String, default: '' },
           score: { type: Number, default: null },
-          maxPossible: { type: Number, default: 3 }
+          maxPossible: { type: Number, default: 3 },
+          completed: { type: Boolean, default: false }, // 🧩 26 Nov: was sent by the form but never saved (not in the schema)
+          comment: { type: String, default: '' },
+          parts: [reportPartSchema] // 🧩 Step 28: one part per teacher (e.g. Fiqh / Hadith)
         },
         
         totalScore: { type: Number, default: null }, // Always out of 10

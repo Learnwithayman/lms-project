@@ -43,13 +43,13 @@ const getMyDuties = asyncHandler(async (req, res) => {
   const panel = [];
   if (cur >= D.GO_LIVE.plans && day >= 7) {
     const missing = curM.mine.filter((d) => !d.planDone).map((d) => d.student.name);
-    if (missing.length) panel.push({ kind: 'plan', month: curM.label, students: missing });
+    if (missing.length) panel.push({ kind: 'plan', month: curM.label, monthKey: curM.key, students: missing }); // 26 Nov: monthKey → Open button
   }
   for (const m of [prevM, curM]) {
     if (m.key < D.GO_LIVE.reports) continue;
     m.mine
       .filter((d) => !d.reportDone && d.lastClass && D.dayIn(d.lastClass.start, D.CAIRO_TZ) < today)
-      .forEach((d) => panel.push({ kind: 'report', month: m.label, students: [d.student.name] }));
+      .forEach((d) => panel.push({ kind: 'report', month: m.label, monthKey: m.key, students: [d.student.name] }));
   }
 
   // Progress bar for this month
@@ -60,6 +60,7 @@ const getMyDuties = asyncHandler(async (req, res) => {
   });
   const progress = {
     month: curM.label,
+    monthKey: curM.key, // 26 Nov: Open buttons in the missing list
     plansOn: cur >= D.GO_LIVE.plans,
     reportsOn: cur >= D.GO_LIVE.reports,
     plans: count(curM.mine, 'planDone'),

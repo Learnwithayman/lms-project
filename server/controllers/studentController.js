@@ -1,3 +1,4 @@
+const { mergeSubjects, viewFor } = require('../utils/reportParts'); // 🧩 Step 28: one part per teacher
 const asyncHandler = require('express-async-handler');
 const User = require('../models/User');
 const MakeupRequest = require('../models/MakeupRequest');
@@ -94,31 +95,28 @@ const addOrUpdateReport = async (req, res) => {
       comment: sub?.comment || ''
     });
 
-    const safeQuran = sanitizeSub(quran);
-    const safeArabic = sanitizeSub(arabic);
-    const safeIslamic = sanitizeSub(islamicStudies);
+    const safeQuran = { ...sanitizeSub(quran), score: quran?.score }; // 🧩 Step 28: an empty score stays empty (not 0) inside the part
+    const safeArabic = { ...sanitizeSub(arabic), score: arabic?.score };
+    const safeIslamic = { ...sanitizeSub(islamicStudies), score: islamicStudies?.score };
 
     const existingReportIndex = student.monthlyReports.findIndex(r => r.monthYear === monthYear);
-    
-    // ✨ SMART MERGE LOGIC (Database Protection)
-    let finalQuran = safeQuran;
-    let finalArabic = safeArabic;
-    let finalIslamic = safeIslamic;
+
+    // 🧩 Step 28 (26 Nov): each teacher saves only THEIR part of each subject; other teachers' parts are kept.
+    // (Replaces the old "smart merge": a subject this teacher did not tick is left exactly as it was.)
+    const merged = mergeSubjects({
+      existing: existingReportIndex >= 0 ? student.monthlyReports[existingReportIndex].toObject() : null,
+      incoming: { quran: safeQuran, arabic: safeArabic, islamicStudies: safeIslamic },
+      partNames: req.body.partNames || {},
+      teacher: req.user,
+      isFinalized
+    });
+    let finalQuran = merged.quran;
+    let finalArabic = merged.arabic;
+    let finalIslamic = merged.islamicStudies;
     let finalTeacherNote = teacherNote || '';
 
     if (existingReportIndex >= 0) {
       const existing = student.monthlyReports[existingReportIndex];
-      
-      // If incoming payload says NOT enrolled, but database has data, preserve the database!
-      if (!safeQuran.enrolled && existing.quran && existing.quran.enrolled) {
-        finalQuran = existing.quran;
-      }
-      if (!safeArabic.enrolled && existing.arabic && existing.arabic.enrolled) {
-        finalArabic = existing.arabic;
-      }
-      if (!safeIslamic.enrolled && existing.islamicStudies && existing.islamicStudies.enrolled) {
-        finalIslamic = existing.islamicStudies;
-      }
 
       // Merge teacher notes instead of overriding
       if (existing.teacherNote && !finalTeacherNote.includes(existing.teacherNote)) {
@@ -259,10 +257,12 @@ const getExistingReport = asyncHandler(async (req, res) => {
   const report = student.monthlyReports.find(r => r.monthYear === monthYear);
 
   if (!report) {
-    return res.status(200).json(null); 
+    return res.status(200).json(null);
   }
 
-  res.status(200).json(report);
+  // 🧩 Step 28: the teacher's own part of each subject + the other teachers' parts (read-only in the form)
+  const plainReport = report.toObject ? report.toObject() : report;
+  res.status(200).json({ ...plainReport, view: viewFor(plainReport, req.user) });
 });
 
 // @desc    Get report statuses for all students (Teacher View)

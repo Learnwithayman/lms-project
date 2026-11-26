@@ -68,6 +68,7 @@ function Dashboard() {
   const [currentClassId, setCurrentClassId] = useState(null);
   const [notes, setNotes] = useState('');
   const [classroomChecked, setClassroomChecked] = useState(false);
+  const [planOthers, setPlanOthers] = useState({}); // 🧩 Step 28: other teachers' parts per subject (read-only)
   const [groupPresence, setGroupPresence] = useState({}); // 👥 Step 13: group class → studentId: true/false (present)
   const [recordingLink, setRecordingLink] = useState(''); // 👥 Step 13: recording link pasted when ending a group class
   const [myGroups, setMyGroups] = useState([]); // 👥 Step 13: the student's group courses
@@ -96,10 +97,31 @@ function Dashboard() {
     quranEnrolled: false, quranPlan: '', quranScore: '', quranCompleted: false, quranComment: '',
     arabicEnrolled: false, arabicPlan: '', arabicScore: '', arabicCompleted: false, arabicComment: '',
     islamicEnrolled: false, islamicPlan: '', islamicScore: '', islamicCompleted: false, islamicComment: '',
+    quranPart: '', arabicPart: '', islamicPart: '', // 🧩 Step 28: this teacher's part name (e.g. "Fiqh")
     teacherNote: '',
     templateCategory: '',
     templateSeverity: 'Minor'
   });
+
+  // 🧩 STEP 28: the form shows MY part of each subject; other teachers' parts are shown read-only
+  const SUBJECT_FORM_KEYS = [['quran', 'quran'], ['arabic', 'arabic'], ['islamicStudies', 'islamic']];
+  const formFieldsFromReport = (r) => {
+    const out = {};
+    const others = {};
+    SUBJECT_FORM_KEYS.forEach(([key, f]) => {
+      const v = r.view ? r.view[key] : null;
+      const mine = v ? v.mine : (r[key]?.enrolled ? r[key] : null);
+      others[key] = v ? (v.others || []) : [];
+      out[`${f}Enrolled`] = !!mine;
+      out[`${f}Plan`] = mine?.plan || '';
+      out[`${f}Score`] = mine?.score || '';
+      out[`${f}Completed`] = !!mine?.completed;
+      out[`${f}Comment`] = mine?.comment || '';
+      out[`${f}Part`] = mine?.part || '';
+    });
+    setPlanOthers(others);
+    return out;
+  };
 
   // ✨ FRONTEND AUTO-LOAD
   useEffect(() => {
@@ -116,30 +138,18 @@ function Dashboard() {
           setPlanForm(prev => ({
             ...prev,
             isFinalized: forceReport || r.isFinalized || false,
-            quranEnrolled: r.quran?.enrolled || false,
-            quranPlan: r.quran?.plan || '',
-            quranScore: r.quran?.score || '',
-            quranCompleted: r.quran?.completed || false,
-            quranComment: r.quran?.comment || '',
-            arabicEnrolled: r.arabic?.enrolled || false,
-            arabicPlan: r.arabic?.plan || '',
-            arabicScore: r.arabic?.score || '',
-            arabicCompleted: r.arabic?.completed || false,
-            arabicComment: r.arabic?.comment || '',
-            islamicEnrolled: r.islamicStudies?.enrolled || false,
-            islamicPlan: r.islamicStudies?.plan || '',
-            islamicScore: r.islamicStudies?.score || '',
-            islamicCompleted: r.islamicStudies?.completed || false,
-            islamicComment: r.islamicStudies?.comment || '',
+            ...formFieldsFromReport(r), // 🧩 Step 28: my part of each subject
             teacherNote: r.teacherNote || '',
           }));
         } else {
+          setPlanOthers({}); // 🧩 Step 28
           setPlanForm(prev => ({
             ...prev,
             isFinalized: forceReport,
             quranEnrolled: false, quranPlan: '', quranScore: '', quranCompleted: false, quranComment: '',
             arabicEnrolled: false, arabicPlan: '', arabicScore: '', arabicCompleted: false, arabicComment: '',
             islamicEnrolled: false, islamicPlan: '', islamicScore: '', islamicCompleted: false, islamicComment: '',
+    quranPart: '', arabicPart: '', islamicPart: '', // 🧩 Step 28: this teacher's part name (e.g. "Fiqh")
             teacherNote: '',
             templateCategory: '',
             templateSeverity: 'Minor'
@@ -426,21 +436,7 @@ function Dashboard() {
         setPlanForm(prev => ({
           ...prev,
           isFinalized: r.isFinalized || false,
-          quranEnrolled: r.quran?.enrolled || false,
-          quranPlan: r.quran?.plan || '',
-          quranScore: r.quran?.score || '',
-          quranCompleted: r.quran?.completed || false,
-          quranComment: r.quran?.comment || '',
-          arabicEnrolled: r.arabic?.enrolled || false,
-          arabicPlan: r.arabic?.plan || '',
-          arabicScore: r.arabic?.score || '',
-          arabicCompleted: r.arabic?.completed || false,
-          arabicComment: r.arabic?.comment || '',
-          islamicEnrolled: r.islamicStudies?.enrolled || false,
-          islamicPlan: r.islamicStudies?.plan || '',
-          islamicScore: r.islamicStudies?.score || '',
-          islamicCompleted: r.islamicStudies?.completed || false,
-          islamicComment: r.islamicStudies?.comment || '',
+          ...formFieldsFromReport(r), // 🧩 Step 28: my part of each subject
           teacherNote: r.teacherNote || '',
         }));
         alert(`✅ Found existing plan for ${planForm.monthYear}!`);
@@ -696,7 +692,8 @@ function Dashboard() {
         teacherNote: planForm.teacherNote,
         quran: { enrolled: planForm.quranEnrolled, plan: planForm.quranPlan, score: planForm.quranScore, maxPossible: maxScores.quran, completed: planForm.quranCompleted, comment: planForm.quranComment },
         arabic: { enrolled: planForm.arabicEnrolled, plan: planForm.arabicPlan, score: planForm.arabicScore, maxPossible: maxScores.arabic, completed: planForm.arabicCompleted, comment: planForm.arabicComment },
-        islamicStudies: { enrolled: planForm.islamicEnrolled, plan: planForm.islamicPlan, score: planForm.islamicScore, maxPossible: maxScores.islamic, completed: planForm.islamicCompleted, comment: planForm.islamicComment }
+        islamicStudies: { enrolled: planForm.islamicEnrolled, plan: planForm.islamicPlan, score: planForm.islamicScore, maxPossible: maxScores.islamic, completed: planForm.islamicCompleted, comment: planForm.islamicComment },
+        partNames: { quran: planForm.quranPart, arabic: planForm.arabicPart, islamicStudies: planForm.islamicPart } // 🧩 Step 28
       };
 
       await axios.post(`${API_URL}/api/student/reports`, payload, config);
@@ -755,18 +752,45 @@ function Dashboard() {
   };
 
   const getDynamicMaxScores = () => {
-    let count = [planForm.quranEnrolled, planForm.arabicEnrolled, planForm.islamicEnrolled].filter(Boolean).length;
+    // 🧩 Step 28: a subject counts when this teacher OR another teacher has a part in it
+    const has = { quran: planForm.quranEnrolled || (planOthers.quran || []).length > 0, arabic: planForm.arabicEnrolled || (planOthers.arabic || []).length > 0, islamic: planForm.islamicEnrolled || (planOthers.islamicStudies || []).length > 0 };
+    let count = [has.quran, has.arabic, has.islamic].filter(Boolean).length;
     if (count === 3) return { quran: 4, arabic: 3, islamic: 3 };
     if (count === 2) {
-      if (planForm.quranEnrolled && planForm.arabicEnrolled) return { quran: 6, arabic: 4, islamic: 0 };
-      if (planForm.quranEnrolled && planForm.islamicEnrolled) return { quran: 6, arabic: 0, islamic: 4 };
-      if (planForm.arabicEnrolled && planForm.islamicEnrolled) return { quran: 0, arabic: 5, islamic: 5 };
+      if (has.quran && has.arabic) return { quran: 6, arabic: 4, islamic: 0 };
+      if (has.quran && has.islamic) return { quran: 6, arabic: 0, islamic: 4 };
+      if (has.arabic && has.islamic) return { quran: 0, arabic: 5, islamic: 5 };
     }
     if (count === 1) return { quran: 10, arabic: 10, islamic: 10 };
     return { quran: 0, arabic: 0, islamic: 0 };
   };
   
   const maxScores = getDynamicMaxScores();
+
+  // 🧩 STEP 28: other teachers' parts (read-only) + this teacher's part name, at the top of a subject
+  const partFields = (key, f) => {
+    const others = planOthers[key] || [];
+    return (
+      <div style={{ marginBottom: '10px' }}>
+        {others.map((o, i) => (
+          <div key={i} style={{ backgroundColor: '#fff8e6', border: '1px solid #f6d58e', borderRadius: '6px', padding: '8px 10px', marginBottom: '6px', fontSize: '13px', color: '#2d3436' }}>
+            <b>👤 {o.part || 'Part'} ({o.teacherName || 'another teacher'})</b>{o.plan ? <>: {o.plan}</> : null}
+            {planForm.isFinalized && <> · {o.completed ? '✅ completed' : '⏳ not completed yet'}{o.final && o.score != null ? ` · score ${o.score}` : ''}</>}
+          </div>
+        ))}
+        <label style={{ fontWeight: 'bold', fontSize: '13px' }}>Your part{others.length ? '' : ' (only if another teacher teaches part of this subject)'}:</label>
+        <input type="text" value={planForm[`${f}Part`] || ''} onChange={(e) => setPlanForm({ ...planForm, [`${f}Part`]: e.target.value })} placeholder="e.g. Fiqh" style={{ width: '100%', padding: '6px 8px', marginTop: '4px', border: '1px solid #dfe6e9', borderRadius: '4px', boxSizing: 'border-box' }} />
+      </div>
+    );
+  };
+
+  // 📋 26 Nov: "Open" on the red panel / missing list → that student's plan or report form, on the right month
+  const openDutyFor = (studentName, kind, monthKey, monthLabel) => {
+    openAsReportRef.current = kind === 'report';
+    setPlanStudentIdentifier((studentName || '').trim());
+    setPlanForm(prev => ({ ...prev, monthYear: monthKey ? monthTextOf(monthKey) : monthLabel, isFinalized: kind === 'report' }));
+    setIsPlanModalOpen(true);
+  };
 
   const cycleStartDate = subSummary?.subscription?.startDate ? new Date(subSummary.subscription.startDate) : null;
   const filteredHistory = cycleStartDate 
@@ -946,11 +970,19 @@ function Dashboard() {
           {myDuties.panel?.length > 0 && (
             <div style={{ backgroundColor: '#fdecea', border: '2px solid #d63031', color: '#c0392b', padding: '15px 20px', borderRadius: '10px', marginBottom: '15px' }}>
               {myDuties.panel.map((p, i) => (
-                <p key={i} style={{ margin: i ? '8px 0 0 0' : 0, fontWeight: 'bold' }}>
-                  🚨 Immediate action required: {p.kind === 'plan'
-                    ? `study plans for ${p.month} are missing for: ${p.students.join(', ')}. Please save them now.`
-                    : `the ${p.month} report for ${p.students[0]} is missing. Please save it now.`}
-                </p>
+                <div key={i} style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap', margin: i ? '8px 0 0 0' : 0 }}>
+                  <p style={{ margin: 0, fontWeight: 'bold', flex: '1 1 300px' }}>
+                    🚨 Immediate action required: {p.kind === 'plan'
+                      ? `study plans for ${p.month} are missing for: ${p.students.join(', ')}. Please save them now.`
+                      : `the ${p.month} report for ${p.students[0]} is missing. Please save it now.`}
+                  </p>
+                  {/* 📋 26 Nov: open that exact plan / report */}
+                  {p.students.map((name) => (
+                    <button key={name} type="button" onClick={() => openDutyFor(name, p.kind, p.monthKey, p.month)} style={{ backgroundColor: '#d63031', color: 'white', border: 'none', borderRadius: '6px', padding: '6px 12px', fontWeight: 'bold', fontSize: '13px', cursor: 'pointer' }}>
+                      📝 Open {p.kind === 'plan' ? 'plan' : 'report'}{p.students.length > 1 ? `: ${name}` : ''}
+                    </button>
+                  ))}
+                </div>
               ))}
             </div>
           )}
@@ -970,7 +1002,14 @@ function Dashboard() {
                   <div style={{ width: `${pct}%`, height: '100%', backgroundColor: complete ? '#00b894' : '#0984e3' }}></div>
                 </div>
                 {openDutyList === b.id && !complete && (
-                  <p style={{ margin: '10px 0 0 0', fontSize: '13px', color: '#636e72' }}>Missing: {b.data.missing.join(', ')}</p>
+                  <div style={{ margin: '10px 0 0 0', fontSize: '13px', color: '#636e72', display: 'flex', flexWrap: 'wrap', gap: '6px', alignItems: 'center' }}>
+                    Missing:
+                    {b.data.missing.map((name) => (
+                      <button key={name} type="button" onClick={(e) => { e.stopPropagation(); openDutyFor(name, b.id === 'plans' ? 'plan' : 'report', myDuties.progress.monthKey, myDuties.progress.month); }} style={{ backgroundColor: '#f1f2f6', color: '#2d3436', border: '1px solid #dfe6e9', borderRadius: '12px', padding: '3px 10px', fontSize: '12px', cursor: 'pointer' }}>
+                        📝 {name}
+                      </button>
+                    ))}
+                  </div>
                 )}
               </div>
             );
@@ -1151,19 +1190,19 @@ function Dashboard() {
                   {activePlan.quran?.enrolled && (
                     <div style={{ backgroundColor: '#f8f9fa', padding: '15px', borderRadius: '8px', borderTop: '4px solid #6c5ce7' }}>
                       <h4 style={{ margin: '0 0 10px 0', fontSize: '14px', color: '#2d3436', textAlign: 'center' }}>Quran</h4>
-                      <p style={{ margin: 0, fontSize: '13px', color: '#636e72' }}>{activePlan.quran.plan || 'Pending goals...'}</p>
+                      <p style={{ margin: 0, fontSize: '13px', color: '#636e72', whiteSpace: 'pre-line' }}>{activePlan.quran.plan || 'Pending goals...'}</p>
                     </div>
                   )}
                   {activePlan.arabic?.enrolled && (
                     <div style={{ backgroundColor: '#f8f9fa', padding: '15px', borderRadius: '8px', borderTop: '4px solid #00b894' }}>
                       <h4 style={{ margin: '0 0 10px 0', fontSize: '14px', color: '#2d3436', textAlign: 'center' }}>Arabic</h4>
-                      <p style={{ margin: 0, fontSize: '13px', color: '#636e72' }}>{activePlan.arabic.plan || 'Pending goals...'}</p>
+                      <p style={{ margin: 0, fontSize: '13px', color: '#636e72', whiteSpace: 'pre-line' }}>{activePlan.arabic.plan || 'Pending goals...'}</p>
                     </div>
                   )}
                   {activePlan.islamicStudies?.enrolled && (
                     <div style={{ backgroundColor: '#f8f9fa', padding: '15px', borderRadius: '8px', borderTop: '4px solid #fdcb6e' }}>
                       <h4 style={{ margin: '0 0 10px 0', fontSize: '14px', color: '#2d3436', textAlign: 'center' }}>Islamic Studies</h4>
-                      <p style={{ margin: 0, fontSize: '13px', color: '#636e72' }}>{activePlan.islamicStudies.plan || 'Pending goals...'}</p>
+                      <p style={{ margin: 0, fontSize: '13px', color: '#636e72', whiteSpace: 'pre-line' }}>{activePlan.islamicStudies.plan || 'Pending goals...'}</p>
                     </div>
                   )}
                 </div>
@@ -1465,10 +1504,16 @@ function Dashboard() {
                   <label><input type="checkbox" checked={planForm.arabicEnrolled} onChange={(e) => setPlanForm({...planForm, arabicEnrolled: e.target.checked})} /> Arabic (Max: {maxScores.arabic})</label>
                   <label><input type="checkbox" checked={planForm.islamicEnrolled} onChange={(e) => setPlanForm({...planForm, islamicEnrolled: e.target.checked})} /> Islamic Studies (Max: {maxScores.islamic})</label>
                 </div>
+                {['quran', 'arabic', 'islamicStudies'].some(k => (planOthers[k] || []).length) && (
+                  <p style={{ margin: '8px 0 0 0', fontSize: '12px', color: '#636e72' }}>
+                    👥 Other teachers: {['quran', 'arabic', 'islamicStudies'].flatMap(k => (planOthers[k] || []).map(o => `${k === 'islamicStudies' ? 'Islamic Studies' : k === 'quran' ? 'Quran' : 'Arabic'}${o.part ? ` (${o.part})` : ''}: ${o.teacherName || 'another teacher'}`)).join(' · ')}. Tick a subject only for YOUR part.
+                  </p>
+                )}
               </div>
 
               {planForm.quranEnrolled && (
                 <div style={{ borderLeft: '4px solid #6c5ce7', paddingLeft: '15px' }}>
+                  {partFields('quran', 'quran')}
                   {planForm.isFinalized ? (
                     <div style={{ backgroundColor: '#f8f9fa', padding: '15px', borderRadius: '8px', marginBottom: '10px' }}>
                       <h4 style={{ margin: '0 0 10px 0', color: '#6c5ce7' }}>📖 Quran Assessment</h4>
@@ -1494,6 +1539,7 @@ function Dashboard() {
 
               {planForm.arabicEnrolled && (
                 <div style={{ borderLeft: '4px solid #00b894', paddingLeft: '15px' }}>
+                  {partFields('arabic', 'arabic')}
                   {planForm.isFinalized ? (
                     <div style={{ backgroundColor: '#f8f9fa', padding: '15px', borderRadius: '8px', marginBottom: '10px' }}>
                       <h4 style={{ margin: '0 0 10px 0', color: '#00b894' }}>🗣️ Arabic Assessment</h4>
@@ -1519,6 +1565,7 @@ function Dashboard() {
 
               {planForm.islamicEnrolled && (
                 <div style={{ borderLeft: '4px solid #fdcb6e', paddingLeft: '15px' }}>
+                  {partFields('islamicStudies', 'islamic')}
                   {planForm.isFinalized ? (
                     <div style={{ backgroundColor: '#f8f9fa', padding: '15px', borderRadius: '8px', marginBottom: '10px' }}>
                       <h4 style={{ margin: '0 0 10px 0', color: '#fdcb6e' }}>🕌 Islamic Studies Assessment</h4>

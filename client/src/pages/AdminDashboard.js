@@ -886,9 +886,9 @@ function AdminDashboard() {
                 </div>
 
                 <div style={{ backgroundColor: '#f8f9fa', padding: '15px', borderRadius: '8px', fontSize: '14px', color: '#333' }}>
-                  {report.quran?.enrolled && <p style={{ margin: '5px 0' }}><strong>Quran:</strong> {report.quran.plan} {report.isFinalized && <span style={{color: '#0984e3', fontWeight: 'bold'}}>{`(${report.quran.score}/${report.quran.maxPossible})`}</span>}</p>}
-                  {report.arabic?.enrolled && <p style={{ margin: '5px 0' }}><strong>Arabic:</strong> {report.arabic.plan} {report.isFinalized && <span style={{color: '#0984e3', fontWeight: 'bold'}}>{`(${report.arabic.score}/${report.arabic.maxPossible})`}</span>}</p>}
-                  {report.islamicStudies?.enrolled && <p style={{ margin: '5px 0' }}><strong>Islamic Studies:</strong> {report.islamicStudies.plan} {report.isFinalized && <span style={{color: '#0984e3', fontWeight: 'bold'}}>{`(${report.islamicStudies.score}/${report.islamicStudies.maxPossible})`}</span>}</p>}
+                  {report.quran?.enrolled && <p style={{ margin: '5px 0', whiteSpace: 'pre-line' }}><strong>Quran:</strong> {report.quran.plan}{report.quran.comment ? `\n📝 ${report.quran.comment}` : ''} {report.isFinalized && <span style={{color: '#0984e3', fontWeight: 'bold'}}>{`(${report.quran.score}/${report.quran.maxPossible})`}</span>}</p>}
+                  {report.arabic?.enrolled && <p style={{ margin: '5px 0', whiteSpace: 'pre-line' }}><strong>Arabic:</strong> {report.arabic.plan}{report.arabic.comment ? `\n📝 ${report.arabic.comment}` : ''} {report.isFinalized && <span style={{color: '#0984e3', fontWeight: 'bold'}}>{`(${report.arabic.score}/${report.arabic.maxPossible})`}</span>}</p>}
+                  {report.islamicStudies?.enrolled && <p style={{ margin: '5px 0', whiteSpace: 'pre-line' }}><strong>Islamic Studies:</strong> {report.islamicStudies.plan}{report.islamicStudies.comment ? `\n📝 ${report.islamicStudies.comment}` : ''} {report.isFinalized && <span style={{color: '#0984e3', fontWeight: 'bold'}}>{`(${report.islamicStudies.score}/${report.islamicStudies.maxPossible})`}</span>}</p>}
                   {report.isFinalized && (
                     <div style={{ marginTop: '10px', paddingTop: '10px', borderTop: '1px solid #dfe6e9' }}>
                       <p style={{ margin: '0 0 5px 0', fontSize: '16px' }}><strong>Total Score: <span style={{color: '#0984e3'}}>{report.totalScore}/10</span></strong></p>
