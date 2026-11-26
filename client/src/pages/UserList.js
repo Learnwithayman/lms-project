@@ -522,6 +522,8 @@ function UserList() {
       zoomLink: user.zoomLink || '', // 🆔 Step 21: the teacher's Zoom room
       zoomMeetingId: user.zoomMeetingId || '',
       zoomPasscode: user.zoomPasscode || '',
+      gender: user.gender || '', // 🎁 W2: female / male, and whether this teacher is offered for free trials
+      trialsOpen: !!user.trialsOpen,
       password: '', // 🔐 empty = keep the current password
       useSharedPassword: false,
       timezone: user.timezone || 'Africa/Cairo' // ✨ Added timezone to edit
@@ -810,6 +812,25 @@ function UserList() {
                 <>
                   <div><label style={{ fontWeight: 'bold', fontSize: '14px' }}>Teacher Group ID:</label><input type="text" placeholder="e.g. 120363305478886477@g.us" value={editForm.teacherGroupId} onChange={(e) => setEditForm({...editForm, teacherGroupId: e.target.value})} style={{ width: '100%', padding: '10px', borderRadius: '5px', border: '1px solid #ccc', boxSizing: 'border-box' }} /></div>
                   <div><label style={{ fontWeight: 'bold', fontSize: '14px' }}>Hourly Pay Rate ($):</label><input type="number" step="0.5" value={editForm.hourlyRate} onChange={(e) => setEditForm({...editForm, hourlyRate: e.target.value})} style={{ width: '100%', padding: '10px', borderRadius: '5px', border: '1px solid #ccc', boxSizing: 'border-box' }} /></div>
+                  {/* 🎁 W2 Phase A: free trials booked from the website. The visitor chooses a female or a
+                      male teacher, then sees the free times of the ticked teachers of that gender only. */}
+                  <div style={{ backgroundColor: '#eefaf0', border: '1px solid #c9e9d3', borderRadius: '6px', padding: '10px' }}>
+                    <div style={{ fontWeight: 'bold', fontSize: '14px', marginBottom: '6px' }}>🎁 Free trials from the website</div>
+                    <label style={{ fontSize: '13px' }}>Teacher is:</label>
+                    <select value={editForm.gender || ''} onChange={(e) => setEditForm({...editForm, gender: e.target.value})} style={{ width: '100%', padding: '8px', borderRadius: '5px', border: '1px solid #ccc', boxSizing: 'border-box', marginBottom: '8px' }}>
+                      <option value="">Not set</option>
+                      <option value="female">Female teacher</option>
+                      <option value="male">Male teacher</option>
+                    </select>
+                    <label style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '13px', cursor: 'pointer' }}>
+                      <input type="checkbox" checked={!!editForm.trialsOpen} onChange={(e) => setEditForm({...editForm, trialsOpen: e.target.checked})} />
+                      Offer this teacher for free trial classes
+                    </label>
+                    <div style={{ fontSize: '12px', color: '#636e72', marginTop: '6px' }}>
+                      A teacher is only offered when both are set: the gender, and this tick. Their confirmed hours
+                      (My Schedule) are what the website shows, minus the classes already on the calendar.
+                    </div>
+                  </div>
                   {/* 🆔 STEP 21: the teacher's Zoom room → Meeting ID + passcode in the student reminders */}
                   <div style={{ backgroundColor: '#eef6ff', border: '1px solid #cfe2f6', borderRadius: '6px', padding: '10px' }}>
                     <div style={{ fontWeight: 'bold', fontSize: '14px', marginBottom: '6px' }}>🎥 Zoom room (shown in the student reminders)</div>

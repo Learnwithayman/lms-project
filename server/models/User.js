@@ -29,6 +29,10 @@ const userSchema = mongoose.Schema(
     zoomLink: { type: String, default: '' },
     zoomMeetingId: { type: String, default: '' },
     zoomPasscode: { type: String, default: '' },
+    // 🎁 W2 Phase A: free trials booked from the website. The visitor first chooses a female or a
+    // male teacher, and only teachers ticked here are offered a trial (Ayman's own hours stay free).
+    gender: { type: String, enum: ['', 'male', 'female'], default: '' },
+    trialsOpen: { type: Boolean, default: false },
     currency: { type: String, default: 'USD' }, 
     
     // The Adjustments Ledger for bonuses and deductions
