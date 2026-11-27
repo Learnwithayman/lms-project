@@ -36,7 +36,7 @@ const getMyDuties = asyncHandler(async (req, res) => {
   }
   for (const m of [prevM, curM]) {
     if (m.key < D.GO_LIVE.reports) continue;
-    m.mine.forEach((d) => { if (!d.reportDone && d.lastClass) addCard(d.lastClass.id, 'report', m, d); });
+    m.mine.forEach((d) => { if (!d.reportDone && !d.noPlan && d.lastClass) addCard(d.lastClass.id, 'report', m, d); }); // 27 Nov: no plan → no report
   }
 
   // Red "Immediate action required" panel
@@ -48,7 +48,7 @@ const getMyDuties = asyncHandler(async (req, res) => {
   for (const m of [prevM, curM]) {
     if (m.key < D.GO_LIVE.reports) continue;
     m.mine
-      .filter((d) => !d.reportDone && d.lastClass && D.dayIn(d.lastClass.start, D.CAIRO_TZ) < today)
+      .filter((d) => !d.reportDone && !d.noPlan && d.lastClass && D.dayIn(d.lastClass.start, D.CAIRO_TZ) < today)
       .forEach((d) => panel.push({ kind: 'report', month: m.label, monthKey: m.key, students: [d.student.name] }));
   }
 
@@ -64,7 +64,7 @@ const getMyDuties = asyncHandler(async (req, res) => {
     plansOn: cur >= D.GO_LIVE.plans,
     reportsOn: cur >= D.GO_LIVE.reports,
     plans: count(curM.mine, 'planDone'),
-    reports: count(curM.mine, 'reportDone')
+    reports: count(curM.mine.filter((d) => !d.noPlan), 'reportDone') // 27 Nov: students with no plan this month need no report
   };
 
   res.status(200).json({ today, progress, cards, panel });

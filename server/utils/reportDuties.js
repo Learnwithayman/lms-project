@@ -142,7 +142,8 @@ const findRecord = (student, key) => (student.monthlyReports || []).find((r) => 
 
 // Did this teacher save their plan / report? (+ on time?)
 const partStatus = (record, teacherId, duty) => {
-  const out = { record, planDone: false, planAt: null, reportDone: false, reportAt: null, planOnTime: null, reportOnTime: null };
+  // 📋 27 Nov (Ayman): no plan saved for the student this month → no report is required (noPlan)
+  const out = { record, noPlan: !record, planDone: false, planAt: null, reportDone: false, reportAt: null, planOnTime: null, reportOnTime: null };
   if (!record) return out;
   const entries = record.savedBy || [];
   if (entries.length === 0) {

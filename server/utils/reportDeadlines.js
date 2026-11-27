@@ -98,8 +98,8 @@ const computeActions = async (today, { preview = false } = {}) => {
       const groups = groupByTeacher(m.duties.filter((d) => !d.planDone));
       if (groups.length) toAdmin('plans-admin', planAdminMessage(m.label, groups));
     }
-    if (reportsOn && day === 25) groupByTeacher(m.duties).forEach((g) => toTeacher('reports-gentle', g.teacher, reportGentleMessage(g.teacher, m.label)));
-    if (reportsOn && day === 27) groupByTeacher(m.duties.filter((d) => !d.reportDone)).forEach((g) => toTeacher('reports-firm', g.teacher, reportFirmMessage(g.teacher, m.label, g.names)));
+    if (reportsOn && day === 25) groupByTeacher(m.duties.filter((d) => !d.noPlan)).forEach((g) => toTeacher('reports-gentle', g.teacher, reportGentleMessage(g.teacher, m.label)));
+    if (reportsOn && day === 27) groupByTeacher(m.duties.filter((d) => !d.reportDone && !d.noPlan)).forEach((g) => toTeacher('reports-firm', g.teacher, reportFirmMessage(g.teacher, m.label, g.names)));
 
     if (preview) {
       const noTeacher = m.unmatched.filter((u) => u.missing === 'teacher');
@@ -114,8 +114,8 @@ const computeActions = async (today, { preview = false } = {}) => {
 
   if (day === 3 && prev >= D.GO_LIVE.reports) {
     const m = await D.buildMonthDuties(prev);
-    const groups = groupByTeacher(m.duties.filter((d) => !d.reportDone));
-    if (groups.length) toAdmin('reports-admin', reportAdminMessage(m.label, groups));
+    const groups = groupByTeacher(m.duties.filter((d) => !d.reportDone && !d.noPlan)); // 27 Nov: no plan → no report
+    if (groups.length) toAdmin('reports-admin',reportAdminMessage(m.label, groups));
   }
 
   const waiting = await pendingApprovals();
