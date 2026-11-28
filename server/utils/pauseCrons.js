@@ -21,7 +21,8 @@ const savedCount = (p) => Math.max(0, (p.savedTotalClasses || 0) - (p.savedClass
 
 const adminReturnMessage = (user) => {
   const p = user.pause;
-  const untilLine = p.kind === 'full' ? `📅 *Paused until:* ${fmtDay(p.returnDate)}` : `🧳 *Away until:* ${fmtDay(p.returnDate)}`;
+  const untilText = p.returnPrecision === 'month' ? new Date(p.returnDate).toLocaleDateString('en-US', { timeZone: 'UTC', month: 'long', year: 'numeric' }) : fmtDay(p.returnDate); // ⏸️ Step 30
+  const untilLine = p.kind === 'full' ? `📅 *Paused until:* ${untilText}` : `🧳 *Away until:* ${untilText}`;
   const savedLine = p.kind === 'full' ? `\n🎒 *Saved classes:* ${savedCount(p)}` : '';
   return `السلام عليكم / Assalamu Alaikum 🌿\n\n⏰ *Student Return Today*\n👤 *Student:* ${user.name}\n${untilLine}${savedLine}\n\nPlease reactivate the subscription and confirm the schedule. ✅`;
 };

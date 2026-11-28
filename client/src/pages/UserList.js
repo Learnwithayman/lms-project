@@ -49,6 +49,8 @@ function UserList() {
   // ⏸️ STUDENT PAUSE STATES (Step 3)
   const [pauseKind, setPauseKind] = useState('full');
   const [pauseReturnDate, setPauseReturnDate] = useState('');
+  const [pauseReturnMode, setPauseReturnMode] = useState('date'); // ⏸️ Step 30: 'date' | 'month' | 'none'
+  const [pauseReturnMonth, setPauseReturnMonth] = useState(''); // 'YYYY-MM'
   const [pauseClasses, setPauseClasses] = useState(null); // future classes listed for the confirm button
   const [isPauseBusy, setIsPauseBusy] = useState(false);
   
@@ -381,13 +383,17 @@ function UserList() {
     return res.data;
   };
 
+  // ⏸️ Step 30: return = exact date, month only (1st of that month) or not known
+  const pauseUntilLabel = () => pauseReturnMode === 'none' ? 'return not known yet' : pauseReturnMode === 'month' ? `back in ${pauseReturnMonth}` : `until ${pauseReturnDate}`;
   const handleSavePause = async () => {
-    if (!pauseReturnDate) return alert('Please choose a return date.');
+    if (pauseReturnMode === 'date' && !pauseReturnDate) return alert('Please choose a return date.');
+    if (pauseReturnMode === 'month' && !pauseReturnMonth) return alert('Please choose the return month.');
     const label = pauseKind === 'full' ? 'FULL PAUSE (subscription stops, cycle saved)' : 'AWAY (subscription continues, all reminders muted)';
-    if (!window.confirm(`Save ${label} for ${selectedStudent.name} until ${pauseReturnDate}?`)) return;
+    const isUpdate = !!selectedStudent.pause?.kind;
+    if (!window.confirm(`${isUpdate ? 'Update / extend' : 'Save'} ${label} for ${selectedStudent.name}, ${pauseUntilLabel()}?${pauseKind === 'away' ? ' The teachers of the upcoming classes will get a WhatsApp message.' : ''}`)) return;
     setIsPauseBusy(true);
     try {
-      const data = await pauseRequest('post', '/pause', { kind: pauseKind, returnDate: pauseReturnDate });
+      const data = await pauseRequest('post', '/pause', { kind: pauseKind, returnMode: pauseReturnMode, returnDate: pauseReturnDate, returnMonth: pauseReturnMonth });
       setPauseClasses(null);
       if (data.user?.subscription?.status) setSubStatus(data.user.subscription.status); // keep the form below in sync (Paused)
       alert(data.message);
@@ -413,7 +419,7 @@ function UserList() {
 
   const handleRemovePauseClasses = async () => {
     if (!pauseClasses || !pauseClasses.length) return;
-    if (!window.confirm(`Remove ${pauseClasses.length} class(es) of ${selectedStudent.name} from Google Calendar? This cannot be undone automatically.`)) return;
+    if (!window.confirm(`Remove ${pauseClasses.length} class(es) of ${selectedStudent.name} from Google Calendar? This cannot be undone automatically.\n\nTheir teacher(s) and the student group will get a WhatsApp message that the classes are paused.`)) return;
     setIsPauseBusy(true);
     try {
       const data = await pauseRequest('post', '/pause/remove-classes', { eventIds: pauseClasses.map(c => c.id) });
@@ -449,10 +455,31 @@ function UserList() {
     }
   };
 
+  // ⏸️ Step 30: the return choice (exact date / month only / not known) and how a saved return is shown
+  const pauseReturnPicker = () => (
+    <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
+      <select value={pauseReturnMode} onChange={(e) => setPauseReturnMode(e.target.value)} style={{ flex: '1 1 130px', padding: '8px', borderRadius: '4px', border: '1px solid #ccc' }}>
+        <option value="date">Exact date</option>
+        <option value="month">Month only</option>
+        <option value="none">Not known yet</option>
+      </select>
+      {pauseReturnMode === 'date' && <input type="date" value={pauseReturnDate} onChange={(e) => setPauseReturnDate(e.target.value)} style={{ flex: '1 1 140px', padding: '8px', borderRadius: '4px', border: '1px solid #ccc', boxSizing: 'border-box' }} />}
+      {pauseReturnMode === 'month' && <input type="month" value={pauseReturnMonth} onChange={(e) => setPauseReturnMonth(e.target.value)} style={{ flex: '1 1 140px', padding: '8px', borderRadius: '4px', border: '1px solid #ccc', boxSizing: 'border-box' }} />}
+    </div>
+  );
+  const pauseUntilShown = (p) => {
+    if (!p || !p.returnDate || p.returnPrecision === 'none') return 'return not known yet';
+    return p.returnPrecision === 'month'
+      ? new Date(p.returnDate).toLocaleDateString(undefined, { timeZone: 'UTC', month: 'long', year: 'numeric' })
+      : new Date(p.returnDate).toLocaleDateString(undefined, { timeZone: 'UTC', dateStyle: 'medium' });
+  };
+
   const openWallet = (student) => {
     setSelectedStudent(student);
     setPauseKind(student.pause?.kind || 'full');
     setPauseReturnDate(student.pause?.returnDate ? student.pause.returnDate.split('T')[0] : '');
+    setPauseReturnMonth(student.pause?.returnDate ? student.pause.returnDate.slice(0, 7) : ''); // ⏸️ Step 30
+    setPauseReturnMode(student.pause?.kind ? (student.pause.returnPrecision === 'month' ? 'month' : (!student.pause.returnDate || student.pause.returnPrecision === 'none') ? 'none' : 'date') : 'date');
     setPauseClasses(null);
     
     // Legacy fields
@@ -957,17 +984,18 @@ function UserList() {
                 <div>
                   <p style={{ margin: '0 0 10px 0', fontSize: '14px', color: '#2d3436' }}>
                     {selectedStudent.pause.kind === 'full'
-                      ? <><strong>⏸️ Full pause</strong> until <strong>{selectedStudent.pause.returnDate ? new Date(selectedStudent.pause.returnDate).toLocaleDateString(undefined, { timeZone: 'UTC', dateStyle: 'medium' }) : '?'}</strong>. Saved cycle: {selectedStudent.pause.savedClassesUsed}/{selectedStudent.pause.savedTotalClasses} classes used, {selectedStudent.pause.savedDaysLeft} days left.</>
-                      : <><strong>🧳 Away</strong> until <strong>{selectedStudent.pause.returnDate ? new Date(selectedStudent.pause.returnDate).toLocaleDateString(undefined, { timeZone: 'UTC', dateStyle: 'medium' }) : '?'}</strong>. Subscription continues; all reminders are muted.</>}
+                      ? <><strong>⏸️ Full pause</strong> until <strong>{pauseUntilShown(selectedStudent.pause)}</strong>.Saved cycle: {selectedStudent.pause.savedClassesUsed}/{selectedStudent.pause.savedTotalClasses} classes used, {selectedStudent.pause.savedDaysLeft} days left.</>
+                      : <><strong>🧳 Away</strong> until <strong>{pauseUntilShown(selectedStudent.pause)}</strong>.Subscription continues; all reminders are muted.</>}
                     {selectedStudent.pause.classesRemovedCount ? <><br/>🗑️ {selectedStudent.pause.classesRemovedCount} class(es) already removed from Google Calendar.</> : null}
+                    {(selectedStudent.pause.teachersToldAt || selectedStudent.pause.studentToldAt) ? <><br/>💬 Told on WhatsApp: {[selectedStudent.pause.teachersToldAt ? 'teacher(s)' : null, selectedStudent.pause.studentToldAt ? 'student group' : null].filter(Boolean).join(' + ')}.</> : null}
                   </p>
 
                   <div style={{ display: 'flex', gap: '10px', alignItems: 'flex-end', marginBottom: '10px' }}>
                     <div style={{ flex: 1 }}>
-                      <label style={{ display: 'block', fontSize: '12px', fontWeight: 'bold' }}>Change return date</label>
-                      <input type="date" value={pauseReturnDate} onChange={(e) => setPauseReturnDate(e.target.value)} style={{ width: '100%', padding: '8px', borderRadius: '4px', border: '1px solid #ccc', boxSizing: 'border-box' }} />
+                      <label style={{ display: 'block', fontSize: '12px', fontWeight: 'bold' }}>Change / extend the return</label>
+                      {pauseReturnPicker()}
                     </div>
-                    <button type="button" onClick={handleSavePause} disabled={isPauseBusy} style={{ padding: '9px 15px', backgroundColor: '#8e44ad', color: 'white', border: 'none', borderRadius: '4px', cursor: isPauseBusy ? 'not-allowed' : 'pointer', fontWeight: 'bold' }}>Update date</button>
+                    <button type="button" onClick={handleSavePause} disabled={isPauseBusy} style={{ padding: '9px 15px', backgroundColor: '#8e44ad', color: 'white', border: 'none', borderRadius: '4px', cursor: isPauseBusy ? 'not-allowed' : 'pointer', fontWeight: 'bold' }}>Save / Extend</button>
                   </div>
 
                   {selectedStudent.pause.kind === 'full' && (
@@ -1008,8 +1036,8 @@ function UserList() {
                       </select>
                     </div>
                     <div style={{ flex: 1 }}>
-                      <label style={{ display: 'block', fontSize: '12px', fontWeight: 'bold' }}>Return date</label>
-                      <input type="date" value={pauseReturnDate} onChange={(e) => setPauseReturnDate(e.target.value)} style={{ width: '100%', padding: '8px', borderRadius: '4px', border: '1px solid #ccc', boxSizing: 'border-box' }} />
+                      <label style={{ display: 'block', fontSize: '12px', fontWeight: 'bold' }}>Return</label>
+                      {pauseReturnPicker()}
                     </div>
                   </div>
                   <button type="button" onClick={handleSavePause} disabled={isPauseBusy} style={{ width: '100%', marginTop: '10px', padding: '10px', backgroundColor: isPauseBusy ? '#95a5a6' : '#8e44ad', color: 'white', border: 'none', borderRadius: '5px', cursor: isPauseBusy ? 'not-allowed' : 'pointer', fontWeight: 'bold' }}>

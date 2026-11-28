@@ -1312,7 +1312,7 @@ function Dashboard() {
                     {user?.role?.toLowerCase() === 'teacher' && (() => {
                       const away = findAwayStudent(cls);
                       if (!away) return null;
-                      const until = away.returnDate ? new Date(away.returnDate).toLocaleDateString(undefined, { timeZone: 'UTC', month: 'long', day: 'numeric' }) : '?';
+                      const until = away.returnText !== undefined ? (away.returnText || 'further notice') : (away.returnDate ? new Date(away.returnDate).toLocaleDateString(undefined, { timeZone: 'UTC', month: 'long', day: 'numeric' }) : 'further notice'); // ⏸️ Step 30: "December 2026" / not known
                       return (
                         <div style={{ display: 'inline-block', backgroundColor: '#f4ecf7', color: '#6c3483', padding: '6px 12px', borderRadius: '6px', fontSize: '13px', fontWeight: 'bold', marginBottom: '15px', marginRight: '10px', border: '1px solid #d2b4de' }}>
                           {away.kind === 'away' ? '🧳 Student away' : '⏸️ Student paused'} until {until}. No need to wait for this class.

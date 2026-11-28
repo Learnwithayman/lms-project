@@ -1,6 +1,7 @@
 const User = require('../models/User');
 const { calendar } = require('./scheduleController');
-const { groupCode, userGroupCodes, classIsStudents, codesMatch } = require('../utils/classMatch'); // 👪 22 Nov: sibling-safe match
+const { groupCode, userGroupCodes, classIsStudents, codesMatch, eventTeacherCodes, classBelongsToTeacher } = require('../utils/classMatch'); // 👪 22 Nov: sibling-safe match
+const { sendMessage } = require('../utils/whatsappBot'); // ⏸️ Step 30: tell the teachers + the student group
 
 // ==========================================
 // ⏸️ STUDENT PAUSE (Step 3)
@@ -15,15 +16,72 @@ const DAY_MS = 24 * 60 * 60 * 1000;
 
 const fmtDay = (d) => new Date(d).toLocaleDateString('en-US', { timeZone: 'UTC', dateStyle: 'medium' });
 
+// ==========================================
+// ⏸️ STEP 30 (28 Nov): flexible return date + messages
+// ==========================================
+// Return date: an exact day, a month only (stored as the 1st of that month, shown as "December 2026"), or not known.
+const untilText = (p) => {
+  if (!p || !p.returnDate || p.returnPrecision === 'none') return '';
+  return p.returnPrecision === 'month'
+    ? new Date(p.returnDate).toLocaleDateString('en-US', { timeZone: 'UTC', month: 'long', year: 'numeric' })
+    : fmtDay(p.returnDate);
+};
+const readReturn = (body) => {
+  const mode = body.returnMode || (body.returnDate ? 'date' : 'none');
+  if (mode === 'none') return { ret: null, precision: 'none' };
+  if (mode === 'month') {
+    if (!/^\d{4}-\d{2}$/.test(String(body.returnMonth || ''))) return { error: 'Please choose the return month.' };
+    return { ret: new Date(`${body.returnMonth}-01T00:00:00Z`), precision: 'month' };
+  }
+  const ret = body.returnDate ? new Date(body.returnDate) : null;
+  if (!ret || isNaN(ret)) return { error: 'Please choose a return date.' };
+  return { ret, precision: 'day' };
+};
+const cairoDay = (d) => new Date(d).toLocaleDateString('en-US', { timeZone: 'Africa/Cairo', weekday: 'short', month: 'short', day: 'numeric' });
+const SIGN = '*Learn With Ayman Admin Team*';
+const teacherPausedMessage = (name, from, until, extended) => extended
+  ? `السلام عليكم / Assalamu Alaikum 🌿\n\n⏸️ *Pause extended*\n👤 *Student:* ${name}\n${until ? `🔙 *Now paused until:* ${until}` : '🔙 *Return:* not known yet'}\n\nMore of their classes have been removed from the calendar (from ${from}). We'll let you know when they come back.\n\n${SIGN}`
+  : `السلام عليكم / Assalamu Alaikum 🌿\n\n⏸️ *Student paused*\n👤 *Student:* ${name}\n📅 *Classes removed from:* ${from}${until ? `\n🔙 *Expected back:* ${until}` : ''}\n\nTheir classes have been removed from the calendar. We'll let you know when they come back.\n\n${SIGN}`;
+const studentPausedMessage = (name, from, until, extended) => `السلام عليكم / Assalamu Alaikum 🌙\n\n⏸️ *${extended ? 'Pause extended' : 'Classes paused'}*\n👤 *Student:* ${name}\n\n${extended
+  ? `Your pause is now extended${until ? ` until *${until}*` : ''}.`
+  : `As requested, your classes are paused from *${from}*${until ? ` until *${until}*` : ''}.`} We'll be happy to welcome you back, in shā’ Allāh. Contact us anytime to resume.\n\n*Learn With Ayman Admin Team* 💚`;
+const teacherAwayMessage = (name, until, extended) => `السلام عليكم / Assalamu Alaikum 🌿\n\n🧳 *${extended ? 'Student still away' : 'Student away'}*\n👤 *Student:* ${name}\n📅 *Away until:* ${until || 'further notice'}\n\nNo need to wait for them in class; their reminders are paused. We'll let you know when they're back.\n\n${SIGN}`;
+
+// The teachers of a list of classes (each with teacherCodes): [{ teacher, first }]
+const teachersOfClasses = async (classes) => {
+  const teachers = await User.find({ role: 'teacher' }, 'name teacherGroupId legacyGroupIds');
+  const out = new Map();
+  for (const c of classes) {
+    const t = teachers.find((x) => classBelongsToTeacher(c.teacherCodes || [], x));
+    if (!t) continue;
+    const k = String(t._id);
+    if (!out.has(k) || new Date(c.startTime) < new Date(out.get(k).first)) out.set(k, { teacher: t, first: c.startTime });
+  }
+  return [...out.values()];
+};
+const send = async (target, text) => {
+  if (!target || !String(target).trim()) return false;
+  try { await sendMessage(String(target).trim(), text); return true; } catch (e) { console.error('Pause message failed:', e.message); return false; }
+};
+// Away (new or extended): tell the teachers of the student's upcoming classes
+const tellAwayTeachers = async (user, extended) => {
+  const classes = await findFutureClasses(user);
+  const list = await teachersOfClasses(classes);
+  const told = [];
+  for (const { teacher } of list) if (await send(teacher.teacherGroupId, teacherAwayMessage(user.name, untilText(user.pause), extended))) told.push(teacher.name);
+  return told;
+};
+
 // @desc    Start (or update the return date of) a pause
 // @route   POST /api/users/:id/pause   body: { kind: 'full' | 'away', returnDate: 'YYYY-MM-DD' }
 // @access  Admin
 const setPause = async (req, res) => {
   try {
-    const { kind, returnDate } = req.body;
+    const { kind } = req.body;
     if (!['full', 'away'].includes(kind)) return res.status(400).json({ message: 'Choose Full pause or Away.' });
-    const ret = returnDate ? new Date(returnDate) : null;
-    if (!ret || isNaN(ret)) return res.status(400).json({ message: 'Please choose a return date.' });
+    const back = readReturn(req.body); // ⏸️ Step 30: exact date / month only / not known
+    if (back.error) return res.status(400).json({ message: back.error });
+    const ret = back.ret;
 
     const user = await User.findById(req.params.id);
     if (!user) return res.status(404).json({ message: 'Student not found' });
@@ -34,14 +92,20 @@ const setPause = async (req, res) => {
         return res.status(400).json({ message: 'This student is already paused with a different kind. Reactivate first, then pause again.' });
       }
       user.pause.returnDate = ret;
+      user.pause.returnPrecision = back.precision;
       user.pause.adminAlertSentAt = undefined;
       user.pause.studentWelcomeSentAt = undefined;
       await user.save();
-      return res.status(200).json({ message: `Return date updated to ${fmtDay(ret)}.`, user });
+      const until = untilText(user.pause) || 'not known yet';
+      if (kind === 'away') { // ⏸️ Step 30: "still away until …" to the teachers
+        const told = await tellAwayTeachers(user, true);
+        return res.status(200).json({ message: `Return updated: ${until}. ${told.length ? `Teachers told: ${told.join(', ')}.` : 'No upcoming classes, so no teacher was messaged.'}`, user });
+      }
+      return res.status(200).json({ message: `Return updated: ${until}. If the pause is longer now, press "Show future classes to remove" to remove the extra classes; the teachers and the student group are told then.`, user });
     }
 
     const now = new Date();
-    const pause = { kind, startedAt: now, returnDate: ret };
+    const pause = { kind, startedAt: now, returnDate: ret, returnPrecision: back.precision };
 
     if (kind === 'full') {
       const sub = user.subscription || {};
@@ -54,10 +118,18 @@ const setPause = async (req, res) => {
 
     user.pause = pause;
     await user.save();
+    const until = untilText(user.pause) || 'not known yet';
+    let awayNote = '';
+    if (kind === 'away') { // ⏸️ Step 30: tell the teachers of the upcoming classes
+      const told = await tellAwayTeachers(user, false);
+      user.pause.teachersToldAt = told.length ? new Date() : undefined;
+      if (told.length) await user.save();
+      awayNote = told.length ? ` Teachers told: ${told.join(', ')}.` : ' No upcoming classes, so no teacher was messaged.';
+    }
     res.status(200).json({
       message: kind === 'full'
-        ? `⏸️ Full pause saved until ${fmtDay(ret)}. Cycle saved: ${pause.savedClassesUsed}/${pause.savedTotalClasses} classes used, ${pause.savedDaysLeft} days left.`
-        : `🧳 Away saved until ${fmtDay(ret)}. All reminders for this student are muted.`,
+        ? `⏸️ Full pause saved (return: ${until}). Cycle saved: ${pause.savedClassesUsed}/${pause.savedTotalClasses} classes used, ${pause.savedDaysLeft} days left. Next: remove the future classes; the teachers and the student group are told then.`
+        : `🧳 Away saved (return: ${until}). All reminders for this student are muted.${awayNote}`,
       user
     });
   } catch (error) {
@@ -81,7 +153,7 @@ const findFutureClasses = async (user) => {
   const students = await User.find({ role: 'student' }, 'name studentGroupId legacyGroupIds whatsappGroupId'); // 👪 siblings sharing one link
   return (response.data.items || [])
     .filter((event) => classIsStudents(event, user, students))
-    .map((event) => ({ id: event.id, title: event.summary, startTime: event.start.dateTime || event.start.date }));
+    .map((event) => ({ id: event.id, title: event.summary, startTime: event.start.dateTime || event.start.date, teacherCodes: eventTeacherCodes(event) }));
 };
 
 // @desc    List the student's future classes during a full pause (for the confirm button)
@@ -113,14 +185,17 @@ const removePauseClasses = async (req, res) => {
     if (user.pause?.kind !== 'full') return res.status(400).json({ message: 'Classes are only removed for a Full pause.' });
 
     // Safety: only delete classes that still belong to this student in this pause window
-    const allowed = new Set((await findFutureClasses(user)).map((c) => c.id));
+    const future = await findFutureClasses(user);
+    const allowed = new Set(future.map((c) => c.id));
     let removed = 0;
     const failed = [];
+    const removedClasses = []; // ⏸️ Step 30: to tell their teachers
     for (const id of eventIds) {
       if (!allowed.has(id)) { failed.push(id); continue; }
       try {
         await calendar.events.delete({ calendarId: CALENDAR_ID, eventId: id });
         removed++;
+        removedClasses.push(future.find((c) => c.id === id));
       } catch (err) {
         console.error(`Pause: could not delete event ${id}:`, err.message);
         failed.push(id);
@@ -129,8 +204,24 @@ const removePauseClasses = async (req, res) => {
 
     user.pause.classesRemovedAt = new Date();
     user.pause.classesRemovedCount = (user.pause.classesRemovedCount || 0) + removed;
+
+    // ⏸️ Step 30: tell each teacher whose classes were removed + the student group (once; a later removal = "extended")
+    let note = '';
+    if (removedClasses.length) {
+      const extended = !!user.pause.teachersToldAt;
+      const until = untilText(user.pause);
+      const first = removedClasses.reduce((a, c) => (new Date(c.startTime) < new Date(a.startTime) ? c : a)).startTime;
+      const told = [];
+      for (const { teacher, first: tFirst } of await teachersOfClasses(removedClasses)) {
+        if (await send(teacher.teacherGroupId, teacherPausedMessage(user.name, cairoDay(tFirst), until, extended))) told.push(teacher.name);
+      }
+      const studentTold = await send(user.studentGroupId, studentPausedMessage(user.name, cairoDay(first), until, extended));
+      if (told.length) user.pause.teachersToldAt = new Date();
+      if (studentTold) user.pause.studentToldAt = new Date();
+      note = ` Teachers told: ${told.length ? told.join(', ') : 'none (no teacher found for these classes)'}. Student group: ${studentTold ? 'told' : 'NOT told (no group link saved)'}.`;
+    }
     await user.save();
-    res.status(200).json({ message: `🗑️ Removed ${removed} class(es) from Google Calendar.${failed.length ? ` ${failed.length} could not be removed.` : ''}`, removed, failed, user });
+    res.status(200).json({ message: `🗑️ Removed ${removed} class(es) from Google Calendar.${failed.length ? ` ${failed.length} could not be removed.` : ''}${note}`, removed, failed, user });
   } catch (error) {
     console.error('Error removing pause classes:', error);
     res.status(500).json({ message: 'Server error while removing the classes.' });
@@ -186,7 +277,8 @@ const getAwayStudents = async (req, res) => {
       codes: userGroupCodes(u, 'studentGroupId'), // 🔗 invite link code + old IDs
       kind: u.pause.kind,
       returnDate: u.pause.returnDate,
-      shared: sharesLink(u) // true → the class must also name this student
+      returnText: untilText(u.pause), // ⏸️ Step 30: "Dec 15, 2026" / "December 2026" / '' (not known)
+      shared: sharesLink(u)// true → the class must also name this student
     })));
   } catch (error) {
     console.error('Error loading away students:', error);

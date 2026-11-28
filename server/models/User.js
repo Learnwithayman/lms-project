@@ -145,7 +145,10 @@ const userSchema = mongoose.Schema(
       classesRemovedAt: { type: Date },        // when the admin removed future classes
       classesRemovedCount: { type: Number },
       adminAlertSentAt: { type: Date },        // return-day alerts (sent once)
-      studentWelcomeSentAt: { type: Date }
+      studentWelcomeSentAt: { type: Date },
+      returnPrecision: { type: String, enum: ['day', 'month', 'none'], default: 'day' }, // ⏸️ Step 30: exact date / month only (1st of the month) / not known
+      teachersToldAt: { type: Date },          // ⏸️ Step 30: teachers told about this pause (a later message says "extended")
+      studentToldAt: { type: Date }
     },
 
     makeupBank: [
